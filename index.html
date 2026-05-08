@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeployStation Prototype</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      body { margin: 0; background: #0f172a; color: #e2e8f0; }
+      .layout { display: grid; grid-template-columns: 350px 1fr; min-height: 100vh; }
+      .panel { padding: 16px; border-right: 1px solid #1e293b; }
+      .panel h1 { margin-top: 0; font-size: 1.2rem; }
+      .stack { display: grid; gap: 8px; }
+      input, select, button, textarea {
+        background: #111827; color: #e5e7eb; border: 1px solid #334155; border-radius: 8px; padding: 8px;
+      }
+      button { cursor: pointer; }
+      .projects { margin-top: 12px; display: grid; gap: 8px; }
+      .project {
+        border: 1px solid #334155; border-radius: 10px; padding: 10px; background: #0b1220; cursor: pointer;
+      }
+      .project.active { border-color: #38bdf8; }
+      .badge { border-radius: 999px; padding: 2px 8px; font-size: 0.75rem; border: 1px solid #475569; }
+      .badge.public { color: #22c55e; }
+      .badge.private { color: #f97316; }
+      .workspace { display: grid; grid-template-columns: 260px 1fr 320px; min-height: 100vh; }
+      .col { border-right: 1px solid #1e293b; padding: 16px; }
+      .col:last-child { border-right: 0; }
+      .files { display: grid; gap: 6px; margin-top: 10px; }
+      .file { padding: 6px 8px; border: 1px solid #334155; border-radius: 8px; cursor: pointer; }
+      .file.active { border-color: #22d3ee; }
+      textarea { width: 100%; min-height: 300px; resize: vertical; }
+      .chat { display: grid; gap: 8px; }
+      .messages { min-height: 300px; border: 1px solid #334155; border-radius: 8px; padding: 8px; display: grid; gap: 8px; }
+      .msg { padding: 6px 8px; border-radius: 8px; background: #111827; }
+      .empty { opacity: 0.7; }
+    </style>
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="panel">
+        <h1>DeployStation: Test Project Viewer</h1>
+        <form id="projectForm" class="stack">
+          <input id="projectName" placeholder="Project name" required />
+          <select id="projectVisibility">
+            <option value="public">Public</option>
+            <option value="private">Private</option>
+          </select>
+          <select id="deploySource">
+            <option value="folder">Deploy with folder</option>
+            <option value="zip">Deploy with zip</option>
+            <option value="single-file">Deploy with single file</option>
+          </select>
+          <select id="projectTemplate">
+            <option value="blank">Blank template</option>
+            <option value="static-site">Static site template</option>
+            <option value="node-api">Node API template</option>
+          </select>
+          <button type="submit">Create project</button>
+        </form>
+        <div class="stack" style="margin-top: 12px">
+          <select id="visibilityFilter">
+            <option value="all">All projects</option>
+            <option value="public">Public only</option>
+            <option value="private">Private only</option>
+          </select>
+        </div>
+        <section id="projects" class="projects"></section>
+      </aside>
+      <section class="workspace">
+        <div class="col">
+          <h2>File browser</h2>
+          <div id="files" class="files"></div>
+        </div>
+        <div class="col">
+          <h2>DevOps editor</h2>
+          <div id="editorEmpty" class="empty">Select a file to edit.</div>
+          <textarea id="editor" hidden></textarea>
+          <button id="saveFile" hidden>Save file</button>
+        </div>
+        <div class="col">
+          <h2>AI chat</h2>
+          <div id="messages" class="messages"></div>
+          <form id="chatForm" class="chat">
+            <input id="chatInput" placeholder="Ask AI about this project..." required />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </section>
+    </main>
+    <script>
+      const templates = {
+        blank: [{ path: "README.md", content: "# New project\n" }],
+        "static-site": [
+          { path: "index.html", content: "<h1>Hello DeployStation</h1>\n" },
+          { path: "style.css", content: "body { font-family: sans-serif; }\n" }
+        ],
+        "node-api": [
+          { path: "package.json", content: '{ "name": "node-api", "private": true }\n' },
+          { path: "server.js", content: "console.log('API ready')\n" }
+        ]
+      };
+
+      const STORAGE_KEY = "deploystation.projects";
+      let projects = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      let selectedProjectId = projects[0]?.id ?? null;
+      let selectedFilePath = null;
+
+      const refs = {
+        projectForm: document.getElementById("projectForm"),
+        projectName: document.getElementById("projectName"),
+        projectVisibility: document.getElementById("projectVisibility"),
+        deploySource: document.getElementById("deploySource"),
+        projectTemplate: document.getElementById("projectTemplate"),
+        visibilityFilter: document.getElementById("visibilityFilter"),
+        projects: document.getElementById("projects"),
+        files: document.getElementById("files"),
+        editor: document.getElementById("editor"),
+        editorEmpty: document.getElementById("editorEmpty"),
+        saveFile: document.getElementById("saveFile"),
+        messages: document.getElementById("messages"),
+        chatForm: document.getElementById("chatForm"),
+        chatInput: document.getElementById("chatInput")
+      };
+
+      function persist() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      }
+
+      function currentProject() {
+        return projects.find((p) => p.id === selectedProjectId) || null;
+      }
+
+      function renderProjects() {
+        refs.projects.innerHTML = "";
+        const filter = refs.visibilityFilter.value;
+        const filtered = projects.filter((project) => filter === "all" || project.visibility === filter);
+        if (!filtered.length) {
+          refs.projects.innerHTML = '<div class="empty">No projects found for this filter.</div>';
+          return;
+        }
+
+        filtered.forEach((project) => {
+          const card = document.createElement("button");
+          card.type = "button";
+          card.className = `project${project.id === selectedProjectId ? " active" : ""}`;
+          card.innerHTML = `
+            <div><strong>${project.name}</strong></div>
+            <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+              <span class="badge ${project.visibility}">${project.visibility}</span>
+              <span class="badge">${project.deploySource}</span>
+              <span class="badge">${project.template}</span>
+            </div>
+          `;
+          card.addEventListener("click", () => {
+            selectedProjectId = project.id;
+            selectedFilePath = null;
+            render();
+          });
+          refs.projects.appendChild(card);
+        });
+      }
+
+      function renderFiles() {
+        refs.files.innerHTML = "";
+        const project = currentProject();
+        if (!project) {
+          refs.files.innerHTML = '<div class="empty">Create or select a project.</div>';
+          return;
+        }
+
+        if (!project.files.length) {
+          refs.files.innerHTML = '<div class="empty">No files in this project.</div>';
+          return;
+        }
+
+        project.files.forEach((file) => {
+          const fileBtn = document.createElement("button");
+          fileBtn.type = "button";
+          fileBtn.className = `file${selectedFilePath === file.path ? " active" : ""}`;
+          fileBtn.textContent = file.path;
+          fileBtn.addEventListener("click", () => {
+            selectedFilePath = file.path;
+            renderEditor();
+            renderFiles();
+          });
+          refs.files.appendChild(fileBtn);
+        });
+      }
+
+      function renderEditor() {
+        const project = currentProject();
+        const file = project?.files.find((f) => f.path === selectedFilePath);
+        if (!file) {
+          refs.editor.hidden = true;
+          refs.saveFile.hidden = true;
+          refs.editorEmpty.hidden = false;
+          refs.editor.value = "";
+          return;
+        }
+        refs.editor.hidden = false;
+        refs.saveFile.hidden = false;
+        refs.editorEmpty.hidden = true;
+        refs.editor.value = file.content;
+      }
+
+      function appendMessage(text, role) {
+        const msg = document.createElement("div");
+        msg.className = "msg";
+        msg.textContent = `${role}: ${text}`;
+        refs.messages.appendChild(msg);
+      }
+
+      function render() {
+        renderProjects();
+        renderFiles();
+        renderEditor();
+      }
+
+      refs.projectForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const project = {
+          id: crypto.randomUUID(),
+          name: refs.projectName.value.trim(),
+          visibility: refs.projectVisibility.value,
+          deploySource: refs.deploySource.value,
+          template: refs.projectTemplate.value,
+          files: templates[refs.projectTemplate.value].map((file) => ({ ...file }))
+        };
+        if (!project.name) return;
+        projects.unshift(project);
+        selectedProjectId = project.id;
+        selectedFilePath = null;
+        refs.projectForm.reset();
+        persist();
+        render();
+      });
+
+      refs.visibilityFilter.addEventListener("change", renderProjects);
+
+      refs.saveFile.addEventListener("click", () => {
+        const project = currentProject();
+        if (!project) return;
+        const file = project.files.find((f) => f.path === selectedFilePath);
+        if (!file) return;
+        file.content = refs.editor.value;
+        persist();
+      });
+
+      refs.chatForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const question = refs.chatInput.value.trim();
+        if (!question) return;
+        appendMessage(question, "You");
+        const project = currentProject();
+        appendMessage(
+          project
+            ? `Prototype AI: For "${project.name}", try a ${project.deploySource} deploy and verify ${project.visibility} access policy.`
+            : "Prototype AI: Select a project first so I can help with deployment and access settings.",
+          "AI"
+        );
+        refs.chatForm.reset();
+      });
+
+      render();
+    </script>
+  </body>
+</html>
