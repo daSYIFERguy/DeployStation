@@ -105,7 +105,15 @@
       };
 
       const STORAGE_KEY = "deploystation.projects";
-      let projects = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      function loadProjects() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      }
+      let projects = loadProjects();
       let selectedProjectId = projects[0]?.id ?? null;
       let selectedFilePath = null;
 
@@ -147,14 +155,26 @@
           const card = document.createElement("button");
           card.type = "button";
           card.className = `project${project.id === selectedProjectId ? " active" : ""}`;
-          card.innerHTML = `
-            <div><strong>${project.name}</strong></div>
-            <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
-              <span class="badge ${project.visibility}">${project.visibility}</span>
-              <span class="badge">${project.deploySource}</span>
-              <span class="badge">${project.template}</span>
-            </div>
-          `;
+          const title = document.createElement("div");
+          const strong = document.createElement("strong");
+          strong.textContent = project.name;
+          title.appendChild(strong);
+          const meta = document.createElement("div");
+          meta.style.display = "flex";
+          meta.style.gap = "8px";
+          meta.style.marginTop = "6px";
+          meta.style.alignItems = "center";
+          const visibility = document.createElement("span");
+          visibility.className = `badge ${project.visibility}`;
+          visibility.textContent = project.visibility;
+          const source = document.createElement("span");
+          source.className = "badge";
+          source.textContent = project.deploySource;
+          const template = document.createElement("span");
+          template.className = "badge";
+          template.textContent = project.template;
+          meta.append(visibility, source, template);
+          card.append(title, meta);
           card.addEventListener("click", () => {
             selectedProjectId = project.id;
             selectedFilePath = null;
@@ -222,15 +242,16 @@
 
       refs.projectForm.addEventListener("submit", (event) => {
         event.preventDefault();
+        const name = refs.projectName.value.trim();
+        if (!name) return;
         const project = {
           id: crypto.randomUUID(),
-          name: refs.projectName.value.trim(),
+          name,
           visibility: refs.projectVisibility.value,
           deploySource: refs.deploySource.value,
           template: refs.projectTemplate.value,
           files: templates[refs.projectTemplate.value].map((file) => ({ ...file }))
         };
-        if (!project.name) return;
         projects.unshift(project);
         selectedProjectId = project.id;
         selectedFilePath = null;

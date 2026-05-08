@@ -5,7 +5,7 @@ DeploySmallApps - secured testing hub and clipboard.
 ## Test project viewer prototype
 
 This repository now includes a minimal browser-based prototype in
-`/home/runner/work/DeployStation/DeployStation/index.html` with:
+`index.html` with:
 
 - project viewer list with visibility access control (`public` or `private`)
 - deploy source options (`folder`, `zip`, `single file`)
@@ -17,4 +17,4 @@ This repository now includes a minimal browser-based prototype in
 
 Open the file directly in your browser:
 
-`/home/runner/work/DeployStation/DeployStation/index.html`
+`index.html`
