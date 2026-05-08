@@ -55,17 +55,11 @@ if ($templateType === 'chrome-extension') {
     }
     $extName    = (string) ($manifestData['name'] ?? $slug);
     $extVersion = (string) ($manifestData['version'] ?? '1.0');
-    $uiConfig   = station_ui_config();
-    $faviconHtml = station_favicon_html();
     ?>
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= station_h($extName) ?> — Chrome Extension</title>
-  <?= $faviconHtml ?>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html($extName . ' — Chrome Extension', 'Download and install this Chrome extension package from the deployment station.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell narrow">
@@ -100,6 +94,7 @@ if ($templateType === 'chrome-extension') {
     </section>
     <?php endif; ?>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>
     <?php

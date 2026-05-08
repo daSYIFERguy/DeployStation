@@ -1,3 +1,29 @@
 <?php declare(strict_types=1); require_once __DIR__ . '/lib/auth.php'; station_require_login(); ?>
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Integration Help</title><link rel="stylesheet" href="assets/style.css"></head><body class="station-body"><main class="station-shell"><header class="topbar card"><div><p class="kicker">Docs</p><h1>Integration Setup Help</h1><p>Reference notes for premium services and credential setup.</p></div><nav class="nav-pills"><a href="station.php">Dashboard</a><a href="user-settings.php">User Settings</a></nav></header><section class="grid-two"><article id="github" class="card"><h2>GitHub</h2><p>Create a personal access token with repo scopes as needed. Store only the token you actually use for Station workflows.</p></article><article id="vscode" class="card"><h2>VS Code</h2><p>Use your preferred VS Code share/sync endpoint, repository URL, or remote workspace notes. This field is intentionally flexible.</p></article><article id="chatgpt" class="card"><h2>ChatGPT</h2><p>Add the API key or workspace identifier you use for your automation workflows. If you only use the web app, keep it disabled.</p></article><article id="codex" class="card"><h2>Codex</h2><p>Add the coding API key or workspace reference used in your build workflows. If not configured yet, leave disabled and the related features stay greyed out.</p></article></section></main></body></html>
+<html lang="en">
+<head>
+	<?= station_pwa_head_html('Integration Help', 'Reference notes for premium services and credential setup.') ?>
+</head>
+<body class="station-body">
+	<main class="station-shell">
+		<header class="topbar card">
+			<div>
+				<p class="kicker">Docs</p>
+				<h1>Integration Setup Help</h1>
+				<p>Reference notes for premium services and credential setup.</p>
+			</div>
+			<nav class="nav-pills">
+				<a href="station.php">Dashboard</a>
+				<a href="user-settings.php">User Settings</a>
+			</nav>
+		</header>
+		<section class="grid-two">
+			<article id="github" class="card"><h2>GitHub</h2><p>Create a personal access token with repo scopes as needed. Store only the token you actually use for Station workflows.</p></article>
+			<article id="vscode" class="card"><h2>VS Code</h2><p>Use your preferred VS Code share/sync endpoint, repository URL, or remote workspace notes. This field is intentionally flexible.</p></article>
+			<article id="chatgpt" class="card"><h2>ChatGPT</h2><p>Add the API key or workspace identifier you use for your automation workflows. If you only use the web app, keep it disabled.</p></article>
+			<article id="codex" class="card"><h2>Codex</h2><p>Add the coding API key or workspace reference used in your build workflows. If not configured yet, leave disabled and the related features stay greyed out.</p></article>
+		</section>
+	</main>
+	<?= station_pwa_register_html() ?>
+</body>
+</html>

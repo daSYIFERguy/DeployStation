@@ -40,10 +40,7 @@ $appName = (string) (station_config()['appName'] ?? 'Micro Deployment Station');
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= station_h($appName) ?> Login</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html($appName . ' Login', 'Sign in to access the secured upload and deployment center.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell narrow">
@@ -65,5 +62,6 @@ $appName = (string) (station_config()['appName'] ?? 'Micro Deployment Station');
       <button type="submit">Sign In</button>
     </form>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

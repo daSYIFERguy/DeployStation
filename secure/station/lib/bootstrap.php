@@ -201,27 +201,127 @@ function station_admin_settings(): array
         'codexEnabled' => true,
         'stationHeading' => 'Deployment Station',
         'stationSubheading' => '',
-        'faviconUrl' => ''
+        'faviconUrl' => '',
+        'appIconUrl' => '',
+        'appIcon192Url' => '',
+        'appIcon512Url' => '',
+        'appMaskableIconUrl' => '',
+        'themeColor' => '#2f7de2'
     ]);
 }
 
 function station_ui_config(): array
 {
     $settings = station_admin_settings();
+    $config = station_config();
     return [
+        'appName' => (string) ($config['appName'] ?? 'Deployment Station'),
         'heading'    => (string) ($settings['stationHeading'] ?? 'Deployment Station'),
         'subheading' => (string) ($settings['stationSubheading'] ?? ''),
-        'faviconUrl' => (string) ($settings['faviconUrl'] ?? '')
+        'faviconUrl' => (string) ($settings['faviconUrl'] ?? ''),
+        'appIconUrl' => (string) ($settings['appIconUrl'] ?? ''),
+        'appIcon192Url' => (string) ($settings['appIcon192Url'] ?? ''),
+        'appIcon512Url' => (string) ($settings['appIcon512Url'] ?? ''),
+        'appMaskableIconUrl' => (string) ($settings['appMaskableIconUrl'] ?? ''),
+        'themeColor' => station_normalize_theme_color((string) ($settings['themeColor'] ?? '#2f7de2'))
+    ];
+}
+
+function station_normalize_theme_color(string $value): string
+{
+    $color = trim($value);
+    if (preg_match('/^#(?:[0-9a-fA-F]{3}){1,2}$/', $color) === 1) {
+        return strlen($color) === 4
+            ? '#' . $color[1] . $color[1] . $color[2] . $color[2] . $color[3] . $color[3]
+            : strtolower($color);
+    }
+
+    return '#2f7de2';
+}
+
+function station_pwa_icons(): array
+{
+    $uiConfig = station_ui_config();
+    $fallback = trim((string) ($uiConfig['appIconUrl'] ?? ''));
+    $favicon = trim((string) ($uiConfig['faviconUrl'] ?? ''));
+    $icon192 = trim((string) ($uiConfig['appIcon192Url'] ?? ''));
+    $icon512 = trim((string) ($uiConfig['appIcon512Url'] ?? ''));
+    $maskable = trim((string) ($uiConfig['appMaskableIconUrl'] ?? ''));
+
+    return [
+        'favicon' => $favicon !== '' ? $favicon : ($fallback !== '' ? $fallback : $icon192),
+        'apple' => $icon192 !== '' ? $icon192 : ($fallback !== '' ? $fallback : $favicon),
+        '192' => $icon192 !== '' ? $icon192 : ($fallback !== '' ? $fallback : $favicon),
+        '512' => $icon512 !== '' ? $icon512 : ($fallback !== '' ? $fallback : ($icon192 !== '' ? $icon192 : $favicon)),
+        'maskable' => $maskable !== '' ? $maskable : ($icon512 !== '' ? $icon512 : ($fallback !== '' ? $fallback : $favicon))
     ];
 }
 
 function station_favicon_html(): string
 {
-    $url = trim(station_ui_config()['faviconUrl']);
-    if ($url === '') {
+    $icons = station_pwa_icons();
+    $favicon = trim((string) ($icons['favicon'] ?? ''));
+    $apple = trim((string) ($icons['apple'] ?? ''));
+
+    if ($favicon === '' && $apple === '') {
         return '';
     }
-    return '<link rel="icon" href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '">';
+
+    $html = [];
+    if ($favicon !== '') {
+        $safeFavicon = htmlspecialchars($favicon, ENT_QUOTES, 'UTF-8');
+        $html[] = '<link rel="icon" href="' . $safeFavicon . '">';
+        $html[] = '<link rel="shortcut icon" href="' . $safeFavicon . '">';
+    }
+    if ($apple !== '') {
+        $html[] = '<link rel="apple-touch-icon" href="' . htmlspecialchars($apple, ENT_QUOTES, 'UTF-8') . '">';
+    }
+
+    return implode("\n  ", $html);
+}
+
+function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css'): string
+{
+    $uiConfig = station_ui_config();
+    $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
+    $metaDescription = trim($description) !== ''
+        ? trim($description)
+        : trim((string) ($uiConfig['subheading'] ?? ''));
+
+    if ($metaDescription === '') {
+        $metaDescription = $appName;
+    }
+
+    $head = [
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
+        '<title>' . station_h($title) . '</title>',
+        '<meta name="application-name" content="' . station_h($appName) . '">',
+        '<meta name="apple-mobile-web-app-capable" content="yes">',
+        '<meta name="apple-mobile-web-app-status-bar-style" content="default">',
+        '<meta name="apple-mobile-web-app-title" content="' . station_h($appName) . '">',
+        '<meta name="mobile-web-app-capable" content="yes">',
+        '<meta name="theme-color" content="' . station_h((string) $uiConfig['themeColor']) . '">',
+        '<meta name="description" content="' . station_h($metaDescription) . '">',
+        station_favicon_html(),
+        '<link rel="manifest" href="manifest.php">',
+        '<link rel="stylesheet" href="' . station_h($stylesheetHref) . '">'
+    ];
+
+    return implode("\n  ", array_values(array_filter($head, static fn ($line): bool => $line !== '')));
+}
+
+function station_pwa_register_html(): string
+{
+    return <<<'HTML'
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('service-worker.php', { scope: './' }).catch(function () {});
+  });
+}
+</script>
+HTML;
 }
 
 function station_clipboard_path(string $username): string

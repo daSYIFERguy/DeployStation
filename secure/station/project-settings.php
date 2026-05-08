@@ -124,10 +124,7 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Project Settings</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html('Project Settings', 'Manage environment variables, GitHub setup, scraper presets, and notes for this project.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell">
@@ -230,5 +227,6 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
       <?php endif; ?>
     </section>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

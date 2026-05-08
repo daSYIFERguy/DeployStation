@@ -1194,6 +1194,32 @@ tr:last-child td { border-bottom: none; }
 @media (max-width: 760px) {
   :root { --rail-w: 86px; }
 
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-nav {
+    position: static;
+    height: auto;
+    padding: 12px 14px;
+  }
+
+  .dashboard-nav-inner {
+    gap: 12px;
+  }
+
+  .dashboard-menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  }
+
+  .dashboard-account {
+    margin-top: 0;
+    flex-direction: row;
+    justify-content: center;
+    padding: 10px 12px;
+  }
+
   .dashboard-nav {
     padding: 12px 10px 16px;
   }
@@ -1229,9 +1255,13 @@ tr:last-child td { border-bottom: none; }
   .workspace-mini-stats { grid-template-columns: 1fr; }
 
   .dashboard-menu-link span:last-child,
-  .dashboard-account-copy,
   .dashboard-brand-copy {
     display: none;
+  }
+
+  .dashboard-account-copy {
+    display: grid;
+    justify-items: start;
   }
 
   .dashboard-menu-link {

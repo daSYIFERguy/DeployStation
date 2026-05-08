@@ -7,7 +7,6 @@ require_once __DIR__ . '/lib/auth.php';
 station_require_owner();
 $settings = station_admin_settings();
 $uiConfig = station_ui_config();
-$faviconHtml = station_favicon_html();
 $error = '';
 $ok = station_flash_get('ok');
 $accessModes = station_allowed_project_access_modes();
@@ -25,6 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $settings['stationHeading']      = trim((string) ($_POST['stationHeading'] ?? 'Deployment Station')) ?: 'Deployment Station';
     $settings['stationSubheading']   = trim((string) ($_POST['stationSubheading'] ?? ''));
     $settings['faviconUrl']          = trim((string) ($_POST['faviconUrl'] ?? ''));
+    $settings['appIconUrl']          = trim((string) ($_POST['appIconUrl'] ?? ''));
+    $settings['appIcon192Url']       = trim((string) ($_POST['appIcon192Url'] ?? ''));
+    $settings['appIcon512Url']       = trim((string) ($_POST['appIcon512Url'] ?? ''));
+    $settings['appMaskableIconUrl']  = trim((string) ($_POST['appMaskableIconUrl'] ?? ''));
+    $settings['themeColor']          = station_normalize_theme_color((string) ($_POST['themeColor'] ?? '#2f7de2'));
 
     if (station_save_admin_settings($settings)) {
         station_log_event('admin.settings.updated', []);
@@ -38,11 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin Settings</title>
-  <?= $faviconHtml ?>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html('Admin Settings', 'Configure branding, icons, defaults, and integrations for the deployment station.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell narrow">
@@ -70,6 +70,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <label>Favicon URL (optional — paste a .ico or .png URL)
         <input type="url" name="faviconUrl" value="<?= station_h($settings['faviconUrl'] ?? '') ?>" placeholder="https://example.com/favicon.ico">
+      </label>
+      <label>PWA Icon URL (fallback for install prompts)
+        <input type="url" name="appIconUrl" value="<?= station_h($settings['appIconUrl'] ?? '') ?>" placeholder="https://example.com/icon.png">
+      </label>
+      <label>PWA Icon 192x192 URL
+        <input type="url" name="appIcon192Url" value="<?= station_h($settings['appIcon192Url'] ?? '') ?>" placeholder="https://example.com/icon-192.png">
+      </label>
+      <label>PWA Icon 512x512 URL
+        <input type="url" name="appIcon512Url" value="<?= station_h($settings['appIcon512Url'] ?? '') ?>" placeholder="https://example.com/icon-512.png">
+      </label>
+      <label>Maskable Icon URL (optional)
+        <input type="url" name="appMaskableIconUrl" value="<?= station_h($settings['appMaskableIconUrl'] ?? '') ?>" placeholder="https://example.com/icon-maskable-512.png">
+      </label>
+      <label>Theme Color
+        <input type="color" name="themeColor" value="<?= station_h(station_normalize_theme_color((string) ($settings['themeColor'] ?? '#2f7de2'))) ?>">
       </label>
 
       <h2>Project Defaults</h2>
@@ -102,5 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <button type="submit">Save Settings</button>
     </form>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

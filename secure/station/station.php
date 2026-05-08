@@ -15,7 +15,6 @@ $canBuild    = station_can_build($user);
 $profile     = station_current_user_profile();
 $adminSettings = station_admin_settings();
 $uiConfig    = station_ui_config();
-$faviconHtml = station_favicon_html();
 
 if (station_user_needs_onboarding(station_current_username())) {
     header('Location: onboarding.php');
@@ -117,11 +116,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><?= station_h($appName) ?></title>
-  <?= $faviconHtml ?>
-  <link rel="stylesheet" href="assets/style.css?v=20260508e">
+  <?= station_pwa_head_html($appName, 'Manage projects, integrations, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260508e') ?>
   <style>
     .station-body {
       margin: 0;
@@ -169,6 +164,44 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       flex-direction: column;
       align-items: center;
       gap: 10px;
+    }
+
+    .dashboard-mobile-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .dashboard-mobile-toggle {
+      display: none;
+      width: 46px;
+      height: 46px;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 14px;
+      background: rgba(255,255,255,.14);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+    }
+
+    .dashboard-mobile-toggle-lines {
+      display: grid;
+      gap: 4px;
+    }
+
+    .dashboard-mobile-toggle-lines span {
+      display: block;
+      width: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .dashboard-mobile-user {
+      display: none;
     }
 
     .dashboard-brand-mark {
@@ -766,7 +799,47 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 
     @media (max-width: 760px) {
       .dashboard-shell {
-        grid-template-columns: 86px minmax(0, 1fr);
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard-nav {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        padding: 12px 14px;
+        height: auto;
+        box-shadow: 0 10px 24px rgba(19,35,63,.14);
+      }
+
+      .dashboard-nav-inner {
+        gap: 12px;
+        height: auto;
+      }
+
+      .dashboard-mobile-bar {
+        display: flex;
+      }
+
+      .dashboard-mobile-toggle {
+        display: inline-flex;
+      }
+
+      .dashboard-nav-inner > .dashboard-brand,
+      .dashboard-nav-inner > .dashboard-account {
+        display: none;
+      }
+
+      .dashboard-nav-inner > .dashboard-menu {
+        display: none;
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 12px;
+        border-radius: 18px;
+        background: rgba(255,255,255,.08);
+      }
+
+      .dashboard-nav.is-open .dashboard-nav-inner > .dashboard-menu {
+        display: grid;
       }
 
       .dashboard-main {
@@ -785,10 +858,43 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
         grid-template-columns: 1fr;
       }
 
-      .dashboard-brand-copy,
-      .dashboard-account-copy,
-      .dashboard-menu-link span:last-child {
+      .dashboard-account-copy {
+        display: grid;
+        justify-items: start;
+      }
+
+      .dashboard-mobile-user {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.12);
+        margin-bottom: 2px;
+      }
+
+      .dashboard-mobile-user strong {
+        font-size: 13px;
+        color: #fff;
+      }
+
+      .dashboard-mobile-user span {
+        font-size: 11px;
+        color: rgba(255,255,255,.66);
+        text-transform: capitalize;
+      }
+
+      .dashboard-menu-link {
+        flex-direction: row;
+        justify-content: flex-start;
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+
+      .menu-icon {
         display: none;
+      }
+
+      .dashboard-menu-link span:last-child {
+        display: inline;
       }
     }
   </style>
@@ -796,6 +902,22 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 <body class="station-body">
   <div class="dashboard-shell">
     <aside class="dashboard-nav">
+      <div class="dashboard-mobile-bar">
+        <a class="dashboard-brand" href="station.php">
+          <span class="dashboard-brand-mark">V</span>
+          <span class="dashboard-brand-copy">
+            <span class="dashboard-brand-kicker"><?= station_h($uiConfig['heading']) ?></span>
+            <span class="dashboard-brand-name"><?= station_h($appName) ?></span>
+          </span>
+        </a>
+        <button type="button" class="dashboard-mobile-toggle" id="dashboardMobileToggle" aria-label="Open navigation" aria-controls="dashboardMenu" aria-expanded="false">
+          <span class="dashboard-mobile-toggle-lines" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
+      </div>
       <div class="dashboard-nav-inner">
         <a class="dashboard-brand" href="station.php">
           <span class="dashboard-brand-mark">V</span>
@@ -805,7 +927,11 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           </span>
         </a>
 
-        <nav class="dashboard-menu" aria-label="Primary navigation">
+        <nav class="dashboard-menu" id="dashboardMenu" aria-label="Primary navigation">
+          <div class="dashboard-mobile-user">
+            <strong><?= station_h(station_current_username()) ?></strong>
+            <span><?= station_h((string) ($user['role'] ?? 'user')) ?></span>
+          </div>
           <a href="station.php" class="dashboard-menu-link active">
             <span class="menu-icon">⌂</span>
             <span>Dashboard</span>
@@ -824,7 +950,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <?php endif; ?>
           <a href="user-settings.php" class="dashboard-menu-link">
             <span class="menu-icon">◌</span>
-            <span>Profile</span>
+            <span>User Settings</span>
           </a>
           <a href="logout.php" class="dashboard-menu-link logout-link">
             <span class="menu-icon">↗</span>
@@ -1216,6 +1342,17 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
   (function () {
     'use strict';
 
+    const mobileNav = document.querySelector('.dashboard-nav');
+    const mobileToggle = document.getElementById('dashboardMobileToggle');
+
+    if (mobileNav && mobileToggle) {
+      mobileToggle.addEventListener('click', function () {
+        const isOpen = mobileNav.classList.toggle('is-open');
+        mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        mobileToggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+      });
+    }
+
     /* ── New Project modal ── */
     const newBtn = document.getElementById('newProjectBtn');
     const newBtnTop = document.getElementById('newProjectBtnTop');
@@ -1447,5 +1584,6 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     refreshClipboard();
   })();
   </script>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

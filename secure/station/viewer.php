@@ -36,10 +36,7 @@ $ok = station_flash_get('ok');
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Project Viewer</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html('Project Viewer', 'Browse project files from the deployment station.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell">
@@ -86,5 +83,6 @@ $ok = station_flash_get('ok');
       </section>
     </section>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

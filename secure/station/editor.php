@@ -51,10 +51,7 @@ if ($content === null) {
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Editor</title>
-  <link rel="stylesheet" href="assets/style.css">
+  <?= station_pwa_head_html('Editor', 'Edit project files from the deployment station.') ?>
 </head>
 <body class="station-body">
   <main class="station-shell">
@@ -81,5 +78,6 @@ if ($content === null) {
       <button type="submit">Save File</button>
     </form>
   </main>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>
