@@ -1,0 +1,7 @@
+<?php
+
+declare(strict_types=1);
+
+// Place this file at /secure/index.php to make /secure redirect to /secure/station/
+header('Location: /secure/station/');
+exit;
