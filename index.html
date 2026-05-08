@@ -103,13 +103,35 @@
           { path: "server.js", content: "console.log('API ready')\n" }
         ]
       };
+      const visibilityOptions = new Set(["public", "private"]);
+      const deploySourceOptions = new Set(["folder", "zip", "single-file"]);
 
       const STORAGE_KEY = "deploystation.projects";
+      function sanitizeProject(rawProject) {
+        if (!rawProject || typeof rawProject !== "object") return null;
+        const template = templates[rawProject.template] ? rawProject.template : "blank";
+        const filesSource = Array.isArray(rawProject.files) ? rawProject.files : templates[template];
+        const files = filesSource
+          .filter((file) => file && typeof file.path === "string")
+          .map((file) => ({ path: file.path, content: String(file.content ?? "") }));
+        return {
+          id: typeof rawProject.id === "string" && rawProject.id ? rawProject.id : `${Date.now()}-${Math.random()}`,
+          name: String(rawProject.name ?? "").trim() || "Untitled project",
+          visibility: visibilityOptions.has(rawProject.visibility) ? rawProject.visibility : "public",
+          deploySource: deploySourceOptions.has(rawProject.deploySource) ? rawProject.deploySource : "folder",
+          template,
+          files
+        };
+      }
+
       function loadProjects() {
         try {
           const raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : [];
-        } catch {
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map(sanitizeProject).filter(Boolean) : [];
+        } catch (error) {
+          console.warn("Failed to load saved projects, using empty list.", error);
           return [];
         }
       }
@@ -136,6 +158,13 @@
 
       function persist() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      }
+
+      function newProjectId() {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       }
 
       function currentProject() {
@@ -230,7 +259,7 @@
       function appendMessage(text, role) {
         const msg = document.createElement("div");
         msg.className = "msg";
-        msg.textContent = `${role}: ${text}`;
+        msg.textContent = `${String(role)}: ${String(text)}`;
         refs.messages.appendChild(msg);
       }
 
@@ -244,13 +273,14 @@
         event.preventDefault();
         const name = refs.projectName.value.trim();
         if (!name) return;
+        const template = templates[refs.projectTemplate.value] ? refs.projectTemplate.value : "blank";
         const project = {
-          id: crypto.randomUUID(),
+          id: newProjectId(),
           name,
-          visibility: refs.projectVisibility.value,
-          deploySource: refs.deploySource.value,
-          template: refs.projectTemplate.value,
-          files: templates[refs.projectTemplate.value].map((file) => ({ ...file }))
+          visibility: visibilityOptions.has(refs.projectVisibility.value) ? refs.projectVisibility.value : "public",
+          deploySource: deploySourceOptions.has(refs.deploySource.value) ? refs.deploySource.value : "folder",
+          template,
+          files: templates[template].map((file) => ({ ...file }))
         };
         projects.unshift(project);
         selectedProjectId = project.id;

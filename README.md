@@ -1,6 +1,6 @@
 # DeployStation
 
-DeploySmallApps - secured testing hub and clipboard.
+DeploySmallApps - Secured testing hub and clipboard.
 
 ## Test project viewer prototype
 
