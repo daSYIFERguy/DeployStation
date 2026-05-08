@@ -115,7 +115,10 @@
           .filter((file) => file && typeof file.path === "string")
           .map((file) => ({ path: file.path, content: String(file.content ?? "") }));
         return {
-          id: typeof rawProject.id === "string" && rawProject.id ? rawProject.id : `${Date.now()}-${Math.random()}`,
+          id:
+            typeof rawProject.id === "string" && rawProject.id
+              ? rawProject.id
+              : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
           name: String(rawProject.name ?? "").trim() || "Untitled project",
           visibility: visibilityOptions.has(rawProject.visibility) ? rawProject.visibility : "public",
           deploySource: deploySourceOptions.has(rawProject.deploySource) ? rawProject.deploySource : "folder",
@@ -257,9 +260,10 @@
       }
 
       function appendMessage(text, role) {
+        const safeRole = role === "AI" ? "AI" : "You";
         const msg = document.createElement("div");
         msg.className = "msg";
-        msg.textContent = `${String(role)}: ${String(text)}`;
+        msg.textContent = `${safeRole}: ${String(text)}`;
         refs.messages.appendChild(msg);
       }
 
