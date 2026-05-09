@@ -17,7 +17,12 @@ if ($slug === '' || !station_project_exists($slug)) {
 $accessMode = station_project_access_mode($slug);
 $user = station_current_user();
 if (!station_can_access_project($user, $accessMode)) {
-    header('Location: index.php');
+  if (!$user) {
+    header('Location: ' . station_station_url('index.php'));
+    exit;
+  }
+
+  header('Location: ' . station_station_url('access-denied.php?project=' . urlencode($slug)));
     exit;
 }
 
@@ -101,5 +106,5 @@ if ($templateType === 'chrome-extension') {
     exit;
 }
 
-header('Location: ../' . rawurlencode($slug) . '/');
+header('Location: ' . station_project_serve_path($slug));
 exit;

@@ -12,9 +12,11 @@ $ok = station_flash_get('ok');
 $accessModes = station_allowed_project_access_modes();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $settings['serverInfrastructure'] = station_normalize_server_infrastructure((string) ($_POST['serverInfrastructure'] ?? ($settings['serverInfrastructure'] ?? 'apache')));
     $settings['defaultProjectVisibility'] = ((string) ($_POST['defaultProjectVisibility'] ?? 'private')) === 'public' ? 'public' : 'private';
     $defaultMode = (string) ($_POST['defaultProjectAccessMode'] ?? 'admin');
     $settings['defaultProjectAccessMode'] = isset($accessModes[$defaultMode]) ? $defaultMode : 'admin';
+    $settings['auditLogLimit']        = station_normalize_audit_log_limit($_POST['auditLogLimit'] ?? ($settings['auditLogLimit'] ?? 50));
     $settings['onboardingRequired']  = isset($_POST['onboardingRequired']);
     $settings['allowPublicProjects'] = isset($_POST['allowPublicProjects']);
     $settings['githubEnabled']       = isset($_POST['githubEnabled']);
@@ -23,20 +25,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $settings['codexEnabled']        = isset($_POST['codexEnabled']);
     $settings['stationHeading']      = trim((string) ($_POST['stationHeading'] ?? 'Deployment Station')) ?: 'Deployment Station';
     $settings['stationSubheading']   = trim((string) ($_POST['stationSubheading'] ?? ''));
-    $settings['faviconUrl']          = trim((string) ($_POST['faviconUrl'] ?? ''));
-    $settings['appIconUrl']          = trim((string) ($_POST['appIconUrl'] ?? ''));
-    $settings['appIcon192Url']       = trim((string) ($_POST['appIcon192Url'] ?? ''));
-    $settings['appIcon512Url']       = trim((string) ($_POST['appIcon512Url'] ?? ''));
-    $settings['appMaskableIconUrl']  = trim((string) ($_POST['appMaskableIconUrl'] ?? ''));
     $settings['themeColor']          = station_normalize_theme_color((string) ($_POST['themeColor'] ?? '#2f7de2'));
 
-    if (station_save_admin_settings($settings)) {
+    $iconResult = station_apply_brand_icon_inputs($settings, $_POST, $_FILES);
+    if (empty($iconResult['ok'])) {
+      $settings = (array) ($iconResult['settings'] ?? $settings);
+      $error = (string) ($iconResult['message'] ?? 'Could not save uploaded icons.');
+    } else {
+      $settings = (array) ($iconResult['settings'] ?? $settings);
+    }
+
+    if ($error === '' && station_save_admin_settings($settings)) {
         station_log_event('admin.settings.updated', []);
         station_flash_set('ok', 'Settings saved.');
         header('Location: admin-settings.php');
         exit;
     }
-    $error = 'Could not save settings.';
+    if ($error === '') {
+      $error = 'Could not save settings.';
+    }
 }
 ?>
 <!doctype html>
@@ -60,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
-    <form method="post" class="card form-grid">
+    <form method="post" enctype="multipart/form-data" class="card form-grid">
       <h2>Branding</h2>
       <label>Station Heading (kicker text)
         <input type="text" name="stationHeading" value="<?= station_h($settings['stationHeading'] ?? 'Deployment Station') ?>" placeholder="Deployment Station">
@@ -71,23 +78,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <label>Favicon URL (optional — paste a .ico or .png URL)
         <input type="url" name="faviconUrl" value="<?= station_h($settings['faviconUrl'] ?? '') ?>" placeholder="https://example.com/favicon.ico">
       </label>
+      <label>Upload Favicon
+        <input type="file" name="faviconFile" accept=".ico,.png,.jpg,.jpeg,.webp,image/x-icon,image/png,image/jpeg,image/webp">
+      </label>
       <label>PWA Icon URL (fallback for install prompts)
         <input type="url" name="appIconUrl" value="<?= station_h($settings['appIconUrl'] ?? '') ?>" placeholder="https://example.com/icon.png">
+      </label>
+      <label>Upload PWA Fallback Icon
+        <input type="file" name="appIconFile" accept=".ico,.png,.jpg,.jpeg,.webp,image/x-icon,image/png,image/jpeg,image/webp">
       </label>
       <label>PWA Icon 192x192 URL
         <input type="url" name="appIcon192Url" value="<?= station_h($settings['appIcon192Url'] ?? '') ?>" placeholder="https://example.com/icon-192.png">
       </label>
+      <label>Upload 192x192 Icon
+        <input type="file" name="appIcon192File" accept=".ico,.png,.jpg,.jpeg,.webp,image/x-icon,image/png,image/jpeg,image/webp">
+      </label>
       <label>PWA Icon 512x512 URL
         <input type="url" name="appIcon512Url" value="<?= station_h($settings['appIcon512Url'] ?? '') ?>" placeholder="https://example.com/icon-512.png">
+      </label>
+      <label>Upload 512x512 Icon
+        <input type="file" name="appIcon512File" accept=".ico,.png,.jpg,.jpeg,.webp,image/x-icon,image/png,image/jpeg,image/webp">
       </label>
       <label>Maskable Icon URL (optional)
         <input type="url" name="appMaskableIconUrl" value="<?= station_h($settings['appMaskableIconUrl'] ?? '') ?>" placeholder="https://example.com/icon-maskable-512.png">
       </label>
+      <label>Upload Maskable Icon
+        <input type="file" name="appMaskableIconFile" accept=".ico,.png,.jpg,.jpeg,.webp,image/x-icon,image/png,image/jpeg,image/webp">
+      </label>
       <label>Theme Color
         <input type="color" name="themeColor" value="<?= station_h(station_normalize_theme_color((string) ($settings['themeColor'] ?? '#2f7de2'))) ?>">
       </label>
+      <p><a class="mini-link" href="template-manager.php">Manage custom starter templates</a></p>
 
       <h2>Project Defaults</h2>
+      <label>Production Web Server
+        <select name="serverInfrastructure">
+          <option value="apache" <?= station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'apache' ? 'selected' : '' ?>>Apache / LiteSpeed</option>
+          <option value="nginx" <?= station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'nginx' ? 'selected' : '' ?>>Nginx</option>
+        </select>
+      </label>
+      <?php if (station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'nginx'): ?>
+      <label>Nginx Routing Snippet
+        <textarea rows="12" readonly><?= station_h(station_nginx_project_route_snippet()) ?></textarea>
+      </label>
+      <?php endif; ?>
       <label>Default Project Visibility
         <select name="defaultProjectVisibility">
           <option value="private" <?= ($settings['defaultProjectVisibility'] ?? 'private') === 'private' ? 'selected' : '' ?>>Private</option>
@@ -102,6 +136,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </select>
       </label>
       <label><input type="checkbox" name="allowPublicProjects" <?= !empty($settings['allowPublicProjects']) ? 'checked' : '' ?>> Allow projects to be marked public</label>
+
+      <h2>Activity Log</h2>
+      <label>Entries to Keep
+        <input type="number" name="auditLogLimit" min="50" max="200000" step="50" value="<?= station_h((string) station_audit_log_limit($settings)) ?>">
+      </label>
 
       <h2>Onboarding</h2>
       <label><input type="checkbox" name="onboardingRequired" <?= !empty($settings['onboardingRequired']) ? 'checked' : '' ?>> Require onboarding on first login</label>

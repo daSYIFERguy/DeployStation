@@ -19,6 +19,24 @@ function station_project_path(string $slug): string
     return station_projects_dir() . '/' . $slug;
 }
 
+function station_project_serve_path(string $slug, string $relativePath = ''): string
+{
+    $base = station_web_base_path();
+    $projectsBase = str_replace('\\', '/', dirname($base !== '' ? $base : '/station'));
+    if ($projectsBase === '.' || $projectsBase === '/' || $projectsBase === '\\') {
+        $projectsBase = '';
+    }
+
+    $path = ($projectsBase !== '' ? $projectsBase : '') . '/' . rawurlencode(station_safe_name($slug)) . '/';
+    $relative = trim(str_replace('\\', '/', $relativePath), '/');
+    if ($relative === '') {
+        return $path;
+    }
+
+    $segments = array_map(static fn (string $segment): string => rawurlencode($segment), explode('/', $relative));
+    return $path . implode('/', $segments);
+}
+
 function station_reserved_dirs(): array
 {
     return ['station'];

@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Let the station app and explicit root entry files resolve normally.
+RewriteRule ^station(/|$) - [L]
+RewriteRule ^index\.php$ - [L]
+
+# Route direct project URLs through the station access-control handler.
+RewriteRule ^([^/.][^/]*)/?$ station/project-serve.php?project=$1 [L,QSA,B]
+RewriteRule ^([^/.][^/]*)/(.*)$ station/project-serve.php?project=$1&path=$2 [L,QSA,B]

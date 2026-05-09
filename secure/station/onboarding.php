@@ -5,6 +5,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 
 station_require_login();
+$user = station_current_user();
+if (!station_can_build($user)) {
+    header('Location: station.php');
+    exit;
+}
+
 $username = station_current_username();
 $profile = station_user_profile($username);
 

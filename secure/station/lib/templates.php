@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
-function station_template_catalog(): array
+function station_builtin_template_catalog(): array
 {
     return [
         'pwa' => 'New PWA Web App',
@@ -18,8 +18,59 @@ function station_template_catalog(): array
     ];
 }
 
+function station_custom_template_definitions(): array
+{
+    $settings = station_admin_settings();
+    $custom = isset($settings['customTemplates']) && is_array($settings['customTemplates']) ? $settings['customTemplates'] : [];
+    $definitions = [];
+
+    foreach ($custom as $key => $template) {
+        if (!is_string($key) || !is_array($template)) {
+            continue;
+        }
+        $safeKey = station_safe_name($key);
+        $label = trim((string) ($template['label'] ?? ''));
+        $files = isset($template['files']) && is_array($template['files']) ? $template['files'] : [];
+        if ($safeKey === '' || $label === '' || $files === []) {
+            continue;
+        }
+        $definitions[$safeKey] = [
+            'label' => $label,
+            'files' => $files
+        ];
+    }
+
+    return $definitions;
+}
+
+function station_template_catalog(): array
+{
+    $catalog = station_builtin_template_catalog();
+    foreach (station_custom_template_definitions() as $key => $template) {
+        $catalog[$key] = (string) ($template['label'] ?? $key);
+    }
+    return $catalog;
+}
+
 function station_template_files(string $type, string $projectName): array
 {
+    $customTemplates = station_custom_template_definitions();
+    if (isset($customTemplates[$type])) {
+        $rendered = [];
+        $slug = station_safe_name($projectName);
+        foreach ((array) ($customTemplates[$type]['files'] ?? []) as $relative => $content) {
+            if (!is_string($relative) || !is_string($content)) {
+                continue;
+            }
+            $rendered[$relative] = str_replace(
+                ['{{PROJECT_NAME}}', '{{PROJECT_SLUG}}'],
+                [$projectName, $slug],
+                $content
+            );
+        }
+        return $rendered;
+    }
+
     $safeName = station_h($projectName);
 
     if ($type === 'static-html') {

@@ -11,7 +11,7 @@ $action = (string) ($_POST['action'] ?? $_GET['action'] ?? 'get');
 
 $safeUser = station_safe_name($username);
 $filesDir = station_user_profiles_dir() . '/' . $safeUser . '.clipboard-files';
-$filesMetaPath = station_user_profiles_dir() . '/' . $safeUser . '.clipboard-files.json';
+$filesMetaPath = station_clipboard_files_meta_path($username);
 
 $readFilesMeta = static function () use ($filesMetaPath): array {
     if (!file_exists($filesMetaPath)) {
@@ -27,6 +27,15 @@ $saveFilesMeta = static function (array $files) use ($filesMetaPath): bool {
         return false;
     }
     return @file_put_contents($filesMetaPath, $json, LOCK_EX) !== false;
+};
+
+$clipboardPayload = static function () use ($username, $readFilesMeta): array {
+    return [
+        'ok' => true,
+        'content' => station_get_user_clipboard($username),
+        'files' => $readFilesMeta(),
+        'revision' => station_clipboard_revision($username)
+    ];
 };
 
 if ($action === 'file' && $_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -49,12 +58,30 @@ if ($action === 'file' && $_SERVER['REQUEST_METHOD'] === 'GET') {
     exit;
 }
 
+if ($action === 'stream' && $_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Content-Type: text/event-stream; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('X-Accel-Buffering: no');
+
+    echo "event: clipboard\n";
+    echo 'data: ' . json_encode($clipboardPayload(), JSON_UNESCAPED_SLASHES) . "\n\n";
+    @ob_flush();
+    flush();
+
+    exit;
+}
+
 header('Content-Type: application/json; charset=utf-8');
 
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $content = (string) ($_POST['content'] ?? '');
     $ok = station_save_user_clipboard($username, $content);
-    echo json_encode(['ok' => $ok]);
+    echo json_encode([
+        'ok' => $ok,
+        'revision' => station_clipboard_revision($username),
+        'content' => $content
+    ]);
     exit;
 }
 
@@ -114,7 +141,7 @@ if ($action === 'upload_file' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $saveFilesMeta($files);
-    echo json_encode(['ok' => true, 'files' => $files]);
+    echo json_encode(['ok' => true, 'files' => $files, 'revision' => station_clipboard_revision($username)]);
     exit;
 }
 
@@ -140,7 +167,7 @@ if ($action === 'remove_file' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $saveFilesMeta($nextFiles);
-    echo json_encode(['ok' => $removed, 'files' => $nextFiles]);
+    echo json_encode(['ok' => $removed, 'files' => $nextFiles, 'revision' => station_clipboard_revision($username)]);
     exit;
 }
 
@@ -154,12 +181,8 @@ if ($action === 'clear' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     $saveFilesMeta([]);
-    echo json_encode(['ok' => true]);
+    echo json_encode(['ok' => true, 'revision' => station_clipboard_revision($username), 'content' => '', 'files' => []]);
     exit;
 }
 
-echo json_encode([
-    'ok' => true,
-    'content' => station_get_user_clipboard($username),
-    'files' => $readFilesMeta()
-]);
+echo json_encode($clipboardPayload());

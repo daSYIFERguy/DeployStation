@@ -1,4 +1,4 @@
-<?php declare(strict_types=1); require_once __DIR__ . '/lib/auth.php'; station_require_login(); ?>
+<?php declare(strict_types=1); require_once __DIR__ . '/lib/auth.php'; station_require_login(); if (!station_can_build(station_current_user())) { header('Location: station.php'); exit; } ?>
 <!doctype html>
 <html lang="en">
 <head>

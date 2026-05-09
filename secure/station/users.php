@@ -48,8 +48,23 @@ function station_can_manage_target(bool $isOwner, string $targetUsername): bool
     return true;
 }
 
+  function station_can_delete_target(bool $isOwner, string $currentUsername, string $targetUsername): bool
+  {
+    if (!station_can_manage_target($isOwner, $targetUsername)) {
+      return false;
+    }
+    if ($targetUsername === 'root') {
+      return false;
+    }
+    if ($targetUsername === $currentUsername) {
+      return false;
+    }
+    return true;
+  }
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
+    $currentUsername = (string) ($currentUser['username'] ?? '');
 
     if ($action === 'add_user') {
         $username = station_safe_name((string) ($_POST['username'] ?? ''));
@@ -130,6 +145,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+        if ($action === 'delete_user') {
+          $target = station_safe_name((string) ($_POST['target_username'] ?? ''));
+
+          if (!station_can_delete_target($isOwner, $currentUsername, $target)) {
+            $error = 'You are not allowed to delete that user.';
+          } else {
+            $updatedUsers = [];
+            $deleted = false;
+            foreach ($users as $user) {
+              if (!is_array($user)) {
+                $updatedUsers[] = $user;
+                continue;
+              }
+
+              if ((string) ($user['username'] ?? '') === $target) {
+                $deleted = true;
+                continue;
+              }
+
+              $updatedUsers[] = $user;
+            }
+
+            if ($deleted) {
+              $cfg['users'] = $updatedUsers;
+              station_save_config($cfg);
+              station_log_event('user.deleted', ['username' => $target]);
+              station_flash_set('ok', 'Deleted user: ' . $target);
+              header('Location: users.php');
+              exit;
+            }
+
+            $error = 'User not found.';
+          }
+        }
 }
 ?>
 <!doctype html>
@@ -198,13 +248,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <section class="card">
       <h2>Current Users (Click Edit)</h2>
       <table>
-        <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Last Login</th><th>By</th><th>Edit</th></tr></thead>
+        <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Last Login</th><th>By</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody>
           <?php foreach ($users as $u): ?>
             <?php
               $username = (string) ($u['username'] ?? '');
               $lastLogin = trim((string) ($u['lastLoginAt'] ?? ''));
               $canEdit = station_can_manage_target($isOwner, $username);
+              $canDelete = station_can_delete_target($isOwner, (string) ($currentUser['username'] ?? ''), $username);
             ?>
             <tr>
               <td><?= station_h($username) ?></td>
@@ -217,6 +268,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <a href="users.php?edit=<?= urlencode($username) ?>">Edit</a>
                 <?php else: ?>
                   <span class="file-meta">Root locked</span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <?php if ($canDelete): ?>
+                  <form method="post" onsubmit="return confirm('Delete user <?= station_h($username) ?>? This cannot be undone.');">
+                    <input type="hidden" name="action" value="delete_user">
+                    <input type="hidden" name="target_username" value="<?= station_h($username) ?>">
+                    <button type="submit" class="danger-link">Delete</button>
+                  </form>
+                <?php else: ?>
+                  <span class="file-meta"><?= $username === 'root' ? 'Root locked' : 'Protected' ?></span>
                 <?php endif; ?>
               </td>
             </tr>

@@ -4,6 +4,25 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
+function station_request_expects_json(): bool
+{
+    $requestedWith = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+    $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+    return $requestedWith === 'xmlhttprequest' || str_contains($accept, 'application/json');
+}
+
+function station_request_json_error(int $statusCode, string $message, string $redirectUrl = ''): void
+{
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'ok' => false,
+        'message' => $message,
+        'redirectUrl' => $redirectUrl
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 function station_role_rank(?string $role): int
 {
     $value = (string) $role;
@@ -144,6 +163,9 @@ function station_require_login(): void
 {
     station_require_setup();
     if (!station_current_user()) {
+        if (station_request_expects_json()) {
+            station_request_json_error(401, 'Your session expired. Sign in again to continue.', 'index.php');
+        }
         header('Location: index.php');
         exit;
     }
@@ -165,6 +187,9 @@ function station_require_builder(): void
     station_require_login();
     $user = station_current_user();
     if (!station_can_build($user)) {
+        if (station_request_expects_json()) {
+            station_request_json_error(403, 'Builder access required.', 'station.php');
+        }
         station_flash_set('error', 'Builder access required.');
         header('Location: station.php');
         exit;

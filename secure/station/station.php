@@ -9,6 +9,7 @@ require_once __DIR__ . '/lib/templates.php';
 station_require_login();
 
 $user        = station_current_user();
+$username    = station_current_username();
 $isOwner     = station_is_owner($user);
 $isAdmin     = station_is_admin($user);
 $canBuild    = station_can_build($user);
@@ -49,6 +50,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         station_flash_set('error', (string) ($result['message'] ?? 'Rename failed.'));
         header('Location: station.php'); exit;
     }
+
+      if ($action === 'update_audit_log_limit' && $isOwner) {
+        $settings = station_admin_settings();
+        $settings['auditLogLimit'] = station_normalize_audit_log_limit($_POST['audit_log_limit'] ?? ($settings['auditLogLimit'] ?? 50));
+        if (station_save_admin_settings($settings)) {
+          station_log_event('admin.audit_log_limit.updated', ['limit' => $settings['auditLogLimit']]);
+          station_flash_set('ok', 'Audit log retention updated.');
+        } else {
+          station_flash_set('error', 'Could not update audit log retention.');
+        }
+        header('Location: station.php'); exit;
+      }
 
     if ($action === 'rename_project') {
         $project = station_safe_name((string) ($_POST['project_slug'] ?? ''));
@@ -92,15 +105,24 @@ $error          = station_flash_get('error');
 $ok             = station_flash_get('ok');
 $templates      = station_template_catalog();
 $accessModes    = station_allowed_project_access_modes();
-$recentEvents   = $isOwner ? station_recent_events(50)              : [];
+$auditLogLimit  = station_audit_log_limit($adminSettings);
+$recentEvents   = $isOwner ? station_recent_events($auditLogLimit)  : [];
 $backups        = $isOwner ? station_list_backups()                 : [];
 $archivedProjects = $isOwner ? station_list_archived_projects()     : [];
 $clipboard      = station_get_user_clipboard(station_current_username());
+$ownedProjects  = array_values(array_filter($projects, static function (array $project) use ($username): bool {
+  return station_safe_name((string) ($project['owner'] ?? '')) === station_safe_name($username);
+}));
 $projectCount   = count($projects);
 $publicCount    = count(array_filter($projects, static function (array $project): bool {
   return ((string) ($project['visibility'] ?? 'private')) === 'public';
 }));
 $privateCount   = $projectCount - $publicCount;
+$ownedProjectCount = count($ownedProjects);
+$ownedPublicCount = count(array_filter($ownedProjects, static function (array $project): bool {
+  return ((string) ($project['visibility'] ?? 'private')) === 'public';
+}));
+$ownedPrivateCount = $ownedProjectCount - $ownedPublicCount;
 $viewerBuilderCount = count(array_filter($projects, static function (array $project): bool {
   return ((string) ($project['accessMode'] ?? 'admin')) === 'viewersorbuilder';
 }));
@@ -111,6 +133,21 @@ $ownerOnlyCount = count(array_filter($projects, static function (array $project)
   return ((string) ($project['accessMode'] ?? 'admin')) === 'adminsonly';
 }));
 $readyIntegrationCount = (int) $githubReady + (int) $vscodeReady + (int) $chatgptReady + (int) $codexReady;
+$statsCards = !$canBuild
+  ? [
+      ['count' => $publicCount, 'label' => 'Public', 'filterType' => 'visibility', 'filterValue' => 'public'],
+      ['count' => $privateCount, 'label' => 'Secured', 'filterType' => 'visibility', 'filterValue' => 'private'],
+    ]
+  : [
+      ['count' => $publicCount, 'label' => 'Public', 'filterType' => 'visibility', 'filterValue' => 'public'],
+      ['count' => $viewerBuilderCount, 'label' => 'Viewer / Builder', 'filterType' => 'access', 'filterValue' => 'viewersorbuilder'],
+      ['count' => $builderAdminCount, 'label' => 'Builder / Admin', 'filterType' => 'access', 'filterValue' => 'buildersoradmin'],
+      ['count' => $ownerOnlyCount, 'label' => 'Owner Only', 'filterType' => 'access', 'filterValue' => 'adminsonly'],
+    ];
+$brandIconUrl  = trim((string) ($uiConfig['faviconUrl'] ?? '')) !== ''
+  ? trim((string) ($uiConfig['faviconUrl'] ?? ''))
+  : trim((string) ($uiConfig['appIconUrl'] ?? ''));
+$brandInitial  = 'DS';
 $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 ?>
 <!doctype html>
@@ -148,7 +185,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       top: 0;
       height: 100vh;
       padding: 14px 12px 18px;
-      background: linear-gradient(180deg, #1e5dac 0%, #184c91 100%);
+      background: linear-gradient(180deg, var(--nav-bg) 0%, var(--nav-dark) 100%);
       box-shadow: inset -1px 0 0 rgba(255,255,255,.08);
     }
 
@@ -209,12 +246,20 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       height: 48px;
       display: grid;
       place-items: center;
+      overflow: hidden;
       border-radius: 16px;
       background: rgba(255,255,255,.16);
       color: #fff;
       font-family: "Google Sans", sans-serif;
       font-size: 26px;
       font-weight: 700;
+    }
+
+    .dashboard-brand-mark img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
 
     .dashboard-brand-copy {
@@ -337,7 +382,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       font-weight: 700;
       letter-spacing: .14em;
       text-transform: uppercase;
-      color: #2f7de2;
+      color: var(--brand);
     }
 
     .dashboard-heading {
@@ -361,10 +406,10 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     .station-body button {
       border: 0;
       border-radius: 14px;
-      background: linear-gradient(135deg, #2f7de2 0%, #5aa1ff 100%);
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-bright) 100%);
       color: #fff;
       font-weight: 700;
-      box-shadow: 0 14px 32px rgba(47,125,226,.22);
+      box-shadow: 0 14px 32px rgba(var(--brand-rgb), .22);
     }
 
     .dashboard-search-panel {
@@ -561,6 +606,24 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       box-shadow: 0 8px 24px rgba(19,35,63,.06);
     }
 
+    .metric-trigger {
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+
+    .metric-trigger:hover {
+      transform: translateY(-1px);
+      border-color: #b8cae8;
+      box-shadow: 0 12px 28px rgba(19,35,63,.10);
+    }
+
+    .metric-trigger:focus-visible {
+      outline: 3px solid rgba(var(--brand-rgb), .22);
+      outline-offset: 2px;
+    }
+
     .mini-stat strong,
     .metric-card strong {
       font-family: "Google Sans", sans-serif;
@@ -635,11 +698,11 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       display: grid;
       place-items: center;
       border-radius: 20px;
-      background: linear-gradient(135deg, #2f7de2 0%, #5aa1ff 100%);
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-bright) 100%);
       color: #fff;
       font-size: 36px;
       font-weight: 700;
-      box-shadow: 0 16px 34px rgba(47,125,226,.24);
+      box-shadow: 0 16px 34px rgba(var(--brand-rgb), .24);
     }
 
     .project-card-head {
@@ -774,10 +837,155 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       height: 24px;
       padding: 0 7px;
       border-radius: 999px;
-      background: linear-gradient(135deg, #2f7de2 0%, #5aa1ff 100%);
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-bright) 100%);
       color: #fff;
       font-size: 11px;
       font-weight: 700;
+    }
+
+    .workspace-strip.workspace-strip-wide {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .clipboard-card-expanded {
+      min-height: 420px;
+    }
+
+    .clipboard-card-expanded #clipboardText {
+      min-height: 280px;
+    }
+
+    .stats-dialog {
+      width: min(96vw, 980px);
+      max-height: min(92vh, 860px);
+      border-radius: 28px;
+      overflow: hidden;
+    }
+
+    .stats-dialog-inner {
+      max-height: min(92vh, 860px);
+      overflow: hidden;
+      background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    }
+
+    .stats-dialog-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 24px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stats-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .stats-search {
+      flex: 1;
+      max-width: 340px;
+    }
+
+    .stats-search input {
+      width: 100%;
+      min-height: 44px;
+      padding: 0 14px;
+      border-radius: 14px;
+      border: 1px solid #dbe5f4;
+      background: rgba(255,255,255,.96);
+    }
+
+    .stats-table-wrap {
+      padding: 20px 24px 24px;
+      overflow: auto;
+    }
+
+    .stats-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .stats-table th,
+    .stats-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #e7eef8;
+      font-size: 13px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .stats-table td:last-child,
+    .stats-table th:last-child {
+      text-align: right;
+    }
+
+    .stats-sort {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid rgba(var(--brand-rgb), .16);
+      border-radius: 999px;
+      background: rgba(255,255,255,.94);
+      color: var(--brand-dark);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
+      transition: border-color var(--ease), background var(--ease), box-shadow var(--ease), transform var(--ease);
+    }
+
+    .stats-sort:hover {
+      transform: translateY(-1px);
+      border-color: rgba(var(--brand-rgb), .3);
+      background: rgba(var(--brand-rgb), .06);
+      box-shadow: 0 10px 24px rgba(var(--brand-rgb), .12);
+    }
+
+    .stats-sort-indicator {
+      font-size: 10px;
+      color: rgba(var(--brand-rgb), .6);
+    }
+
+    .stats-table .status-pill {
+      margin: 0;
+    }
+
+    .stats-table-empty {
+      padding: 0 24px 24px;
+      font-size: 13px;
+      color: #8da0bf;
+    }
+
+    .audit-log-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .audit-log-table {
+      min-width: 720px;
+    }
+
+    .audit-log-table .code-mini {
+      margin: 0;
+      max-width: 420px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .collapsible-section > summary {
@@ -858,6 +1066,93 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
         grid-template-columns: 1fr;
       }
 
+      .stats-dialog {
+        width: 100%;
+        max-height: 100dvh;
+        border-radius: 24px 24px 0 0;
+      }
+
+      .stats-dialog-inner {
+        max-height: 100dvh;
+      }
+
+      .stats-dialog-toolbar,
+      .stats-table-wrap,
+      .stats-table-empty {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .stats-dialog-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        padding-bottom: 14px;
+      }
+
+      .stats-search {
+        max-width: none;
+      }
+
+      .stats-table th,
+      .stats-table td {
+        padding: 11px 10px;
+        font-size: 12px;
+      }
+
+      .audit-log-table-wrap {
+        overflow: visible;
+      }
+
+      .audit-log-table {
+        min-width: 0;
+      }
+
+      .audit-log-table,
+      .audit-log-table tbody,
+      .audit-log-table tr,
+      .audit-log-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .audit-log-table thead {
+        display: none;
+      }
+
+      .audit-log-table tr {
+        padding: 12px 14px;
+        border: 1px solid #dbe5f4;
+        border-radius: 18px;
+        background: #f9fbff;
+        margin-bottom: 12px;
+      }
+
+      .audit-log-table td {
+        display: grid;
+        grid-template-columns: 86px minmax(0, 1fr);
+        gap: 10px;
+        padding: 7px 0;
+        border-bottom: 1px solid #edf2fa;
+        white-space: normal;
+      }
+
+      .audit-log-table td:last-child {
+        border-bottom: 0;
+      }
+
+      .audit-log-table td::before {
+        content: attr(data-label);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        color: #8da0bf;
+      }
+
+      .audit-log-table .code-mini {
+        max-width: none;
+      }
+
       .dashboard-account-copy {
         display: grid;
         justify-items: start;
@@ -904,7 +1199,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     <aside class="dashboard-nav">
       <div class="dashboard-mobile-bar">
         <a class="dashboard-brand" href="station.php">
-          <span class="dashboard-brand-mark">V</span>
+          <span class="dashboard-brand-mark"><?php if ($brandIconUrl !== ''): ?><img src="<?= station_h($brandIconUrl) ?>" alt="<?= station_h($appName) ?> icon"><?php else: ?><?= station_h($brandInitial !== '' ? $brandInitial : 'S') ?><?php endif; ?></span>
           <span class="dashboard-brand-copy">
             <span class="dashboard-brand-kicker"><?= station_h($uiConfig['heading']) ?></span>
             <span class="dashboard-brand-name"><?= station_h($appName) ?></span>
@@ -920,7 +1215,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       </div>
       <div class="dashboard-nav-inner">
         <a class="dashboard-brand" href="station.php">
-          <span class="dashboard-brand-mark">V</span>
+          <span class="dashboard-brand-mark"><?php if ($brandIconUrl !== ''): ?><img src="<?= station_h($brandIconUrl) ?>" alt="<?= station_h($appName) ?> icon"><?php else: ?><?= station_h($brandInitial !== '' ? $brandInitial : 'S') ?><?php endif; ?></span>
           <span class="dashboard-brand-copy">
             <span class="dashboard-brand-kicker"><?= station_h($uiConfig['heading']) ?></span>
             <span class="dashboard-brand-name"><?= station_h($appName) ?></span>
@@ -940,6 +1235,10 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <a href="users.php" class="dashboard-menu-link">
             <span class="menu-icon">◎</span>
             <span>Users</span>
+          </a>
+          <a href="template-manager.php" class="dashboard-menu-link">
+            <span class="menu-icon">⋔</span>
+            <span>Templates</span>
           </a>
           <?php endif; ?>
           <?php if ($isOwner): ?>
@@ -999,18 +1298,19 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       </section>
 
       <section class="dashboard-metrics" aria-label="Project access overview">
-        <div class="metric-card"><strong><?= $publicCount ?></strong><span>Public</span></div>
-        <div class="metric-card"><strong><?= $viewerBuilderCount ?></strong><span>Viewer / Builder</span></div>
-        <div class="metric-card"><strong><?= $builderAdminCount ?></strong><span>Builder / Admin</span></div>
-        <div class="metric-card"><strong><?= $ownerOnlyCount ?></strong><span>Owner Only</span></div>
+        <?php foreach ($statsCards as $statCard): ?>
+        <button class="metric-card metric-trigger" type="button" data-stats-filter-type="<?= station_h((string) $statCard['filterType']) ?>" data-stats-filter-value="<?= station_h((string) $statCard['filterValue']) ?>" data-stats-label="<?= station_h((string) $statCard['label']) ?>">
+          <strong><?= (int) $statCard['count'] ?></strong>
+          <span><?= station_h((string) $statCard['label']) ?></span>
+        </button>
+        <?php endforeach; ?>
       </section>
 
-      <section class="workspace-strip">
-        <section class="workspace-card clipboard-card clipboard-card-compact clipboard-composer">
+      <section class="workspace-strip<?= !$canBuild ? ' workspace-strip-wide' : '' ?>">
+        <section class="workspace-card clipboard-card clipboard-card-compact clipboard-composer<?= !$canBuild ? ' clipboard-card-expanded' : '' ?>">
           <div class="section-head clipboard-section-head">
             <div>
               <h2>Clipboard</h2>
-              <p class="section-note">Keep text, snippets, images, and files ready across devices.</p>
             </div>
             <div class="clipboard-toolbar">
               <label class="icon-pill upload-pill" for="clipFileInput" title="Add file">
@@ -1028,7 +1328,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <input id="clipFileInput" type="file" hidden>
           <input id="clipImageInput" type="file" accept="image/*" hidden>
           <div class="clipboard-text-wrap">
-            <textarea id="clipboardText" rows="6" placeholder="Paste text, links, notes, code, or instructions..."><?= station_h($clipboard) ?></textarea>
+            <textarea id="clipboardText" rows="<?= $canBuild ? '6' : '10' ?>" placeholder="Paste text, links, notes, code, or instructions..."><?= station_h($clipboard) ?></textarea>
           </div>
           <div class="clip-files" id="clipFiles"></div>
           <div class="clip-status-row">
@@ -1036,6 +1336,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           </div>
         </section>
 
+        <?php if ($canBuild): ?>
         <section class="workspace-card integrations-panel">
           <div class="section-head integrations-head">
             <div>
@@ -1051,11 +1352,12 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
             <a class="integration-chip <?= $codexReady   ? 'chip-on' : 'chip-off' ?>" href="<?= $codexReady   ? 'user-settings.php' : 'integration-help.php#codex'   ?>"><span>Codex</span><span><?=   $codexReady   ? '✓' : '○' ?></span></a>
           </div>
           <div class="workspace-mini-stats">
-            <div class="mini-stat"><strong><?= $projectCount ?></strong><span>Projects</span></div>
-            <div class="mini-stat"><strong><?= $publicCount ?></strong><span>Public</span></div>
-            <div class="mini-stat"><strong><?= $privateCount ?></strong><span>Private</span></div>
+            <div class="mini-stat"><strong><?= $ownedProjectCount ?></strong><span>Projects</span></div>
+            <div class="mini-stat"><strong><?= $ownedPublicCount ?></strong><span>Public</span></div>
+            <div class="mini-stat"><strong><?= $ownedPrivateCount ?></strong><span>Private</span></div>
           </div>
         </section>
+        <?php endif; ?>
       </section>
 
       <section class="projects-panel">
@@ -1064,7 +1366,6 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
             <p class="projects-kicker">Projects</p>
             <h2 class="projects-title">All Deployments <span class="count-badge"><?= $projectCount ?></span></h2>
           </div>
-          <p class="projects-note">Launch, inspect files, manage access, and open linked repos in github.dev.</p>
         </div>
 
         <div class="project-card-grid" id="projectList">
@@ -1168,7 +1469,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
                 <?php if ($canBuild): ?>
                   <a class="quick-link" href="project-settings.php?project=<?= urlencode($slug) ?>">Settings</a>
                 <?php endif; ?>
-                <button class="quick-link share-btn" type="button" data-share-url="/secure/<?= station_h($slug) ?>/">Share</button>
+                <button class="quick-link share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
               </div>
             </article>
           <?php endforeach; ?>
@@ -1195,6 +1496,13 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               <input type="hidden" name="action" value="rename_station_dir">
               <label>New Directory Name<input type="text" name="station_dir_name" placeholder="station" required></label>
               <button type="submit">Rename Directory</button>
+            </form>
+            <form class="form-grid" method="post">
+              <h2>Activity Log</h2>
+              <input type="hidden" name="action" value="update_audit_log_limit">
+              <label>Entries to Keep<input type="number" name="audit_log_limit" min="50" max="200000" step="50" value="<?= station_h((string) $auditLogLimit) ?>" required></label>
+              <p><a class="mini-link" href="admin-settings.php">More admin settings</a></p>
+              <button type="submit">Save Retention</button>
             </form>
           </div>
         </details>
@@ -1262,19 +1570,21 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
             <?php if (!$recentEvents): ?>
               <p>No activity yet.</p>
             <?php else: ?>
-              <table>
+              <div class="audit-log-table-wrap">
+              <table class="audit-log-table">
                 <thead><tr><th>Time</th><th>Event</th><th>User</th><th>Detail</th></tr></thead>
                 <tbody>
                   <?php foreach ($recentEvents as $ev): ?>
                     <tr>
-                      <td><?= station_h(substr((string) ($ev['at'] ?? ''), 0, 19)) ?></td>
-                      <td><?= station_h((string) ($ev['event'] ?? '')) ?></td>
-                      <td><?= station_h((string) ($ev['by'] ?? '')) ?></td>
-                      <td><pre class="code-mini"><?= station_h(json_encode($ev['context'] ?? [], JSON_UNESCAPED_SLASHES) ?: '{}') ?></pre></td>
+                      <td data-label="Time"><?= station_h(substr((string) ($ev['at'] ?? ''), 0, 19)) ?></td>
+                      <td data-label="Event"><?= station_h((string) ($ev['event'] ?? '')) ?></td>
+                      <td data-label="User"><?= station_h((string) ($ev['by'] ?? '')) ?></td>
+                      <td data-label="Detail"><pre class="code-mini"><?= station_h(json_encode($ev['context'] ?? [], JSON_UNESCAPED_SLASHES) ?: '{}') ?></pre></td>
                     </tr>
                   <?php endforeach; ?>
                 </tbody>
               </table>
+              </div>
             <?php endif; ?>
           </div>
         </details>
@@ -1284,10 +1594,13 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
   </div>
 
   <?php if ($canBuild): ?>
-  <dialog id="newProjectDialog" class="modal-dialog">
-    <div class="modal-inner">
+  <dialog id="newProjectDialog" class="modal-dialog create-project-modal">
+    <div class="modal-inner create-project-modal-inner">
       <div class="modal-header">
-        <h2>Start New Project</h2>
+        <div>
+          <p class="kicker">Create workspace</p>
+          <h2>Start New Project</h2>
+        </div>
         <button class="modal-close-btn" type="button" id="closeNewProjectDialog">✕</button>
       </div>
       <div class="modal-tabs" role="tablist">
@@ -1297,31 +1610,55 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
         <button class="tab-btn" type="button" data-tab="template">Template</button>
       </div>
       <div class="tab-pane active" id="tab-zip">
-        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid">
+        <div class="create-project-pane-head">
+          <h3>Upload a zip archive</h3>
+        </div>
+        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid create-project-form" data-upload-form="true">
           <input type="hidden" name="action" value="upload_zip">
-          <label>Project Name<input type="text" name="project_name" placeholder="my-app" required></label>
-          <label>Zip File<input type="file" name="zip_file" accept=".zip" required></label>
-          <button type="submit">Upload &amp; Deploy</button>
+          <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="my-app" required></label>
+          <label>Zip File<input type="file" name="zip_file" class="project-source-input" data-project-name-source="file" accept=".zip" required></label>
+          <div class="upload-progress" hidden>
+            <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
+            <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
+          </div>
+          <button type="submit">Upload and deploy</button>
         </form>
       </div>
       <div class="tab-pane" id="tab-folder">
-        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid">
+        <div class="create-project-pane-head">
+          <h3>Upload a local folder</h3>
+        </div>
+        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid create-project-form" data-upload-form="true">
           <input type="hidden" name="action" value="upload_folder">
-          <label>Project Name<input type="text" name="project_name" placeholder="my-folder" required></label>
-          <label>Folder<input type="file" name="folder_files[]" webkitdirectory directory multiple required></label>
+          <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="my-folder" required></label>
+          <label>Folder<input type="file" name="folder_files[]" class="project-source-input project-folder-input" data-project-name-source="folder" webkitdirectory directory multiple required></label>
+          <div class="upload-progress" hidden>
+            <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
+            <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
+          </div>
           <button type="submit">Upload Folder</button>
         </form>
       </div>
       <div class="tab-pane" id="tab-file">
-        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid">
+        <div class="create-project-pane-head">
+          <h3>Start from one file</h3>
+        </div>
+        <form action="upload.php" method="post" enctype="multipart/form-data" class="form-grid create-project-form" data-upload-form="true">
           <input type="hidden" name="action" value="upload_single">
-          <label>Project Name<input type="text" name="project_name" placeholder="single-file-project" required></label>
-          <label>File<input type="file" name="single_file" required></label>
+          <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="single-file-project" required></label>
+          <label>File<input type="file" name="single_file" class="project-source-input" data-project-name-source="file" required></label>
+          <div class="upload-progress" hidden>
+            <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
+            <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
+          </div>
           <button type="submit">Create Project</button>
         </form>
       </div>
       <div class="tab-pane" id="tab-template">
-        <form action="upload.php" method="post" class="form-grid">
+        <div class="create-project-pane-head">
+          <h3>Generate from a starter</h3>
+        </div>
+        <form action="upload.php" method="post" class="form-grid create-project-form">
           <input type="hidden" name="action" value="create_template">
           <label>Project Name<input type="text" name="project_name" placeholder="starter-project" required></label>
           <label>Template
@@ -1331,12 +1668,66 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               <?php endforeach; ?>
             </select>
           </label>
+          <?php if ($isAdmin): ?><p><a class="mini-link" href="template-manager.php">Manage templates</a></p><?php endif; ?>
           <button type="submit">Create Starter</button>
         </form>
       </div>
     </div>
   </dialog>
   <?php endif; ?>
+
+  <dialog id="statsDialog" class="modal-dialog stats-dialog">
+    <div class="modal-inner stats-dialog-inner">
+      <div class="modal-header">
+        <div>
+          <p class="kicker">Project table</p>
+          <h2 id="statsDialogTitle">Projects</h2>
+        </div>
+        <button class="modal-close-btn" type="button" id="closeStatsDialog">✕</button>
+      </div>
+      <div class="stats-dialog-toolbar">
+        <span class="stats-filter-chip" id="statsDialogFilterLabel">All visible</span>
+        <label class="stats-search"><input id="statsDialogSearch" type="search" placeholder="Search project, owner, access, visibility, date..."></label>
+      </div>
+      <div class="stats-table-wrap">
+        <table class="stats-table" id="statsTable">
+          <thead>
+            <tr>
+              <th><button class="stats-sort" type="button" data-sort-key="slug">Project <span class="stats-sort-indicator">↕</span></button></th>
+              <th><button class="stats-sort" type="button" data-sort-key="owner">Owner <span class="stats-sort-indicator">↕</span></button></th>
+              <th><button class="stats-sort" type="button" data-sort-key="visibility">Visibility <span class="stats-sort-indicator">↕</span></button></th>
+              <th><button class="stats-sort" type="button" data-sort-key="access">Access <span class="stats-sort-indicator">↕</span></button></th>
+              <th><button class="stats-sort" type="button" data-sort-key="created">Created <span class="stats-sort-indicator">↕</span></button></th>
+              <th>Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($projects as $project): ?>
+              <?php
+                $statsSlug = (string) ($project['slug'] ?? '');
+                $statsOwner = (string) ($project['owner'] ?? 'unknown');
+                $statsVisibility = (string) ($project['visibility'] ?? 'private');
+                $statsAccess = (string) ($project['accessMode'] ?? 'admin');
+                $statsCreatedIso = (string) ($project['createdAt'] ?? '');
+                $statsCreated = substr($statsCreatedIso, 0, 10);
+                $statsAccessLabel = (string) ($accessModes[$statsAccess] ?? $statsAccess);
+                $statsSearch = strtolower(trim($statsSlug . ' ' . $statsOwner . ' ' . $statsVisibility . ' ' . $statsAccessLabel . ' ' . $statsCreated));
+              ?>
+            <tr data-search="<?= station_h($statsSearch) ?>" data-visibility="<?= station_h($statsVisibility) ?>" data-access-mode="<?= station_h($statsAccess) ?>" data-sort-slug="<?= station_h(strtolower($statsSlug)) ?>" data-sort-owner="<?= station_h(strtolower($statsOwner)) ?>" data-sort-visibility="<?= station_h($statsVisibility) ?>" data-sort-access="<?= station_h(strtolower($statsAccessLabel)) ?>" data-sort-created="<?= station_h($statsCreatedIso) ?>">
+              <td><?= station_h($statsSlug) ?></td>
+              <td><?= station_h($statsOwner) ?></td>
+              <td><span class="status-pill <?= $statsVisibility === 'public' ? 'is-public' : 'is-private' ?>"><?= $statsVisibility === 'public' ? 'Public' : 'Private' ?></span></td>
+              <td><?= station_h($statsAccessLabel) ?></td>
+              <td><?= station_h($statsCreated) ?></td>
+              <td><a class="quick-link" href="viewer.php?project=<?= urlencode($statsSlug) ?>">Files</a></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <p class="stats-table-empty" id="statsTableEmpty" hidden>No matching projects.</p>
+    </div>
+  </dialog>
 
   <script>
   (function () {
@@ -1353,6 +1744,190 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       });
     }
 
+    document.querySelectorAll('.project-source-input').forEach((input) => {
+      input.addEventListener('change', function () {
+        const form = this.closest('form');
+        const projectNameInput = form ? form.querySelector('.project-name-input') : null;
+        const firstFile = this.files && this.files[0] ? this.files[0] : null;
+        if (!projectNameInput || !firstFile) {
+          return;
+        }
+
+        let suggestedName = '';
+        if (this.dataset.projectNameSource === 'folder') {
+          const relativePath = typeof firstFile.webkitRelativePath === 'string' ? firstFile.webkitRelativePath : '';
+          suggestedName = relativePath !== '' ? (relativePath.split('/')[0] || '') : '';
+        } else {
+          const rawName = typeof firstFile.name === 'string' ? firstFile.name : '';
+          suggestedName = rawName.replace(/\.[^.]+$/, '');
+        }
+
+        if (suggestedName !== '') {
+          projectNameInput.value = suggestedName;
+        }
+      });
+    });
+
+    document.querySelectorAll('.create-project-form[data-upload-form="true"]').forEach((form) => {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        const submitButton = this.querySelector('button[type="submit"]');
+        const progressWrap = this.querySelector('.upload-progress');
+        const progressFill = this.querySelector('.upload-progress-fill');
+        const progressValue = this.querySelector('.upload-progress-value');
+        const progressLabel = this.querySelector('.upload-progress-label');
+        const formData = new FormData(this);
+        const xhr = new XMLHttpRequest();
+
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.dataset.originalLabel = submitButton.textContent || 'Submit';
+          submitButton.textContent = 'Uploading…';
+        }
+        if (progressWrap) {
+          progressWrap.hidden = false;
+        }
+        if (progressFill) {
+          progressFill.style.width = '0%';
+        }
+        if (progressValue) {
+          progressValue.textContent = '0%';
+        }
+        if (progressLabel) {
+          progressLabel.textContent = 'Preparing upload…';
+        }
+
+        const formAction = this.getAttribute('action') || this.action || 'upload.php';
+
+        xhr.open('POST', formAction, true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.responseType = 'text';
+        xhr.timeout = 120000;
+
+        function readResponsePayload() {
+          const raw = typeof xhr.responseText === 'string' ? xhr.responseText.trim() : '';
+          if (!raw) {
+            return null;
+          }
+
+          try {
+            return JSON.parse(raw);
+          } catch (_) {
+            return {
+              ok: false,
+              isHtml: raw.startsWith('<'),
+              raw,
+              message: raw.startsWith('<') ? 'The server returned an unexpected page instead of a create-project response.' : raw
+            };
+          }
+        }
+
+        function handleHtmlFallback(response) {
+          if (!response || !response.isHtml) {
+            return false;
+          }
+
+          const responseUrl = typeof xhr.responseURL === 'string' ? xhr.responseURL : '';
+          if (progressLabel) {
+            progressLabel.textContent = 'The server returned a page. Opening it now…';
+          }
+
+          window.setTimeout(function () {
+            if (responseUrl && responseUrl !== formAction) {
+              window.location.href = responseUrl;
+              return;
+            }
+
+            const popup = window.open('', '_self');
+            if (popup && typeof response.raw === 'string') {
+              popup.document.open();
+              popup.document.write(response.raw);
+              popup.document.close();
+            }
+          }, 150);
+
+          return true;
+        }
+
+        function restoreSubmitButton() {
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = submitButton.dataset.originalLabel || 'Submit';
+          }
+        }
+
+        xhr.upload.addEventListener('progress', function (progressEvent) {
+          if (!progressEvent.lengthComputable) {
+            return;
+          }
+          const percent = Math.max(0, Math.min(100, Math.round((progressEvent.loaded / progressEvent.total) * 100)));
+          if (progressFill) {
+            progressFill.style.width = percent + '%';
+          }
+          if (progressValue) {
+            progressValue.textContent = percent + '%';
+          }
+          if (progressLabel) {
+            progressLabel.textContent = percent < 100 ? 'Uploading files…' : 'Processing project…';
+          }
+        });
+
+        xhr.upload.addEventListener('load', function () {
+          if (progressLabel) {
+            progressLabel.textContent = 'Processing project…';
+          }
+        });
+
+        xhr.addEventListener('load', function () {
+          const response = readResponsePayload();
+          if (xhr.status >= 200 && xhr.status < 300 && response && response.ok) {
+            if (progressFill) {
+              progressFill.style.width = '100%';
+            }
+            if (progressValue) {
+              progressValue.textContent = '100%';
+            }
+            if (progressLabel) {
+              progressLabel.textContent = 'Upload complete. Opening project…';
+            }
+            window.location.href = response.redirectUrl || 'station.php';
+            return;
+          }
+
+          if (handleHtmlFallback(response)) {
+            restoreSubmitButton();
+            return;
+          }
+
+          restoreSubmitButton();
+          if (progressLabel) {
+            const message = response && response.message
+              ? response.message
+              : ('Create project failed with HTTP ' + xhr.status + '.');
+            progressLabel.textContent = message;
+          }
+        });
+
+        xhr.addEventListener('error', function () {
+          restoreSubmitButton();
+          if (progressLabel) {
+            progressLabel.textContent = 'Upload failed. Check your connection and try again.';
+          }
+        });
+
+        xhr.addEventListener('timeout', function () {
+          restoreSubmitButton();
+          if (progressLabel) {
+            progressLabel.textContent = 'Upload finished sending, but the server took too long to respond. Try a smaller upload or check PHP upload limits.';
+          }
+        });
+
+        xhr.send(formData);
+      });
+    });
+
     /* ── New Project modal ── */
     const newBtn = document.getElementById('newProjectBtn');
     const newBtnTop = document.getElementById('newProjectBtnTop');
@@ -1367,6 +1942,114 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     }
     if (newBtnTop && newDlg) newBtnTop.addEventListener('click', openNewDialog);
     if (closeBtnDlg && newDlg) closeBtnDlg.addEventListener('click', () => newDlg.close());
+
+    const statsDlg = document.getElementById('statsDialog');
+    const closeStatsBtn = document.getElementById('closeStatsDialog');
+    const statsDialogTitle = document.getElementById('statsDialogTitle');
+    const statsDialogFilterLabel = document.getElementById('statsDialogFilterLabel');
+    const statsDialogSearch = document.getElementById('statsDialogSearch');
+    const statsTable = document.getElementById('statsTable');
+    const statsTableEmpty = document.getElementById('statsTableEmpty');
+    let statsSortKey = 'created';
+    let statsSortDirection = 'desc';
+    let statsFilterType = '';
+    let statsFilterValue = '';
+
+    function updateStatsEmptyState() {
+      if (!statsTable || !statsTableEmpty) {
+        return;
+      }
+      const hasVisibleRows = Array.from(statsTable.querySelectorAll('tbody tr')).some((row) => !row.hidden);
+      statsTableEmpty.hidden = hasVisibleRows;
+    }
+
+    function statsSortDatasetKey(key) {
+      return 'sort' + key.charAt(0).toUpperCase() + key.slice(1);
+    }
+
+    function sortStatsRows() {
+      if (!statsTable) {
+        return;
+      }
+      const tbody = statsTable.querySelector('tbody');
+      if (!tbody) {
+        return;
+      }
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const datasetKey = statsSortDatasetKey(statsSortKey);
+      rows.sort((left, right) => {
+        const leftValue = left.dataset[datasetKey] || '';
+        const rightValue = right.dataset[datasetKey] || '';
+        const compare = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
+        return statsSortDirection === 'asc' ? compare : compare * -1;
+      });
+      rows.forEach((row) => tbody.appendChild(row));
+    }
+
+    function applyStatsTableState() {
+      if (!statsTable) {
+        return;
+      }
+      const query = statsDialogSearch ? statsDialogSearch.value.trim().toLowerCase() : '';
+      statsTable.querySelectorAll('tbody tr').forEach((row) => {
+        const matchesFilter = !statsFilterType || (statsFilterType === 'visibility'
+          ? (row.dataset.visibility || '') === statsFilterValue
+          : (row.dataset.accessMode || '') === statsFilterValue);
+        const matchesSearch = !query || (row.dataset.search || '').includes(query);
+        row.hidden = !(matchesFilter && matchesSearch);
+      });
+      sortStatsRows();
+      updateStatsEmptyState();
+    }
+
+    document.querySelectorAll('.metric-trigger').forEach((card) => {
+      card.addEventListener('click', function () {
+        statsFilterType = this.dataset.statsFilterType || '';
+        statsFilterValue = this.dataset.statsFilterValue || '';
+        const label = this.dataset.statsLabel || 'Projects';
+        if (statsDialogTitle) {
+          statsDialogTitle.textContent = label + ' Projects';
+        }
+        if (statsDialogFilterLabel) {
+          statsDialogFilterLabel.textContent = label;
+        }
+        if (statsDialogSearch) {
+          statsDialogSearch.value = '';
+        }
+        applyStatsTableState();
+        if (statsDlg) {
+          statsDlg.showModal();
+        }
+      });
+    });
+
+    if (statsDlg) {
+      statsDlg.addEventListener('click', function (event) {
+        if (event.target === statsDlg) {
+          statsDlg.close();
+        }
+      });
+    }
+    if (closeStatsBtn && statsDlg) {
+      closeStatsBtn.addEventListener('click', function () {
+        statsDlg.close();
+      });
+    }
+    if (statsDialogSearch) {
+      statsDialogSearch.addEventListener('input', applyStatsTableState);
+    }
+    document.querySelectorAll('.stats-sort').forEach((button) => {
+      button.addEventListener('click', function () {
+        const nextKey = this.dataset.sortKey || 'created';
+        if (statsSortKey === nextKey) {
+          statsSortDirection = statsSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          statsSortKey = nextKey;
+          statsSortDirection = nextKey === 'created' ? 'desc' : 'asc';
+        }
+        applyStatsTableState();
+      });
+    });
 
     /* ── Tab switching ── */
     document.querySelectorAll('.modal-tabs .tab-btn').forEach((btn) => {
@@ -1422,9 +2105,20 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     const clipImageInput = document.getElementById('clipImageInput');
     const clipFiles = document.getElementById('clipFiles');
     let clipTimer = null;
+    let clipRevision = '0';
+    let clipDirty = false;
+    let clipLastAppliedContent = clipText ? clipText.value : '';
+    let clipPollTimer = null;
 
     function setStatus(msg) {
       if (clipStatus) { clipStatus.textContent = msg; }
+    }
+
+    function scheduleClipboardPolling() {
+      if (clipPollTimer) {
+        return;
+      }
+      clipPollTimer = window.setInterval(refreshClipboard, 1000);
     }
 
     function renderFiles(items) {
@@ -1496,6 +2190,8 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       fd.append('action', 'upload_file');
       fd.append('clip_file', file);
 
+      setStatus('Uploading attachment…');
+
       fetch('clipboard.php', { method: 'POST', body: fd })
         .then((r) => r.json())
         .then((d) => {
@@ -1504,6 +2200,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
             setTimeout(() => setStatus(''), 2000);
             return;
           }
+          clipRevision = String(d.revision || clipRevision || '0');
           renderFiles(d.files || []);
           setStatus('Attachment clipped');
           setTimeout(() => setStatus(''), 2000);
@@ -1518,12 +2215,42 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       fetch('clipboard.php?action=get')
         .then((r) => r.json())
         .then((d) => {
-          if (clipText && typeof d.content === 'string') {
-            clipText.value = d.content;
-          }
-          renderFiles(d.files || []);
+          applyClipboardPayload(d, false);
         })
         .catch(() => {});
+    }
+
+    function applyClipboardPayload(payload, fromStream) {
+      if (!payload || !payload.ok) {
+        return;
+      }
+
+      clipRevision = String(payload.revision || clipRevision || '0');
+
+      if (clipText && typeof payload.content === 'string' && (!clipDirty || payload.content === clipText.value)) {
+        const active = document.activeElement === clipText;
+        const selectionStart = clipText.selectionStart;
+        const selectionEnd = clipText.selectionEnd;
+
+        clipText.value = payload.content;
+        clipLastAppliedContent = payload.content;
+
+        if (active && typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+          clipText.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
+
+      renderFiles(payload.files || []);
+
+      if (fromStream && !clipDirty) {
+        setStatus('Live');
+        window.clearTimeout(clipTimer);
+        clipTimer = window.setTimeout(() => {
+          if (!clipDirty) {
+            setStatus('');
+          }
+        }, 1200);
+      }
     }
 
     function saveClipboard() {
@@ -1533,15 +2260,31 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'action=save&content=' + encodeURIComponent(content)
       }).then((r) => r.json())
-        .then((d) => { setStatus(d.ok ? 'Saved' : 'Save failed'); setTimeout(() => setStatus(''), 2000); })
+        .then((d) => {
+          if (!d.ok) {
+            setStatus('Save failed');
+            setTimeout(() => setStatus(''), 2000);
+            return;
+          }
+          clipDirty = false;
+          clipRevision = String(d.revision || clipRevision || '0');
+          clipLastAppliedContent = typeof d.content === 'string' ? d.content : content;
+          setStatus('Live');
+          setTimeout(() => {
+            if (!clipDirty) {
+              setStatus('');
+            }
+          }, 1200);
+        })
         .catch(() => { setStatus('Error'); setTimeout(() => setStatus(''), 2000); });
     }
 
     if (clipText) {
       clipText.addEventListener('input', () => {
         clearTimeout(clipTimer);
-        setStatus('…');
-        clipTimer = setTimeout(saveClipboard, 1500);
+        clipDirty = true;
+        setStatus('Syncing…');
+        clipTimer = setTimeout(saveClipboard, 300);
       });
     }
     if (clipFileInput) {
@@ -1577,11 +2320,19 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: 'action=clear'
         }).then((r) => r.json())
-          .then(() => { renderFiles([]); setStatus('Cleared'); setTimeout(() => setStatus(''), 1500); })
+          .then((d) => {
+            clipDirty = false;
+            clipRevision = String((d && d.revision) || clipRevision || '0');
+            clipLastAppliedContent = '';
+            renderFiles([]);
+            setStatus('Cleared');
+            setTimeout(() => setStatus(''), 1500);
+          })
           .catch(() => { setStatus('Error'); setTimeout(() => setStatus(''), 1500); });
       });
     }
     refreshClipboard();
+    scheduleClipboardPolling();
   })();
   </script>
   <?= station_pwa_register_html() ?>

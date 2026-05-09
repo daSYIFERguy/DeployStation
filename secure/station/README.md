@@ -59,6 +59,18 @@ For uploads and zip extraction, ensure PHP config is sufficient:
 - `max_file_uploads` increased if large folder uploads
 - `max_execution_time` high enough for extraction
 
+## Nginx Production Routing
+
+If you run production on Nginx, direct project URLs like `/secure/my-project/` must be rewritten to Station's access-control handler.
+
+Use the owner-only helper at `nginx-project-auth.php` to generate the exact `location` block for your mount path.
+
+Do not use a `location ^~ /secure/station/` block for Station itself. That prevents Nginx's PHP regex location from handling files like `setup.php` and `index.php`, which makes browsers download PHP files instead of executing them.
+
+For the project rewrite itself, use named captures in the Nginx `location` block and forward those variables into `project-serve.php`. Using `$1` and `$2` inside a separate `rewrite` can fail because those captures are not reliably inherited from the `location` regex.
+
+Without that rewrite, Nginx will serve project folders directly from disk and bypass Station access control entirely.
+
 ## Ownership Tracking
 
 Every deployed project writes metadata with:
