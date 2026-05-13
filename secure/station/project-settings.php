@@ -139,7 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $docker['containerName'] = station_docker_safe_identifier((string) ($_POST['docker_container'] ?? $docker['containerName']), (string) $docker['containerName']);
         $docker['hostPort'] = station_normalize_docker_port($_POST['docker_host_port'] ?? $docker['hostPort'], (int) $docker['hostPort']);
         $docker['containerPort'] = station_normalize_docker_port($_POST['docker_container_port'] ?? $docker['containerPort'], (int) $docker['containerPort']);
-        $docker['dockerfile'] = station_is_safe_relative_path((string) ($_POST['dockerfile'] ?? 'Dockerfile')) ? (string) $_POST['dockerfile'] : 'Dockerfile';
+        $dockerfileInput = (string) ($_POST['dockerfile'] ?? 'Dockerfile');
+        $docker['dockerfile'] = station_is_safe_relative_path($dockerfileInput) ? $dockerfileInput : 'Dockerfile';
         $launchPath = trim((string) ($_POST['docker_launch_path'] ?? '/'));
         $docker['launchPath'] = $launchPath !== '' ? '/' . ltrim(str_replace('\\', '/', $launchPath), '/') : '/';
         $settings['docker'] = station_project_docker_settings($project, ['docker' => $docker]);

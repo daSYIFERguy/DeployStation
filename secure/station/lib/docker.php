@@ -194,7 +194,7 @@ function station_project_dockerfile_contents(string $slug, array $docker): strin
 
 function station_project_dockerignore_contents(): string
 {
-    return ".git\n.gitignore\nnode_modules\nvendor\n.env\n.env.*\nDockerfile\n.dockerignore\nnpm-debug.log*\nyarn-debug.log*\nyarn-error.log*\ndist\nbuild\n";
+    return ".git\n.gitignore\nnode_modules\n.env\n.env.*\nDockerfile\n.dockerignore\nnpm-debug.log*\nyarn-debug.log*\nyarn-error.log*\n";
 }
 
 function station_generate_project_docker_assets(string $slug, array $settings, bool $overwrite = false): array
