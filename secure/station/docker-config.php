@@ -96,12 +96,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $composeContent = station_generate_docker_compose($newConfig);
             if (@file_put_contents($composePath, $composeContent, LOCK_EX) !== false) {
                 station_log_event('project.docker.configured', ['project' => $projectSlug]);
+                $includeResult = station_write_nginx_projects_conf();
+                if (empty($includeResult['ok'])) {
+                    station_log_event('nginx.include.failed', [
+                        'project' => $projectSlug,
+                        'phase' => 'config-save',
+                        'message' => (string) ($includeResult['message'] ?? ''),
+                    ]);
+                }
                 station_flash_set('ok', 'Docker configuration saved. Generated docker-compose.yml.');
                 header('Location: docker-config.php?project=' . urlencode($projectSlug));
                 exit;
             }
             $error = 'Could not write docker-compose.yml.';
         } else {
+            $includeResult = station_write_nginx_projects_conf();
+            if (empty($includeResult['ok'])) {
+                station_log_event('nginx.include.failed', [
+                    'project' => $projectSlug,
+                    'phase' => 'config-save',
+                    'message' => (string) ($includeResult['message'] ?? ''),
+                ]);
+            }
             station_flash_set('ok', 'Docker configuration saved.');
             header('Location: docker-config.php?project=' . urlencode($projectSlug));
             exit;
@@ -140,6 +156,11 @@ $stateLabels = [
 ];
 $stateKey = (string) ($status['state'] ?? 'unconfigured');
 $stateMeta = $stateLabels[$stateKey] ?? $stateLabels['unknown'];
+
+$adminSettingsForRoute = station_admin_settings();
+$isNginxInfrastructure = station_normalize_server_infrastructure((string) ($adminSettingsForRoute['serverInfrastructure'] ?? 'apache')) === 'nginx';
+$reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
+$nginxIncludePathDisplay = station_nginx_include_path();
 ?>
 <!doctype html>
 <html lang="en">
@@ -200,6 +221,17 @@ $stateMeta = $stateLabels[$stateKey] ?? $stateLabels['unknown'];
             <?= $dockerfileExists ? '✓ Dockerfile' : '— Dockerfile' ?> · <?= $composeExists ? '✓ Compose' : '— Compose' ?>
           </strong>
           <span class="docker-status-meta">Saved on the next form submit.</span>
+        </div>
+        <div class="docker-status-card status-info">
+          <span class="docker-status-label">Reverse-proxy URL</span>
+          <strong class="docker-status-value"><code><?= station_h($reverseProxyPath) ?></code></strong>
+          <span class="docker-status-meta">
+            <?php if ($isNginxInfrastructure): ?>
+              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Make sure your nginx server block includes the snippet from <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
+            <?php else: ?>
+              Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
+            <?php endif; ?>
+          </span>
         </div>
       </section>
 

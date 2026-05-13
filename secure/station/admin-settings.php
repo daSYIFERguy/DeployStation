@@ -34,6 +34,25 @@ $brandIconLabels = [
     'appMaskableIcon' => ['label' => 'Maskable Icon', 'description' => 'Safe-area icon for Android adaptive app icons.'],
 ];
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'rebuild_nginx_include') {
+    $result = station_write_nginx_projects_conf();
+    if (!empty($result['ok'])) {
+        station_log_event('admin.nginx.include.rebuilt', [
+            'count' => (int) ($result['count'] ?? 0),
+            'path' => (string) ($result['path'] ?? ''),
+        ]);
+        station_flash_set('ok', (string) ($result['message'] ?? 'Nginx include regenerated.'));
+    } else {
+        station_log_event('nginx.include.failed', [
+            'phase' => 'admin-manual-rebuild',
+            'message' => (string) ($result['message'] ?? ''),
+        ]);
+        station_flash_set('ok', 'Could not regenerate nginx include: ' . (string) ($result['message'] ?? 'unknown error'));
+    }
+    header('Location: admin-settings.php?tab=project-defaults');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Process form inputs based on active tab
     switch ($activeTab) {
@@ -233,8 +252,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <?php if (station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'nginx'): ?>
                 <div class="setting-item">
                   <label class="setting-label">Nginx Routing Snippet</label>
-                  <textarea rows="12" readonly><?= station_h(station_nginx_project_route_snippet()) ?></textarea>
-                  <p class="setting-description">Add this inside your Nginx server block so project URLs route through Station access checks.</p>
+                  <textarea rows="18" readonly><?= station_h(station_nginx_project_route_snippet()) ?></textarea>
+                  <p class="setting-description">Add this inside your Nginx server block so project URLs route through Station access checks. The included <code>projects.conf</code> file is regenerated automatically — you only need to paste this snippet once.</p>
+                </div>
+
+                <?php
+                  $nginxIncludePath = station_nginx_include_path();
+                  $dockerizedProjects = station_collect_dockerized_projects();
+                  $nginxIncludeContents = is_file($nginxIncludePath) ? (string) (@file_get_contents($nginxIncludePath) ?: '') : '';
+                ?>
+                <div class="setting-item">
+                  <label class="setting-label">Docker reverse-proxy routes</label>
+                  <p class="setting-description">
+                    Auto-managed include file: <code><?= station_h($nginxIncludePath) ?></code><br>
+                    Currently routed projects: <strong><?= (int) count($dockerizedProjects) ?></strong>
+                  </p>
+                  <form method="post" action="admin-settings.php" style="margin: 8px 0 12px;">
+                    <input type="hidden" name="action" value="rebuild_nginx_include">
+                    <button type="submit" class="secondary-btn">Regenerate now</button>
+                  </form>
+                  <?php if ($nginxIncludeContents === ''): ?>
+                    <p class="setting-description">No dockerized projects yet — the file will appear as soon as you configure one.</p>
+                  <?php else: ?>
+                    <pre class="code-block" style="max-height: 320px; overflow: auto;"><?= station_h($nginxIncludeContents) ?></pre>
+                    <p class="setting-description">Updated whenever a docker project is configured, started, stopped, rebuilt, or torn down. Users will reach each running project at <code>/p/&lt;slug&gt;/</code>.</p>
+                  <?php endif; ?>
                 </div>
               <?php endif; ?>
 

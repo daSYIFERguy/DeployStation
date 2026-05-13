@@ -134,6 +134,14 @@ if (!empty($result['ok'])) {
     if (!empty($dockerConfig['hostPort'])) {
         $extra['hostPort'] = (int) $dockerConfig['hostPort'];
     }
+    $includeResult = station_write_nginx_projects_conf();
+    if (empty($includeResult['ok'])) {
+        station_log_event('nginx.include.failed', [
+            'project' => $project,
+            'phase' => 'docker.' . $action,
+            'message' => (string) ($includeResult['message'] ?? ''),
+        ]);
+    }
     station_docker_action_respond(
         true,
         ucfirst($action) . ' completed for ' . $project . '.',

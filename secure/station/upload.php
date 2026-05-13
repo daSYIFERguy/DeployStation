@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
+require_once __DIR__ . '/lib/docker.php';
 
 @set_time_limit(0);
 ignore_user_abort(true);
@@ -76,6 +77,12 @@ if ($action === 'upload_zip') {
 } elseif ($action === 'create_template') {
     $templateType = (string) ($_POST['template_type'] ?? 'static-js');
     $result = station_handle_template_create($projectPath, $templateType, $projectName);
+} elseif ($action === 'import_github') {
+    if (empty($adminSettings['githubEnabled'])) {
+        $result = ['ok' => false, 'message' => 'GitHub imports are disabled in Admin Settings.'];
+    } else {
+        $result = station_handle_github_import($projectPath, $projectName, $owner);
+    }
 }
 
 if (empty($result['ok'])) {
@@ -96,10 +103,21 @@ $project = [
     'createdAt' => gmdate('c'),
     'updatedAt' => gmdate('c')
 ];
+if (isset($result['github']) && is_array($result['github'])) {
+    $project['github'] = $result['github'];
+}
 station_upsert_project_meta($project);
+if (isset($result['github']) && is_array($result['github'])) {
+    $settings = station_project_settings($slug);
+    $settings['github'] = array_merge((array) ($settings['github'] ?? []), $result['github']);
+    station_save_project_settings($slug, $settings);
+}
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
-station_upload_finish(true, 'Project deployed: ' . $slug, 'viewer.php?project=' . urlencode($slug), $expectsJson);
+$redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
+    ? 'docker-config.php?project=' . urlencode($slug)
+    : 'viewer.php?project=' . urlencode($slug);
+station_upload_finish(true, 'Project deployed: ' . $slug, $redirectUrl, $expectsJson);
 exit;
 
 function station_handle_zip_upload(string $projectPath): array
@@ -363,6 +381,153 @@ function station_handle_template_create(string $projectPath, string $templateTyp
     }
 
     return ['ok' => true, 'message' => 'Template created.'];
+}
+
+function station_handle_github_import(string $projectPath, string $projectName, string $username): array
+{
+    $repoInput = trim((string) ($_POST['github_repo_url'] ?? ''));
+    $branch = trim((string) ($_POST['github_branch'] ?? ''));
+    $oneTimeToken = trim((string) ($_POST['github_token'] ?? ''));
+    $repo = station_parse_github_repo($repoInput);
+
+    if ($repo === null) {
+        return ['ok' => false, 'message' => 'Enter a GitHub repository URL like https://github.com/owner/repo.'];
+    }
+    if ($branch !== '' && !station_is_safe_git_ref($branch)) {
+        return ['ok' => false, 'message' => 'Branch names can only contain letters, numbers, dots, slashes, underscores, and dashes.'];
+    }
+    if (!station_git_available()) {
+        return ['ok' => false, 'message' => 'Git is not installed on this server. Install git before importing repositories.'];
+    }
+
+    $profile = station_user_profile($username);
+    $savedToken = trim((string) ($profile['integrations']['github']['token'] ?? ''));
+    $token = $oneTimeToken !== '' ? $oneTimeToken : $savedToken;
+    $cloneUrl = 'https://github.com/' . $repo['owner'] . '/' . $repo['name'] . '.git';
+    $command = ['git', 'clone', '--depth', '1'];
+    if ($branch !== '') {
+        $command[] = '--branch';
+        $command[] = $branch;
+        $command[] = '--single-branch';
+    }
+    $command[] = $cloneUrl;
+    $command[] = $projectPath;
+
+    $clone = station_run_git_command($command, $token);
+    if (empty($clone['ok'])) {
+        $output = trim((string) ($clone['output'] ?? ''));
+        $message = $output !== '' ? $output : 'Git could not clone that repository.';
+        return ['ok' => false, 'message' => 'GitHub import failed: ' . mb_substr($message, 0, 500)];
+    }
+
+    station_run_git_command(['git', '-C', $projectPath, 'remote', 'set-url', 'origin', $cloneUrl]);
+    $defaultBranch = $branch !== '' ? $branch : station_detect_current_git_branch($projectPath);
+
+    return [
+        'ok' => true,
+        'message' => 'GitHub repository imported.',
+        'github' => [
+            'repoOwner' => $repo['owner'],
+            'repoName' => $repo['name'],
+            'repoUrl' => 'https://github.com/' . $repo['owner'] . '/' . $repo['name'],
+            'defaultBranch' => $defaultBranch !== '' ? $defaultBranch : 'main',
+            'visibility' => 'private',
+            'releaseWorkflow' => false,
+            'importedAt' => gmdate('c'),
+        ],
+    ];
+}
+
+function station_parse_github_repo(string $input): ?array
+{
+    $value = trim($input);
+    if ($value === '') {
+        return null;
+    }
+
+    if (preg_match('#^git@github\.com:([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?$#', $value, $matches) === 1) {
+        return ['owner' => $matches[1], 'name' => $matches[2]];
+    }
+
+    if (preg_match('#^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$#', $value, $matches) === 1) {
+        return ['owner' => $matches[1], 'name' => $matches[2]];
+    }
+
+    if (preg_match('#^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$#', $value, $matches) === 1) {
+        return ['owner' => $matches[1], 'name' => $matches[2]];
+    }
+
+    return null;
+}
+
+function station_is_safe_git_ref(string $ref): bool
+{
+    if ($ref === '' || str_starts_with($ref, '-') || str_contains($ref, '..') || str_contains($ref, '@{')) {
+        return false;
+    }
+    return preg_match('#^[A-Za-z0-9._/-]+$#', $ref) === 1;
+}
+
+function station_git_available(): bool
+{
+    $result = station_run_git_command(['git', '--version']);
+    return !empty($result['ok']);
+}
+
+function station_detect_current_git_branch(string $projectPath): string
+{
+    $result = station_run_git_command(['git', '-C', $projectPath, 'branch', '--show-current']);
+    return !empty($result['ok']) ? trim((string) ($result['output'] ?? '')) : '';
+}
+
+function station_run_git_command(array $command, string $token = ''): array
+{
+    $askPassPath = '';
+    $env = getenv();
+    $env = is_array($env) ? $env : [];
+    $env['PATH'] = (string) ($env['PATH'] ?? '/usr/local/bin:/usr/bin:/bin');
+    $env['GIT_TERMINAL_PROMPT'] = '0';
+
+    if ($token !== '') {
+        $askPassPath = station_data_dir() . '/github-askpass-' . bin2hex(random_bytes(6)) . '.sh';
+        $askPassScript = "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' 'x-access-token' ;;\n*Password*) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n*) printf '\\n' ;;\nesac\n";
+        if (@file_put_contents($askPassPath, $askPassScript, LOCK_EX) === false || !@chmod($askPassPath, 0700)) {
+            return ['ok' => false, 'output' => 'Could not prepare GitHub credentials.'];
+        }
+        $env['GIT_ASKPASS'] = $askPassPath;
+        $env['GITHUB_TOKEN'] = $token;
+    }
+
+    $commandString = implode(' ', array_map('escapeshellarg', $command));
+    $descriptors = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = @proc_open($commandString, $descriptors, $pipes, null, $env);
+    if (!is_resource($process)) {
+        if ($askPassPath !== '') {
+            @unlink($askPassPath);
+        }
+        return ['ok' => false, 'output' => 'Could not start git.'];
+    }
+
+    $stdout = isset($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
+    $stderr = isset($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
+    foreach ($pipes as $pipe) {
+        if (is_resource($pipe)) {
+            fclose($pipe);
+        }
+    }
+    $code = proc_close($process);
+    if ($askPassPath !== '') {
+        @unlink($askPassPath);
+    }
+
+    return [
+        'ok' => $code === 0,
+        'code' => $code,
+        'output' => trim($stdout . "\n" . $stderr),
+    ];
 }
 
 function station_normalize_archive_path(string $path): ?string

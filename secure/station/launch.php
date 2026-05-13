@@ -123,7 +123,12 @@ if ($isContainerized) {
 
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? 'localhost')) ?: 'localhost';
-    $target = $scheme . '://' . $host . ':' . $hostPort . '/';
+    $directTarget = $scheme . '://' . $host . ':' . $hostPort . '/';
+
+    $adminSettingsForLaunch = station_admin_settings();
+    $usesNginx = station_normalize_server_infrastructure((string) ($adminSettingsForLaunch['serverInfrastructure'] ?? 'apache')) === 'nginx';
+    $friendlyTarget = $scheme . '://' . $host . '/p/' . rawurlencode($slug) . '/';
+    $target = $usesNginx ? $friendlyTarget : $directTarget;
 
     $status = station_project_docker_status($slug);
     if (($status['state'] ?? '') === 'running') {
@@ -162,8 +167,16 @@ if ($isContainerized) {
       <?php if (($status['state'] ?? '') === 'running'): ?>
         <p>Open the running app:</p>
         <a class="download-btn" href="<?= station_h($target) ?>" target="_blank" rel="noreferrer">Open <?= station_h($target) ?></a>
+        <?php if ($usesNginx): ?>
+          <p class="topbar-sub" style="margin-top:8px;">Routed through nginx at <code><?= station_h($friendlyTarget) ?></code>. Direct host port: <code><?= station_h($directTarget) ?></code>.</p>
+        <?php endif; ?>
       <?php else: ?>
         <p>The container is not running. Use the controls below to start it.</p>
+        <?php if ($usesNginx): ?>
+          <p class="topbar-sub">Once it starts and your nginx server block includes the auto-generated docker routes, users will reach it at <code><?= station_h($friendlyTarget) ?></code>.</p>
+        <?php else: ?>
+          <p class="topbar-sub">Direct access (when running): <code><?= station_h($directTarget) ?></code>. Switch the production web server to Nginx in Admin Settings to also expose a friendly <code>/p/<?= station_h($slug) ?>/</code> URL.</p>
+        <?php endif; ?>
         <div class="action-row">
           <?php if ($canBuild): ?>
             <form method="post" action="docker-actions.php">
