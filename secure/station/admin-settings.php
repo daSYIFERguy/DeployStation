@@ -91,6 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dockerSettings['composeVersion'] = (string) ($_POST['composeVersion'] ?? '3.9');
             $dockerSettings['defaultDatabase'] = (string) ($_POST['defaultDatabase'] ?? 'mysql');
             $dockerSettings['dockerBinaryPath'] = trim((string) ($_POST['dockerBinaryPath'] ?? ''));
+            $dockerSettings['composeBinaryPath'] = trim((string) ($_POST['composeBinaryPath'] ?? ''));
 
             // Enable/disable services
             foreach ($dockerServices as $serviceKey => $serviceConfig) {
@@ -340,15 +341,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               $engineOk = !empty($dockerDiagnostics['engineOk']);
               $socketExists = !empty($dockerDiagnostics['socketExists']);
               $socketWritable = !empty($dockerDiagnostics['socketWritable']);
+              $isSnap = !empty($dockerDiagnostics['binaryIsSnap']);
             ?>
+            <?php if ($isSnap): ?>
+              <div class="docker-diag-card is-bad" style="margin-bottom: 14px;">
+                <div class="docker-diag-header">
+                  <strong>⚠ Docker is installed via snap</strong>
+                  <span class="docker-diag-meta">Not recommended for PHP-FPM</span>
+                </div>
+                <p style="margin: 8px 0 6px;">Snap-confined docker refuses to run when <code>$HOME</code> is outside <code>/home</code>, which is the default for the <code><?= station_h($dockerDiagnostics['phpUser']) ?></code> user (<code>HOME=<?= station_h($dockerDiagnostics['inheritedHome']) ?: '/var/www' ?></code>). You'll likely see:</p>
+                <pre class="code-mini">cannot create snap home dir: mkdir /var/www/snap: permission denied
+Sorry, home directories outside of /home needs configuration.</pre>
+                <p style="margin: 10px 0 6px;"><strong>Recommended fix — replace snap docker with the apt package:</strong></p>
+                <pre class="code-mini">sudo snap remove docker
+sudo apt update
+sudo apt install -y docker.io docker-compose-plugin
+# If docker-compose-plugin is unavailable in your repo, use either:
+#   sudo apt install -y docker-compose-v2
+# or install the static v2 binary (see "Compose binary path" below) from:
+#   https://github.com/docker/compose/releases/latest
+sudo systemctl enable --now docker
+sudo usermod -aG docker <?= station_h($dockerDiagnostics['phpUser']) ?>
+
+sudo systemctl restart php*-fpm
+# then refresh this page — diagnostics should turn green</pre>
+                <p style="margin: 10px 0 0;"><strong>Or, keep snap docker</strong> by allowing the station's data dir as a snap home:</p>
+                <pre class="code-mini">sudo snap set system homedirs=<?= station_h(dirname($dockerDiagnostics['runtimeHome'])) ?></pre>
+                <p style="margin: 6px 0 0; font-size: 12px; opacity: 0.85;">The station now isolates docker's home at <code><?= station_h($dockerDiagnostics['runtimeHome']) ?></code> instead of <code><?= station_h($dockerDiagnostics['inheritedHome']) ?: '/var/www' ?></code>, which fixes most non-snap setups automatically.</p>
+              </div>
+            <?php endif; ?>
             <div class="docker-diag-card <?= $engineOk ? 'is-ok' : 'is-bad' ?>">
               <div class="docker-diag-header">
                 <strong><?= $engineOk ? '✓ Docker engine reachable from PHP' : '⚠ Docker engine not reachable from PHP' ?></strong>
                 <span class="docker-diag-meta"><?= $engineOk ? 'v' . station_h($dockerDiagnostics['engineVersion'] ?: 'unknown') : 'Fix below before enabling Docker' ?></span>
               </div>
               <dl class="docker-diag-list">
-                <dt>Resolved docker binary</dt><dd><code><?= station_h($dockerDiagnostics['binary']) ?></code></dd>
-                <dt>Compose command</dt><dd><code><?= station_h($dockerDiagnostics['composeCommand']) ?></code></dd>
+                <dt>Resolved docker binary</dt><dd><code><?= station_h($dockerDiagnostics['binary']) ?></code><?= $isSnap ? ' <span style="color:#b45309;">(snap)</span>' : '' ?></dd>
+                <dt>Compose command</dt><dd><code><?= station_h($dockerDiagnostics['composeCommand']) ?></code><?php if (!empty($dockerDiagnostics['composeOk'])): ?> <span style="color:#15803d;">(ok)</span><?php else: ?> <span style="color:#b45309;">(failed)</span><?php endif; ?></dd>
+                <?php if (empty($dockerDiagnostics['composeOk']) && trim((string) ($dockerDiagnostics['composeVersionOutput'] ?? '')) !== ''): ?>
+                  <dt>Compose probe output</dt><dd><pre class="code-mini"><?= station_h($dockerDiagnostics['composeVersionOutput']) ?></pre></dd>
+                <?php endif; ?>
                 <dt>PHP user</dt><dd><code><?= station_h($dockerDiagnostics['phpUser']) ?></code></dd>
                 <dt>Docker socket</dt><dd>
                   <?php if (!$socketExists): ?>
@@ -360,11 +392,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <?php endif; ?>
                 </dd>
                 <dt>Effective PATH</dt><dd><code><?= station_h($dockerDiagnostics['runtimePath']) ?></code></dd>
+                <dt>HOME used for docker</dt><dd><code><?= station_h($dockerDiagnostics['runtimeHome']) ?></code><?php if (($dockerDiagnostics['inheritedHome'] ?? '') !== '' && $dockerDiagnostics['inheritedHome'] !== $dockerDiagnostics['runtimeHome']): ?> <span style="opacity:0.7;">(was <code><?= station_h($dockerDiagnostics['inheritedHome']) ?></code>)</span><?php endif; ?></dd>
                 <?php if (!$engineOk && trim($dockerDiagnostics['engineOutput']) !== ''): ?>
                   <dt>Last output</dt><dd><pre class="code-mini"><?= station_h($dockerDiagnostics['engineOutput']) ?></pre></dd>
                 <?php endif; ?>
               </dl>
-              <?php if (!$engineOk): ?>
+              <?php if (!$engineOk && !$isSnap): ?>
                 <p class="docker-diag-hint">Most often this means PHP-FPM's PATH doesn't include where docker lives, or the web user isn't in the <code>docker</code> group. Set "Docker Binary Path" below to the absolute path (e.g. <code>/usr/local/bin/docker</code>) and save, then refresh this page.</p>
               <?php endif; ?>
             </div>
@@ -383,6 +416,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="setting-label" for="dockerBinaryPath">Docker Binary Path</label>
                 <input id="dockerBinaryPath" type="text" name="dockerBinaryPath" value="<?= station_h((string) ($dockerSettings['dockerBinaryPath'] ?? '')) ?>" placeholder="auto-detect (e.g. /usr/local/bin/docker)" autocomplete="off">
                 <p class="setting-description">Leave blank to auto-detect. Override when PHP-FPM can't find docker on its PATH — run <code>which docker</code> in your terminal to get the right value (commonly <code>/usr/local/bin/docker</code>, <code>/usr/bin/docker</code>, or <code>/snap/bin/docker</code>).</p>
+              </div>
+              <div class="setting-item" style="margin-top: 14px;">
+                <label class="setting-label" for="composeBinaryPath">Compose binary path (optional)</label>
+                <input id="composeBinaryPath" type="text" name="composeBinaryPath" value="<?= station_h((string) ($dockerSettings['composeBinaryPath'] ?? '')) ?>" placeholder="auto-detect (e.g. /usr/local/bin/docker-compose)" autocomplete="off">
+                <p class="setting-description">Use when <code>docker compose</code> is not installed but the Compose v2 binary exists elsewhere — for example the static build from GitHub (install to <code>/usr/local/bin/docker-compose</code> and chmod +x), or Docker’s plugin path <code>/usr/libexec/docker/cli-plugins/docker-compose</code>. Leave blank to try <code>docker compose</code> first, then auto-detect <code>docker-compose</code>.</p>
+                <p class="setting-description" style="margin-top: 8px;"><strong>Static install (amd64):</strong> <code>sudo curl -fsSL &quot;https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64&quot; -o /usr/local/bin/docker-compose &amp;&amp; sudo chmod +x /usr/local/bin/docker-compose</code> — use <code>docker-compose-linux-aarch64</code> on ARM64.</p>
               </div>
             </div>
 

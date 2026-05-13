@@ -55,6 +55,30 @@ $projectConfig = isset($existing['docker']) && is_array($existing['docker']) ? $
     'credentials' => [],
 ];
 
+// First-time visit for a project that was created from a template:
+// pre-check the services the template recommended so the user only has
+// to click Save. Only applied when the project has no per-service
+// credentials yet (i.e. no manual edits have happened).
+$recommendedServices = isset($projectConfig['recommendedServices']) && is_array($projectConfig['recommendedServices'])
+    ? array_values(array_filter($projectConfig['recommendedServices'], static fn ($svc): bool => is_string($svc) && $svc !== ''))
+    : [];
+$hasAnyServiceCredentials = false;
+foreach ((array) ($projectConfig['services'] ?? []) as $svcEnabled) {
+    if (!empty($svcEnabled)) {
+        $hasAnyServiceCredentials = true;
+        break;
+    }
+}
+if (!$hasAnyServiceCredentials && $recommendedServices !== []) {
+    $servicesPrefilled = is_array($projectConfig['services'] ?? null) ? $projectConfig['services'] : [];
+    foreach ($recommendedServices as $svc) {
+        if (isset($dockerServices[$svc])) {
+            $servicesPrefilled[$svc] = true;
+        }
+    }
+    $projectConfig['services'] = $servicesPrefilled;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newConfig = ['services' => [], 'credentials' => []];
     foreach ($dockerServices as $serviceKey => $serviceConfig) {
@@ -92,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($newConfig['containerized']) || !empty($newConfig['services'])) {
             station_ensure_project_dockerfile($projectSlug, !empty($newConfig['forceRebuildDockerfile']));
+            station_ensure_docker_service_stub_files($projectSlug, (array) ($newConfig['services'] ?? []));
             $composePath = station_projects_dir() . '/' . $projectSlug . '/docker-compose.yml';
             $composeContent = station_generate_docker_compose($newConfig);
             if (@file_put_contents($composePath, $composeContent, LOCK_EX) !== false) {

@@ -19,10 +19,10 @@ function station_docker_services(): array
 {
     return [
         'mysql' => [
-            'name' => 'MySQL / MariaDB',
+            'name' => 'MySQL',
             'icon' => '🐬',
-            'description' => 'Relational database with MariaDB compatibility',
-            'versions' => ['8.0', '5.7', 'mariadb-11', 'mariadb-10.6'],
+            'description' => 'Relational database (MySQL 8.x).',
+            'versions' => ['8.0', '5.7'],
             'defaultVersion' => '8.0',
             'requiredEnvVars' => [
                 'MYSQL_ROOT_PASSWORD' => 'Root password for database',
@@ -31,10 +31,23 @@ function station_docker_services(): array
                 'MYSQL_PASSWORD' => 'Database user password (optional)',
             ],
         ],
+        'mariadb' => [
+            'name' => 'MariaDB',
+            'icon' => '🐚',
+            'description' => 'MariaDB — community fork of MySQL.',
+            'versions' => ['11', '10.11', '10.6'],
+            'defaultVersion' => '11',
+            'requiredEnvVars' => [
+                'MARIADB_ROOT_PASSWORD' => 'Root password for database',
+                'MARIADB_DATABASE' => 'Default database name (optional)',
+                'MARIADB_USER' => 'Database user (optional)',
+                'MARIADB_PASSWORD' => 'Database user password (optional)',
+            ],
+        ],
         'postgres' => [
             'name' => 'PostgreSQL',
             'icon' => '🐘',
-            'description' => 'Advanced open-source relational database',
+            'description' => 'Advanced open-source relational database.',
             'versions' => ['16', '15', '14', '13'],
             'defaultVersion' => '16',
             'requiredEnvVars' => [
@@ -46,9 +59,9 @@ function station_docker_services(): array
         'redis' => [
             'name' => 'Redis',
             'icon' => '⚡',
-            'description' => 'In-memory data store for caching and sessions',
-            'versions' => ['7', '6'],
-            'defaultVersion' => '7',
+            'description' => 'In-memory data store for caching and sessions.',
+            'versions' => ['7.4', '7.2', '7', '6'],
+            'defaultVersion' => '7.4',
             'requiredEnvVars' => [
                 'REDIS_PASSWORD' => 'Optional password',
             ],
@@ -56,7 +69,7 @@ function station_docker_services(): array
         'mongodb' => [
             'name' => 'MongoDB',
             'icon' => '🍃',
-            'description' => 'NoSQL document database',
+            'description' => 'NoSQL document database.',
             'versions' => ['7.0', '6.0', '5.0'],
             'defaultVersion' => '7.0',
             'requiredEnvVars' => [
@@ -68,9 +81,9 @@ function station_docker_services(): array
         'elasticsearch' => [
             'name' => 'Elasticsearch',
             'icon' => '🔍',
-            'description' => 'Search and analytics engine',
-            'versions' => ['8.13.0', '8.0.0', '7.17.0'],
-            'defaultVersion' => '8.13.0',
+            'description' => 'Search and analytics engine.',
+            'versions' => ['8.15.0', '8.13.0', '8.0.0', '7.17.0'],
+            'defaultVersion' => '8.15.0',
             'requiredEnvVars' => [
                 'ELASTIC_USERNAME' => 'Username (default: elastic)',
                 'ELASTIC_PASSWORD' => 'Password for elastic user',
@@ -79,13 +92,171 @@ function station_docker_services(): array
         'rabbitmq' => [
             'name' => 'RabbitMQ',
             'icon' => '🐢',
-            'description' => 'Message broker for asynchronous communication',
+            'description' => 'Message broker for asynchronous communication.',
             'versions' => ['3.13-management', '3.12-management', '3.11-management'],
             'defaultVersion' => '3.13-management',
             'requiredEnvVars' => [
                 'RABBITMQ_DEFAULT_USER' => 'Default RabbitMQ username',
                 'RABBITMQ_DEFAULT_PASS' => 'Default RabbitMQ password',
                 'RABBITMQ_DEFAULT_VHOST' => 'Default virtual host (optional)',
+            ],
+        ],
+        'meilisearch' => [
+            'name' => 'Meilisearch',
+            'icon' => '🔎',
+            'description' => 'Lightning-fast, typo-tolerant search engine.',
+            'versions' => ['v1.10', 'v1.9', 'v1.8'],
+            'defaultVersion' => 'v1.10',
+            'requiredEnvVars' => [
+                'MEILI_MASTER_KEY' => 'Master API key (required in production).',
+            ],
+        ],
+        'minio' => [
+            'name' => 'MinIO',
+            'icon' => '🪣',
+            'description' => 'S3-compatible object storage. API on :9000, console on :9001.',
+            'versions' => ['latest'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [
+                'MINIO_ROOT_USER' => 'Console / API root user.',
+                'MINIO_ROOT_PASSWORD' => 'Console / API root password.',
+            ],
+        ],
+        'mailpit' => [
+            'name' => 'Mailpit',
+            'icon' => '📬',
+            'description' => 'SMTP test server with web UI. Catch outbound mail in dev.',
+            'versions' => ['latest', 'v1.20'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [],
+        ],
+        'memcached' => [
+            'name' => 'Memcached',
+            'icon' => '🧠',
+            'description' => 'High-performance distributed memory cache.',
+            'versions' => ['1.6-alpine', '1.6'],
+            'defaultVersion' => '1.6-alpine',
+            'requiredEnvVars' => [],
+        ],
+        'clickhouse' => [
+            'name' => 'ClickHouse',
+            'icon' => '📊',
+            'description' => 'Columnar OLAP database for analytics.',
+            'versions' => ['latest', '24.8', '24.3'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [
+                'CLICKHOUSE_USER' => 'Default user.',
+                'CLICKHOUSE_PASSWORD' => 'Default user password.',
+                'CLICKHOUSE_DB' => 'Default database name.',
+            ],
+        ],
+        'influxdb' => [
+            'name' => 'InfluxDB',
+            'icon' => '📈',
+            'description' => 'Time-series database for metrics & events.',
+            'versions' => ['2.7'],
+            'defaultVersion' => '2.7',
+            'requiredEnvVars' => [
+                'DOCKER_INFLUXDB_INIT_USERNAME' => 'Initial admin username.',
+                'DOCKER_INFLUXDB_INIT_PASSWORD' => 'Initial admin password.',
+                'DOCKER_INFLUXDB_INIT_ORG' => 'Initial organization name.',
+                'DOCKER_INFLUXDB_INIT_BUCKET' => 'Initial bucket name.',
+                'DOCKER_INFLUXDB_INIT_ADMIN_TOKEN' => 'Initial admin token.',
+            ],
+        ],
+        'adminer' => [
+            'name' => 'Adminer',
+            'icon' => '🗃️',
+            'description' => 'Web-based database admin tool. Auto-connects to other DB services on the app network.',
+            'versions' => ['latest', '4'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [],
+        ],
+        'mongo-express' => [
+            'name' => 'Mongo Express',
+            'icon' => '🍀',
+            'description' => 'Web-based MongoDB admin UI. Best paired with the MongoDB service.',
+            'versions' => ['latest', '1.0'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [
+                'ME_CONFIG_BASICAUTH_USERNAME' => 'UI login user.',
+                'ME_CONFIG_BASICAUTH_PASSWORD' => 'UI login password.',
+            ],
+        ],
+        'pgadmin' => [
+            'name' => 'pgAdmin',
+            'icon' => '🐘',
+            'description' => 'Web-based PostgreSQL admin UI. Best paired with the PostgreSQL service.',
+            'versions' => ['latest'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [
+                'PGADMIN_DEFAULT_EMAIL' => 'Login email (also used as admin user).',
+                'PGADMIN_DEFAULT_PASSWORD' => 'Admin password.',
+            ],
+        ],
+        'caddy' => [
+            'name' => 'Caddy',
+            'icon' => '🌳',
+            'description' => 'Automatic HTTPS web server / reverse proxy. Mounts a Caddyfile when present.',
+            'versions' => ['2-alpine', '2'],
+            'defaultVersion' => '2-alpine',
+            'requiredEnvVars' => [],
+        ],
+        'neo4j' => [
+            'name' => 'Neo4j',
+            'icon' => '🕸️',
+            'description' => 'Graph database. Bolt on :7687, browser on :7474.',
+            'versions' => ['5', '4.4'],
+            'defaultVersion' => '5',
+            'requiredEnvVars' => [
+                'NEO4J_AUTH' => 'Login credentials in the form user/password.',
+            ],
+        ],
+        'kafka' => [
+            'name' => 'Kafka',
+            'icon' => '📨',
+            'description' => 'Apache Kafka (Bitnami image, KRaft mode — no Zookeeper).',
+            'versions' => ['3.7', '3.6'],
+            'defaultVersion' => '3.7',
+            'requiredEnvVars' => [
+                'KAFKA_CFG_NODE_ID' => 'Node ID (defaults to 0).',
+                'KAFKA_CFG_PROCESS_ROLES' => 'controller,broker for single-node KRaft.',
+            ],
+        ],
+        'nats' => [
+            'name' => 'NATS',
+            'icon' => '📡',
+            'description' => 'Lightweight cloud-native messaging system.',
+            'versions' => ['2.10-alpine', '2.10'],
+            'defaultVersion' => '2.10-alpine',
+            'requiredEnvVars' => [],
+        ],
+        'typesense' => [
+            'name' => 'Typesense',
+            'icon' => '🔡',
+            'description' => 'Open-source typo-tolerant search engine.',
+            'versions' => ['27.0', '0.25.2'],
+            'defaultVersion' => '27.0',
+            'requiredEnvVars' => [
+                'TYPESENSE_API_KEY' => 'API key (required).',
+            ],
+        ],
+        'prometheus' => [
+            'name' => 'Prometheus',
+            'icon' => '📐',
+            'description' => 'Metrics scraping and time-series storage. Auto-creates a stub config.',
+            'versions' => ['latest', 'v2.54.1'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [],
+        ],
+        'grafana' => [
+            'name' => 'Grafana',
+            'icon' => '📊',
+            'description' => 'Dashboards for metrics, logs, and traces.',
+            'versions' => ['latest', '10.4.0'],
+            'defaultVersion' => 'latest',
+            'requiredEnvVars' => [
+                'GF_SECURITY_ADMIN_PASSWORD' => 'Initial admin password (user is "admin").',
             ],
         ],
     ];
@@ -134,6 +305,7 @@ function station_docker_settings(): array
         'defaultDatabase' => $defaultDatabase,
         'services' => $services,
         'dockerBinaryPath' => trim((string) ($stored['dockerBinaryPath'] ?? '')),
+        'composeBinaryPath' => trim((string) ($stored['composeBinaryPath'] ?? '')),
     ];
 }
 
@@ -293,7 +465,7 @@ function station_build_project_dockerfile(string $projectPath): string
 
         $buildStep = $hasBuild ? "RUN npm run build || echo 'skip build'\n" : '';
         return <<<DOCKER
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 ENV HOST=0.0.0.0
 ENV PORT=3000
@@ -308,7 +480,7 @@ DOCKER;
 
     if (is_file($projectPath . '/requirements.txt')) {
         return <<<'DOCKER'
-FROM python:3.12-slim
+FROM python:3.13-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
@@ -377,6 +549,15 @@ function station_generate_docker_compose(array $projectConfig): string
                 $projectConfig['credentials'][$serviceKey] ?? []
             );
             $enabledServiceKeys[] = $serviceKey;
+        }
+
+        // Wire up inter-service `depends_on:` (e.g. mongo-express → mongodb).
+        foreach ($enabledServiceKeys as $serviceKey) {
+            $dependencies = station_docker_service_dependencies($serviceKey, $projectConfig['services']);
+            if ($dependencies === []) {
+                continue;
+            }
+            $services[$serviceKey]['depends_on'] = $dependencies;
         }
     }
 
@@ -451,9 +632,19 @@ function station_build_service_compose_block(string $serviceKey, array $serviceC
         'networks' => ['app-network'],
     ];
 
+    $command = station_docker_service_command($serviceKey);
+    if ($command !== null) {
+        $block['command'] = $command;
+    }
+
     $env = station_docker_service_env_vars($serviceKey, $credentials);
     if ($env) {
         $block['environment'] = $env;
+    }
+
+    $ports = station_docker_service_host_ports($serviceKey);
+    if ($ports !== []) {
+        $block['ports'] = $ports;
     }
 
     $volumes = station_docker_service_volumes($serviceKey);
@@ -470,19 +661,146 @@ function station_build_service_compose_block(string $serviceKey, array $serviceC
 }
 
 /**
+ * Optional `command:` overrides for services that need custom args
+ * (e.g. MinIO has to be told which mode + console-address to use).
+ */
+function station_docker_service_command(string $serviceKey): array|string|null
+{
+    $commands = [
+        'minio' => ['server', '/data', '--console-address', ':9001'],
+        'meilisearch' => ['meilisearch', '--no-analytics'],
+        'typesense' => ['--data-dir', '/data', '--enable-cors'],
+    ];
+
+    return $commands[$serviceKey] ?? null;
+}
+
+/**
+ * Host port mappings to expose a service's web UI / inbound port to the
+ * developer's machine. Only services with a useful UI or developer-facing
+ * port are exposed; everything else stays on the internal app-network.
+ *
+ * @return string[]
+ */
+function station_docker_service_host_ports(string $serviceKey): array
+{
+    $ports = [
+        'mailpit' => ['8025:8025', '1025:1025'],
+        'minio' => ['9000:9000', '9001:9001'],
+        'adminer' => ['8080:8080'],
+        'mongo-express' => ['8081:8081'],
+        'pgadmin' => ['5050:80'],
+        'caddy' => ['80:80', '443:443'],
+        'neo4j' => ['7474:7474', '7687:7687'],
+        'prometheus' => ['9090:9090'],
+        'grafana' => ['3001:3000'],
+        'rabbitmq' => ['15672:15672'],
+    ];
+
+    return $ports[$serviceKey] ?? [];
+}
+
+/**
+ * Optional `depends_on:` declarations for services that need another
+ * service to be up first (e.g. mongo-express needs mongodb to exist).
+ *
+ * @return string[]
+ */
+function station_docker_service_dependencies(string $serviceKey, array $enabledServices): array
+{
+    $deps = [];
+    if ($serviceKey === 'mongo-express' && !empty($enabledServices['mongodb'])) {
+        $deps[] = 'mongodb';
+    }
+    if ($serviceKey === 'pgadmin' && !empty($enabledServices['postgres'])) {
+        $deps[] = 'postgres';
+    }
+    return $deps;
+}
+
+/**
+ * Ensure any auxiliary config files a service needs are present in the
+ * project directory before docker-compose starts the service. Called by
+ * the compose generator after writing docker-compose.yml.
+ *
+ * Currently:
+ *   - prometheus → writes a no-op prometheus.yml if missing.
+ *   - caddy      → writes a starter Caddyfile if missing.
+ */
+function station_ensure_docker_service_stub_files(string $projectSlug, array $enabledServices): void
+{
+    $projectPath = station_projects_dir() . '/' . station_safe_name($projectSlug);
+    if (!is_dir($projectPath)) {
+        return;
+    }
+
+    if (!empty($enabledServices['prometheus'])) {
+        $promPath = $projectPath . '/prometheus.yml';
+        if (!is_file($promPath)) {
+            $stub = <<<'YAML'
+# Auto-generated stub by Deployment Station — replace with real scrape jobs.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+YAML;
+            @file_put_contents($promPath, $stub, LOCK_EX);
+        }
+    }
+
+    if (!empty($enabledServices['caddy'])) {
+        $caddyPath = $projectPath . '/Caddyfile';
+        if (!is_file($caddyPath)) {
+            $stub = <<<'CADDY'
+# Auto-generated stub by Deployment Station — replace with real routes.
+:80 {
+    respond "Caddy is running for {{slug}}." 200
+}
+CADDY;
+            $stub = str_replace('{{slug}}', station_safe_name($projectSlug), $stub);
+            @file_put_contents($caddyPath, $stub, LOCK_EX);
+        }
+    }
+}
+
+/**
  * Get Docker image string for a service
  */
 function station_docker_service_image(string $serviceKey, string $version): string
 {
     $images = [
         'mysql' => 'mysql',
+        'mariadb' => 'mariadb',
         'postgres' => 'postgres',
         'redis' => 'redis',
         'mongodb' => 'mongo',
         'elasticsearch' => 'docker.elastic.co/elasticsearch/elasticsearch',
         'rabbitmq' => 'rabbitmq',
+        'meilisearch' => 'getmeili/meilisearch',
+        'minio' => 'quay.io/minio/minio',
+        'mailpit' => 'axllent/mailpit',
+        'memcached' => 'memcached',
+        'clickhouse' => 'clickhouse/clickhouse-server',
+        'influxdb' => 'influxdb',
+        'adminer' => 'adminer',
+        'mongo-express' => 'mongo-express',
+        'pgadmin' => 'dpage/pgadmin4',
+        'caddy' => 'caddy',
+        'neo4j' => 'neo4j',
+        'kafka' => 'bitnami/kafka',
+        'nats' => 'nats',
+        'typesense' => 'typesense/typesense',
+        'prometheus' => 'prom/prometheus',
+        'grafana' => 'grafana/grafana',
     ];
 
+    // Backwards-compat: older configs may still pass mariadb-X as the
+    // "mysql" service version; redirect it to the real mariadb image.
     if ($serviceKey === 'mysql' && str_starts_with($version, 'mariadb-')) {
         return 'mariadb:' . substr($version, strlen('mariadb-'));
     }
@@ -510,6 +828,15 @@ function station_docker_service_env_vars(string $serviceKey, array $credentials)
             if (!empty($credentials['user'])) {
                 $env['MYSQL_USER'] = (string) $credentials['user'];
                 $env['MYSQL_PASSWORD'] = $pick($credentials, 'password', 'password123');
+            }
+            break;
+
+        case 'mariadb':
+            $env['MARIADB_ROOT_PASSWORD'] = $pick($credentials, 'rootPassword', 'rootpass123');
+            $env['MARIADB_DATABASE'] = $pick($credentials, 'database', 'app_db');
+            if (!empty($credentials['user'])) {
+                $env['MARIADB_USER'] = (string) $credentials['user'];
+                $env['MARIADB_PASSWORD'] = $pick($credentials, 'password', 'password123');
             }
             break;
 
@@ -543,6 +870,86 @@ function station_docker_service_env_vars(string $serviceKey, array $credentials)
             $env['RABBITMQ_DEFAULT_USER'] = $pick($credentials, 'user', 'guest');
             $env['RABBITMQ_DEFAULT_PASS'] = $pick($credentials, 'password', 'guest');
             break;
+
+        case 'meilisearch':
+            $env['MEILI_ENV'] = 'development';
+            $env['MEILI_MASTER_KEY'] = $pick($credentials, 'masterKey', 'masterKey123');
+            break;
+
+        case 'minio':
+            $env['MINIO_ROOT_USER'] = $pick($credentials, 'user', 'minioadmin');
+            $env['MINIO_ROOT_PASSWORD'] = $pick($credentials, 'password', 'minioadmin');
+            break;
+
+        case 'clickhouse':
+            $env['CLICKHOUSE_USER'] = $pick($credentials, 'user', 'default');
+            $env['CLICKHOUSE_PASSWORD'] = $pick($credentials, 'password', 'clickhouse');
+            $env['CLICKHOUSE_DB'] = $pick($credentials, 'database', 'app_db');
+            $env['CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT'] = '1';
+            break;
+
+        case 'influxdb':
+            $env['DOCKER_INFLUXDB_INIT_MODE'] = 'setup';
+            $env['DOCKER_INFLUXDB_INIT_USERNAME'] = $pick($credentials, 'user', 'admin');
+            $env['DOCKER_INFLUXDB_INIT_PASSWORD'] = $pick($credentials, 'password', 'influxdb123');
+            $env['DOCKER_INFLUXDB_INIT_ORG'] = $pick($credentials, 'org', 'station');
+            $env['DOCKER_INFLUXDB_INIT_BUCKET'] = $pick($credentials, 'database', 'app_bucket');
+            $env['DOCKER_INFLUXDB_INIT_ADMIN_TOKEN'] = $pick($credentials, 'adminToken', 'influxdb-admin-token');
+            break;
+
+        case 'mongo-express':
+            $env['ME_CONFIG_MONGODB_SERVER'] = 'mongodb';
+            $env['ME_CONFIG_MONGODB_PORT'] = '27017';
+            $env['ME_CONFIG_MONGODB_ADMINUSERNAME'] = $pick($credentials, 'mongoUser', 'root');
+            $env['ME_CONFIG_MONGODB_ADMINPASSWORD'] = $pick($credentials, 'mongoPassword', 'password123');
+            $env['ME_CONFIG_BASICAUTH_USERNAME'] = $pick($credentials, 'user', 'admin');
+            $env['ME_CONFIG_BASICAUTH_PASSWORD'] = $pick($credentials, 'password', 'admin123');
+            break;
+
+        case 'pgadmin':
+            $env['PGADMIN_DEFAULT_EMAIL'] = $pick($credentials, 'user', 'admin@example.com');
+            $env['PGADMIN_DEFAULT_PASSWORD'] = $pick($credentials, 'password', 'pgadmin123');
+            $env['PGADMIN_LISTEN_PORT'] = '80';
+            break;
+
+        case 'neo4j':
+            $neo4jUser = $pick($credentials, 'user', 'neo4j');
+            $neo4jPassword = $pick($credentials, 'password', 'neo4jpass123');
+            $env['NEO4J_AUTH'] = $neo4jUser . '/' . $neo4jPassword;
+            break;
+
+        case 'kafka':
+            // KRaft single-node controller+broker configuration. Advanced
+            // multi-broker setups should override these in admin-side YAML.
+            $env['KAFKA_CFG_NODE_ID'] = '0';
+            $env['KAFKA_CFG_PROCESS_ROLES'] = 'controller,broker';
+            $env['KAFKA_CFG_CONTROLLER_QUORUM_VOTERS'] = '0@kafka:9093';
+            $env['KAFKA_CFG_LISTENERS'] = 'PLAINTEXT://:9092,CONTROLLER://:9093';
+            $env['KAFKA_CFG_ADVERTISED_LISTENERS'] = 'PLAINTEXT://kafka:9092';
+            $env['KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP'] = 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT';
+            $env['KAFKA_CFG_CONTROLLER_LISTENER_NAMES'] = 'CONTROLLER';
+            $env['KAFKA_CFG_INTER_BROKER_LISTENER_NAME'] = 'PLAINTEXT';
+            $env['ALLOW_PLAINTEXT_LISTENER'] = 'yes';
+            break;
+
+        case 'typesense':
+            $env['TYPESENSE_API_KEY'] = $pick($credentials, 'masterKey', 'typesensekey123');
+            $env['TYPESENSE_DATA_DIR'] = '/data';
+            break;
+
+        case 'grafana':
+            $env['GF_SECURITY_ADMIN_USER'] = $pick($credentials, 'user', 'admin');
+            $env['GF_SECURITY_ADMIN_PASSWORD'] = $pick($credentials, 'password', 'grafana123');
+            break;
+
+        case 'mailpit':
+        case 'memcached':
+        case 'adminer':
+        case 'caddy':
+        case 'nats':
+        case 'prometheus':
+            // No environment variables required for these services.
+            break;
     }
 
     return $env;
@@ -555,10 +962,23 @@ function station_docker_service_volumes(string $serviceKey): array
 {
     $volumes = [
         'mysql' => ['mysql-data:/var/lib/mysql'],
+        'mariadb' => ['mariadb-data:/var/lib/mysql'],
         'postgres' => ['postgres-data:/var/lib/postgresql/data'],
         'mongodb' => ['mongodb-data:/data/db'],
         'redis' => ['redis-data:/data'],
         'elasticsearch' => ['elasticsearch-data:/usr/share/elasticsearch/data'],
+        'rabbitmq' => ['rabbitmq-data:/var/lib/rabbitmq'],
+        'meilisearch' => ['meilisearch-data:/meili_data'],
+        'minio' => ['minio-data:/data'],
+        'clickhouse' => ['clickhouse-data:/var/lib/clickhouse'],
+        'influxdb' => ['influxdb-data:/var/lib/influxdb2'],
+        'pgadmin' => ['pgadmin-data:/var/lib/pgadmin'],
+        'caddy' => ['caddy-data:/data', 'caddy-config:/config'],
+        'neo4j' => ['neo4j-data:/data'],
+        'kafka' => ['kafka-data:/bitnami/kafka'],
+        'typesense' => ['typesense-data:/data'],
+        'prometheus' => ['prometheus-data:/prometheus', './prometheus.yml:/etc/prometheus/prometheus.yml:ro'],
+        'grafana' => ['grafana-data:/var/lib/grafana'],
     ];
 
     return $volumes[$serviceKey] ?? [];
@@ -572,6 +992,13 @@ function station_docker_service_health_check(string $serviceKey): ?array
     $checks = [
         'mysql' => [
             'test' => ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+            'interval' => '10s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '30s',
+        ],
+        'mariadb' => [
+            'test' => ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized'],
             'interval' => '10s',
             'timeout' => '5s',
             'retries' => 10,
@@ -598,6 +1025,86 @@ function station_docker_service_health_check(string $serviceKey): ?array
             'retries' => 10,
             'start_period' => '30s',
         ],
+        'elasticsearch' => [
+            'test' => ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '40s',
+        ],
+        'rabbitmq' => [
+            'test' => ['CMD', 'rabbitmq-diagnostics', 'ping'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '30s',
+        ],
+        'meilisearch' => [
+            'test' => ['CMD-SHELL', 'wget -qO- http://localhost:7700/health || exit 1'],
+            'interval' => '10s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '20s',
+        ],
+        'minio' => [
+            'test' => ['CMD-SHELL', 'curl -f http://localhost:9000/minio/health/live || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '30s',
+        ],
+        'mailpit' => [
+            'test' => ['CMD-SHELL', 'wget -qO- http://localhost:8025/api/v1/info || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '15s',
+        ],
+        'clickhouse' => [
+            'test' => ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '30s',
+        ],
+        'influxdb' => [
+            'test' => ['CMD-SHELL', 'curl -fsS http://localhost:8086/ping || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '30s',
+        ],
+        'neo4j' => [
+            'test' => ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '40s',
+        ],
+        'typesense' => [
+            'test' => ['CMD-SHELL', 'wget -qO- http://localhost:8108/health || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '20s',
+        ],
+        'prometheus' => [
+            'test' => ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:9090/-/ready || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '20s',
+        ],
+        'grafana' => [
+            'test' => ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1'],
+            'interval' => '15s',
+            'timeout' => '5s',
+            'retries' => 10,
+            'start_period' => '25s',
+        ],
+        // memcached/adminer/caddy/nats/mongo-express/pgadmin/kafka — no
+        // health-check probes set here (kafka's KRaft startup is slow,
+        // leaving it out keeps `depends_on: service_started`).
     ];
 
     return $checks[$serviceKey] ?? null;
@@ -673,6 +1180,99 @@ function station_build_app_env_vars(array $projectConfig): array
             $user = $pickStr($creds, 'user', 'guest');
             $password = $pickStr($creds, 'password', 'guest');
             $env['RABBITMQ_URL'] = 'amqp://' . $user . ':' . $password . '@rabbitmq:5672';
+        }
+
+        if (!empty($projectConfig['services']['mariadb'])) {
+            $creds = $projectConfig['credentials']['mariadb'] ?? [];
+            $env['MARIADB_HOST'] = 'mariadb';
+            $env['MARIADB_PORT'] = '3306';
+            $env['MARIADB_DATABASE'] = $pickStr($creds, 'database', 'app_db');
+            $env['MARIADB_USER'] = $pickStr($creds, 'user', 'root');
+            $env['MARIADB_PASSWORD'] = $pickStr($creds, 'password', '');
+            $env['MARIADB_ROOT_PASSWORD'] = $pickStr($creds, 'rootPassword', '');
+        }
+
+        if (!empty($projectConfig['services']['meilisearch'])) {
+            $creds = $projectConfig['credentials']['meilisearch'] ?? [];
+            $env['MEILISEARCH_URL'] = 'http://meilisearch:7700';
+            $env['MEILI_MASTER_KEY'] = $pickStr($creds, 'masterKey', 'masterKey123');
+        }
+
+        if (!empty($projectConfig['services']['minio'])) {
+            $creds = $projectConfig['credentials']['minio'] ?? [];
+            $env['S3_ENDPOINT'] = 'http://minio:9000';
+            $env['S3_ACCESS_KEY_ID'] = $pickStr($creds, 'user', 'minioadmin');
+            $env['S3_SECRET_ACCESS_KEY'] = $pickStr($creds, 'password', 'minioadmin');
+            $env['S3_USE_PATH_STYLE'] = 'true';
+        }
+
+        if (!empty($projectConfig['services']['mailpit'])) {
+            $env['MAIL_HOST'] = 'mailpit';
+            $env['MAIL_PORT'] = '1025';
+            $env['MAIL_FROM'] = 'no-reply@example.com';
+        }
+
+        if (!empty($projectConfig['services']['memcached'])) {
+            $env['MEMCACHED_HOST'] = 'memcached';
+            $env['MEMCACHED_PORT'] = '11211';
+        }
+
+        if (!empty($projectConfig['services']['clickhouse'])) {
+            $creds = $projectConfig['credentials']['clickhouse'] ?? [];
+            $user = $pickStr($creds, 'user', 'default');
+            $password = $pickStr($creds, 'password', 'clickhouse');
+            $database = $pickStr($creds, 'database', 'app_db');
+            $env['CLICKHOUSE_URL'] = 'http://' . $user . ':' . $password . '@clickhouse:8123/' . $database;
+            $env['CLICKHOUSE_HOST'] = 'clickhouse';
+            $env['CLICKHOUSE_PORT'] = '8123';
+            $env['CLICKHOUSE_USER'] = $user;
+            $env['CLICKHOUSE_PASSWORD'] = $password;
+            $env['CLICKHOUSE_DB'] = $database;
+        }
+
+        if (!empty($projectConfig['services']['influxdb'])) {
+            $creds = $projectConfig['credentials']['influxdb'] ?? [];
+            $env['INFLUXDB_URL'] = 'http://influxdb:8086';
+            $env['INFLUXDB_ORG'] = $pickStr($creds, 'org', 'station');
+            $env['INFLUXDB_BUCKET'] = $pickStr($creds, 'database', 'app_bucket');
+            $env['INFLUXDB_TOKEN'] = $pickStr($creds, 'adminToken', 'influxdb-admin-token');
+        }
+
+        if (!empty($projectConfig['services']['neo4j'])) {
+            $creds = $projectConfig['credentials']['neo4j'] ?? [];
+            $user = $pickStr($creds, 'user', 'neo4j');
+            $password = $pickStr($creds, 'password', 'neo4jpass123');
+            $env['NEO4J_URI'] = 'bolt://neo4j:7687';
+            $env['NEO4J_USER'] = $user;
+            $env['NEO4J_PASSWORD'] = $password;
+        }
+
+        if (!empty($projectConfig['services']['kafka'])) {
+            // TODO: Kafka clients vary wildly in env var conventions.
+            // We inject the bootstrap servers — additional KAFKA_*
+            // settings should be supplied by the caller as needed.
+            $env['KAFKA_BOOTSTRAP_SERVERS'] = 'kafka:9092';
+            $env['KAFKA_BROKERS'] = 'kafka:9092';
+        }
+
+        if (!empty($projectConfig['services']['nats'])) {
+            $env['NATS_URL'] = 'nats://nats:4222';
+        }
+
+        if (!empty($projectConfig['services']['typesense'])) {
+            $creds = $projectConfig['credentials']['typesense'] ?? [];
+            $env['TYPESENSE_HOST'] = 'typesense';
+            $env['TYPESENSE_PORT'] = '8108';
+            $env['TYPESENSE_PROTOCOL'] = 'http';
+            $env['TYPESENSE_API_KEY'] = $pickStr($creds, 'masterKey', 'typesensekey123');
+        }
+
+        if (!empty($projectConfig['services']['grafana'])) {
+            $env['GRAFANA_URL'] = 'http://grafana:3000';
+        }
+
+        if (!empty($projectConfig['services']['prometheus'])) {
+            $env['PROMETHEUS_URL'] = 'http://prometheus:9090';
         }
     }
 
@@ -756,6 +1356,63 @@ function station_yaml_scalar($value): string
     }
 
     return $value;
+}
+
+/**
+ * Writable HOME directory used when shelling out to docker/compose.
+ *
+ * PHP-FPM's www-data inherits HOME=/var/www which is (a) not writable and
+ * (b) outside /home — snap-installed docker hard-refuses anything outside
+ * /home, and `docker` itself also wants to drop ~/.docker/config.json.
+ * We park everything under the station data dir so it's permanent across
+ * restarts but isolated from real user homes.
+ */
+function station_docker_runtime_home(): string
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $base = function_exists('station_data_dir')
+        ? station_data_dir() . '/docker-home'
+        : sys_get_temp_dir() . '/deploy-station-docker-home';
+
+    if (!is_dir($base)) {
+        @mkdir($base, 0700, true);
+    }
+
+    foreach (['.docker', '.config', '.cache', '.local', '.local/share', '.local/state'] as $sub) {
+        $path = $base . '/' . $sub;
+        if (!is_dir($path)) {
+            @mkdir($path, 0700, true);
+        }
+    }
+
+    $cached = $base;
+    return $cached;
+}
+
+/**
+ * True if the resolved docker binary lives inside a snap install. Snap docker
+ * has confined-home requirements that make it a poor fit for PHP-FPM; we
+ * surface this in diagnostics so admins know to switch to docker-ce/docker.io.
+ */
+function station_docker_is_snap(?string $binary = null): bool
+{
+    $resolved = $binary ?? station_docker_binary();
+    $resolved = (string) $resolved;
+    if ($resolved === '') {
+        return false;
+    }
+    if (str_starts_with($resolved, '/snap/') || str_starts_with($resolved, '/var/lib/snapd/')) {
+        return true;
+    }
+    $real = @readlink($resolved);
+    if (is_string($real) && (str_starts_with($real, '/snap/') || str_starts_with($real, '/var/lib/snapd/'))) {
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -862,14 +1519,52 @@ function station_docker_binary(): string
 }
 
 /**
+ * Candidate paths for the Compose v2 binary when it is not available as
+ * `docker compose` (missing CLI plugin). The same binary is often installed
+ * as `docker-compose` or under Docker's cli-plugins directory.
+ *
+ * @return list<string>
+ */
+function station_docker_compose_binary_candidates(): array
+{
+    $out = [];
+    if (function_exists('station_docker_settings')) {
+        $configured = trim((string) (station_docker_settings()['composeBinaryPath'] ?? ''));
+        if ($configured !== '') {
+            $out[] = $configured;
+        }
+    }
+    return array_merge($out, [
+        '/usr/local/bin/docker-compose',
+        '/usr/bin/docker-compose',
+        '/usr/libexec/docker/cli-plugins/docker-compose',
+        '/usr/lib/docker/cli-plugins/docker-compose',
+        '/usr/local/lib/docker/cli-plugins/docker-compose',
+        '/opt/homebrew/bin/docker-compose',
+    ]);
+}
+
+/**
  * Resolve the standalone docker-compose binary path (only used as a fallback
  * when the v2 compose plugin is not installed).
  */
 function station_docker_compose_binary(): string
 {
+    static $cacheKey = null;
     static $cached = null;
-    if ($cached !== null) {
+
+    $settings = function_exists('station_docker_settings') ? station_docker_settings() : [];
+    $key = trim((string) ($settings['composeBinaryPath'] ?? ''));
+    if ($cached !== null && $cacheKey === $key) {
         return $cached;
+    }
+
+    foreach (station_docker_compose_binary_candidates() as $candidate) {
+        if ($candidate !== '' && is_file($candidate) && is_executable($candidate)) {
+            $cached = $candidate;
+            $cacheKey = $key;
+            return $cached;
+        }
     }
 
     $runtimePath = station_docker_runtime_path();
@@ -878,16 +1573,13 @@ function station_docker_compose_binary(): string
         $candidate = trim($shellCheck);
         if ($candidate !== '' && is_file($candidate) && is_executable($candidate)) {
             $cached = $candidate;
+            $cacheKey = $key;
             return $cached;
         }
     }
-    foreach (['/usr/local/bin/docker-compose', '/opt/homebrew/bin/docker-compose', '/usr/bin/docker-compose'] as $candidate) {
-        if (is_file($candidate) && is_executable($candidate)) {
-            $cached = $candidate;
-            return $cached;
-        }
-    }
+
     $cached = 'docker-compose';
+    $cacheKey = $key;
     return $cached;
 }
 
@@ -899,16 +1591,34 @@ function station_docker_compose_binary(): string
  */
 function station_docker_compose_cli(): array
 {
+    static $cacheKey = null;
     static $cached = null;
-    if ($cached !== null) {
+
+    $settings = station_docker_settings();
+    $key = trim((string) ($settings['dockerBinaryPath'] ?? ''))
+        . "\0" . trim((string) ($settings['composeBinaryPath'] ?? ''));
+    if ($cached !== null && $cacheKey === $key) {
         return $cached;
     }
 
     $docker = station_docker_binary();
+    $composeOverride = trim((string) (station_docker_settings()['composeBinaryPath'] ?? ''));
+
+    // Admin explicitly pinned a standalone compose binary — honor it first.
+    if ($composeOverride !== '' && is_file($composeOverride) && is_executable($composeOverride)) {
+        $probe = station_run_shell_cmd([$composeOverride, 'version'], null, 5);
+        if (($probe['code'] ?? 1) === 0) {
+            $cached = [$composeOverride];
+            $cacheKey = $key;
+            return $cached;
+        }
+        // Fall through: bad path or broken binary — still try plugin + auto-detect.
+    }
 
     $result = station_run_shell_cmd([$docker, 'compose', 'version'], null, 5);
     if (($result['code'] ?? 1) === 0) {
         $cached = [$docker, 'compose'];
+        $cacheKey = $key;
         return $cached;
     }
 
@@ -916,11 +1626,21 @@ function station_docker_compose_cli(): array
     $result = station_run_shell_cmd([$standalone, 'version'], null, 5);
     if (($result['code'] ?? 1) === 0) {
         $cached = [$standalone];
+        $cacheKey = $key;
         return $cached;
     }
 
-    // Default to the v2 invocation even if the probe failed, so errors are clearer.
+    // Prefer standalone when we resolved a real path (often works when the
+    // docker CLI plugin hook is broken but the v2 binary is on disk).
+    if ($standalone !== 'docker-compose' && is_file($standalone) && is_executable($standalone)) {
+        $cached = [$standalone];
+        $cacheKey = $key;
+        return $cached;
+    }
+
+    // Default to the v2 plugin invocation so error messages mention `docker compose`.
     $cached = [$docker, 'compose'];
+    $cacheKey = $key;
     return $cached;
 }
 
@@ -961,12 +1681,25 @@ function station_docker_runtime_diagnostics(): array
     $socketReadable = $socketExists && is_readable($socketPath);
     $socketWritable = $socketExists && is_writable($socketPath);
 
+    $isSnap = station_docker_is_snap($docker);
+    $runtimeHome = station_docker_runtime_home();
+    $inheritedHome = (string) (getenv('HOME') ?: '');
+
+    $composeProbe = station_run_shell_cmd(array_merge($compose, ['version']), null, 8);
+    $composeOk = ($composeProbe['code'] ?? 1) === 0;
+    $composeProbeOut = trim((string) ($composeProbe['output'] ?? ''));
+
     return [
         'binary' => $docker,
         'binaryExists' => is_file($docker) || $docker !== 'docker',
+        'binaryIsSnap' => $isSnap,
         'composeCommand' => implode(' ', $compose),
+        'composeOk' => $composeOk,
+        'composeVersionOutput' => $composeProbeOut,
         'runtimePath' => station_docker_runtime_path(),
         'inheritedPath' => (string) (getenv('PATH') ?: ''),
+        'runtimeHome' => $runtimeHome,
+        'inheritedHome' => $inheritedHome,
         'engineOk' => !empty($engine['ok']),
         'engineVersion' => (string) ($engine['version'] ?? ''),
         'engineOutput' => (string) ($engine['output'] ?? ''),
@@ -987,7 +1720,22 @@ function station_run_shell_cmd(array $command, ?string $cwd = null, int $timeout
     $envSnapshot = getenv();
     $env = is_array($envSnapshot) ? $envSnapshot : [];
     $env['PATH'] = station_docker_runtime_path();
-    $env['HOME'] = (string) ($env['HOME'] ?? sys_get_temp_dir());
+
+    // PHP-FPM typically runs as www-data with HOME=/var/www, which:
+    //   - is not writable by www-data, breaking any tool that wants
+    //     to drop config files in $HOME (docker CLI, snap, etc.), and
+    //   - lives outside /home, which snap refuses outright
+    //     ("home directories outside of /home needs configuration").
+    // Always redirect to a station-managed dir that we *know* is
+    // writable by the web user. Also pin XDG_* to the same root so
+    // tools that honor it don't keep poking $HOME anyway.
+    $stationHome = station_docker_runtime_home();
+    $env['HOME'] = $stationHome;
+    $env['XDG_DATA_HOME'] = $stationHome . '/.local/share';
+    $env['XDG_CONFIG_HOME'] = $stationHome . '/.config';
+    $env['XDG_CACHE_HOME'] = $stationHome . '/.cache';
+    $env['XDG_STATE_HOME'] = $stationHome . '/.local/state';
+
     if (!isset($env['DOCKER_BUILDKIT'])) {
         $env['DOCKER_BUILDKIT'] = '1';
     }
@@ -1299,7 +2047,7 @@ function station_render_nginx_projects_conf(array $projects): string
 {
     $generatedAt = gmdate('c');
     $lines = [
-        '# Auto-generated by Deployment Station — do NOT edit by hand.',
+        '# Auto-generated by Deployment Station — managed file.',
         '# Regenerated whenever a docker project is configured, started,',
         '# stopped, rebuilt, or torn down. Manual edits will be lost.',
         '# Generated at ' . $generatedAt,
@@ -1307,8 +2055,8 @@ function station_render_nginx_projects_conf(array $projects): string
     ];
 
     if ($projects === []) {
-        $lines[] = '# No dockerized projects are configured yet.';
-        $lines[] = '# This file will be repopulated once you finish configuring one.';
+        $lines[] = '# No dockerized projects yet — this file is intentionally empty.';
+        $lines[] = '# Once a project is configured for Docker the route blocks will appear below.';
         return implode("\n", $lines) . "\n";
     }
 

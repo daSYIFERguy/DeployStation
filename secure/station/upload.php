@@ -67,6 +67,7 @@ if (!mkdir($projectPath, 0755, true) && !is_dir($projectPath)) {
 }
 
 $templateType = '';
+$templateBootstrap = null;
 $result = ['ok' => false, 'message' => 'Deploy failed. Check file type/permissions and try again.'];
 if ($action === 'upload_zip') {
     $result = station_handle_zip_upload($projectPath);
@@ -75,8 +76,11 @@ if ($action === 'upload_zip') {
 } elseif ($action === 'upload_single') {
     $result = station_handle_single_upload($projectPath);
 } elseif ($action === 'create_template') {
-    $templateType = (string) ($_POST['template_type'] ?? 'static-js');
+    $templateType = (string) ($_POST['template_type'] ?? 'static-html');
     $result = station_handle_template_create($projectPath, $templateType, $projectName);
+    if (!empty($result['ok']) && isset($result['template']) && is_array($result['template'])) {
+        $templateBootstrap = $result['template'];
+    }
 } elseif ($action === 'import_github') {
     if (empty($adminSettings['githubEnabled'])) {
         $result = ['ok' => false, 'message' => 'GitHub imports are disabled in Admin Settings.'];
@@ -112,6 +116,46 @@ if (isset($result['github']) && is_array($result['github'])) {
     $settings['github'] = array_merge((array) ($settings['github'] ?? []), $result['github']);
     station_save_project_settings($slug, $settings);
 }
+
+if (is_array($templateBootstrap)) {
+    // Ensure the project ships with a working Dockerfile even if the
+    // template skipped one (built-in templates always ship one, but a
+    // custom template might not).
+    if (empty($templateBootstrap['hasDockerfile'])) {
+        station_ensure_project_dockerfile($slug);
+    }
+
+    $projectSettings = station_project_settings($slug);
+    $existingDocker = isset($projectSettings['docker']) && is_array($projectSettings['docker'])
+        ? $projectSettings['docker']
+        : [];
+    $appPort = (int) ($templateBootstrap['appPort'] ?? 80);
+    if ($appPort < 1 || $appPort > 65535) {
+        $appPort = 80;
+    }
+    $recommended = isset($templateBootstrap['recommendedServices']) && is_array($templateBootstrap['recommendedServices'])
+        ? array_values($templateBootstrap['recommendedServices'])
+        : [];
+    $existingServices = isset($existingDocker['services']) && is_array($existingDocker['services'])
+        ? $existingDocker['services']
+        : [];
+    $servicesEnabled = $existingServices;
+    foreach ($recommended as $svc) {
+        if (!isset($servicesEnabled[$svc])) {
+            $servicesEnabled[$svc] = true;
+        }
+    }
+
+    $projectSettings['docker'] = array_merge($existingDocker, [
+        'containerized' => true,
+        'appPort' => $appPort,
+        'stack' => (string) ($templateBootstrap['stack'] ?? 'other'),
+        'recommendedServices' => $recommended,
+        'services' => $servicesEnabled,
+    ]);
+    station_save_project_settings($slug, $projectSettings);
+}
+
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
 $redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
@@ -359,12 +403,17 @@ function station_handle_single_upload(string $projectPath): array
 
 function station_handle_template_create(string $projectPath, string $templateType, string $projectName): array
 {
-    $catalog = station_template_catalog();
-    if (!isset($catalog[$templateType])) {
+    $definition = station_template_definition($templateType);
+    if ($definition === null) {
         return ['ok' => false, 'message' => 'That template is not available.'];
     }
 
-    $files = station_template_files($templateType, $projectName);
+    $files = station_template_render_files($definition, $projectName);
+    if ($files === []) {
+        return ['ok' => false, 'message' => 'This template ships zero files — refusing to create an empty project.'];
+    }
+
+    $hasDockerfile = false;
     foreach ($files as $relative => $content) {
         if (!station_is_safe_relative_path($relative)) {
             return ['ok' => false, 'message' => 'The template contains an invalid file path.'];
@@ -372,15 +421,33 @@ function station_handle_template_create(string $projectPath, string $templateTyp
 
         $target = $projectPath . '/' . $relative;
         $parent = dirname($target);
-        if (!is_dir($parent)) {
-            mkdir($parent, 0755, true);
+        if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
+            return ['ok' => false, 'message' => 'Could not prepare folder for ' . $relative];
         }
         if (file_put_contents($target, $content, LOCK_EX) === false) {
             return ['ok' => false, 'message' => 'Could not write one of the template files.'];
         }
+
+        $normalized = strtolower(trim(str_replace('\\', '/', $relative)));
+        if ($normalized === 'dockerfile' || str_ends_with($normalized, '/dockerfile')) {
+            $hasDockerfile = true;
+        }
     }
 
-    return ['ok' => true, 'message' => 'Template created.'];
+    return [
+        'ok' => true,
+        'message' => 'Template created.',
+        'template' => [
+            'key' => (string) ($definition['key'] ?? $templateType),
+            'stack' => (string) ($definition['stack'] ?? 'other'),
+            'appPort' => (int) ($definition['appPort'] ?? 80),
+            'recommendedServices' => array_values(array_filter(
+                (array) ($definition['recommendedServices'] ?? []),
+                static fn ($svc): bool => is_string($svc) && $svc !== ''
+            )),
+            'hasDockerfile' => $hasDockerfile,
+        ],
+    ];
 }
 
 function station_handle_github_import(string $projectPath, string $projectName, string $username): array
