@@ -133,6 +133,7 @@ function station_docker_settings(): array
         'composeVersion' => $composeVersion,
         'defaultDatabase' => $defaultDatabase,
         'services' => $services,
+        'dockerBinaryPath' => trim((string) ($stored['dockerBinaryPath'] ?? '')),
     ];
 }
 
@@ -758,8 +759,143 @@ function station_yaml_scalar($value): string
 }
 
 /**
+ * Common locations to search for the docker binary regardless of the PHP
+ * process' inherited PATH (which under php-fpm/apache is often just
+ * /usr/bin:/bin and misses /usr/local/bin, snap, or homebrew installs).
+ */
+function station_docker_extra_path_entries(): array
+{
+    return [
+        '/usr/local/sbin',
+        '/usr/local/bin',
+        '/opt/homebrew/bin',
+        '/opt/homebrew/sbin',
+        '/snap/bin',
+        '/var/lib/snapd/snap/bin',
+        '/usr/sbin',
+        '/usr/bin',
+        '/sbin',
+        '/bin',
+    ];
+}
+
+/**
+ * Build the PATH environment to use when invoking docker-related commands.
+ * Combines the inherited PATH (if any) with the extra entries above so that
+ * docker installed in any common location is found.
+ */
+function station_docker_runtime_path(): string
+{
+    $inherited = (string) (getenv('PATH') ?: '');
+    $extras = station_docker_extra_path_entries();
+    $seen = [];
+    $entries = [];
+
+    foreach ($extras as $entry) {
+        if ($entry === '' || isset($seen[$entry])) {
+            continue;
+        }
+        $entries[] = $entry;
+        $seen[$entry] = true;
+    }
+    if ($inherited !== '') {
+        foreach (explode(PATH_SEPARATOR, $inherited) as $entry) {
+            $entry = trim($entry);
+            if ($entry === '' || isset($seen[$entry])) {
+                continue;
+            }
+            $entries[] = $entry;
+            $seen[$entry] = true;
+        }
+    }
+
+    return implode(PATH_SEPARATOR, $entries);
+}
+
+/**
+ * Resolve the absolute path to the docker binary. Checks (in order):
+ *  1. An admin-configured `dockerBinaryPath` from admin settings.
+ *  2. `command -v docker` using the augmented PATH.
+ *  3. Known install locations (homebrew, snap, /usr/local/bin, /usr/bin).
+ */
+function station_docker_binary(): string
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $override = '';
+    if (function_exists('station_admin_settings')) {
+        $settings = station_admin_settings();
+        $configured = trim((string) ($settings['dockerSettings']['dockerBinaryPath'] ?? ''));
+        if ($configured !== '') {
+            $override = $configured;
+        }
+    }
+
+    if ($override !== '' && is_file($override) && is_executable($override)) {
+        $cached = $override;
+        return $cached;
+    }
+
+    $runtimePath = station_docker_runtime_path();
+    $shellCheck = @shell_exec('PATH=' . escapeshellarg($runtimePath) . ' command -v docker 2>/dev/null');
+    if (is_string($shellCheck)) {
+        $candidate = trim($shellCheck);
+        if ($candidate !== '' && is_file($candidate) && is_executable($candidate)) {
+            $cached = $candidate;
+            return $cached;
+        }
+    }
+
+    foreach (['/usr/local/bin/docker', '/opt/homebrew/bin/docker', '/usr/bin/docker', '/snap/bin/docker', '/var/lib/snapd/snap/bin/docker'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) {
+            $cached = $candidate;
+            return $cached;
+        }
+    }
+
+    // Final fallback — bare "docker" still works if PHP later finds it on PATH.
+    $cached = 'docker';
+    return $cached;
+}
+
+/**
+ * Resolve the standalone docker-compose binary path (only used as a fallback
+ * when the v2 compose plugin is not installed).
+ */
+function station_docker_compose_binary(): string
+{
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $runtimePath = station_docker_runtime_path();
+    $shellCheck = @shell_exec('PATH=' . escapeshellarg($runtimePath) . ' command -v docker-compose 2>/dev/null');
+    if (is_string($shellCheck)) {
+        $candidate = trim($shellCheck);
+        if ($candidate !== '' && is_file($candidate) && is_executable($candidate)) {
+            $cached = $candidate;
+            return $cached;
+        }
+    }
+    foreach (['/usr/local/bin/docker-compose', '/opt/homebrew/bin/docker-compose', '/usr/bin/docker-compose'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) {
+            $cached = $candidate;
+            return $cached;
+        }
+    }
+    $cached = 'docker-compose';
+    return $cached;
+}
+
+/**
  * Detect which docker compose CLI invocation is available.
- * Returns ['docker','compose'] for the v2 plugin, ['docker-compose'] for legacy.
+ * Returns the resolved binary path + plugin/standalone args, e.g.
+ *   ['/usr/local/bin/docker', 'compose']  for the v2 plugin
+ *   ['/usr/local/bin/docker-compose']     for legacy
  */
 function station_docker_compose_cli(): array
 {
@@ -768,18 +904,23 @@ function station_docker_compose_cli(): array
         return $cached;
     }
 
-    $candidates = [
-        ['docker', 'compose'],
-        ['docker-compose'],
-    ];
-    foreach ($candidates as $cli) {
-        $result = station_run_shell_cmd(array_merge($cli, ['version']), null, 5);
-        if (($result['code'] ?? 1) === 0) {
-            $cached = $cli;
-            return $cli;
-        }
+    $docker = station_docker_binary();
+
+    $result = station_run_shell_cmd([$docker, 'compose', 'version'], null, 5);
+    if (($result['code'] ?? 1) === 0) {
+        $cached = [$docker, 'compose'];
+        return $cached;
     }
-    $cached = ['docker', 'compose'];
+
+    $standalone = station_docker_compose_binary();
+    $result = station_run_shell_cmd([$standalone, 'version'], null, 5);
+    if (($result['code'] ?? 1) === 0) {
+        $cached = [$standalone];
+        return $cached;
+    }
+
+    // Default to the v2 invocation even if the probe failed, so errors are clearer.
+    $cached = [$docker, 'compose'];
     return $cached;
 }
 
@@ -788,11 +929,51 @@ function station_docker_compose_cli(): array
  */
 function station_docker_engine_available(): array
 {
-    $result = station_run_shell_cmd(['docker', 'info', '--format', '{{.ServerVersion}}'], null, 5);
+    $docker = station_docker_binary();
+    $result = station_run_shell_cmd([$docker, 'info', '--format', '{{.ServerVersion}}'], null, 5);
+    $output = trim((string) ($result['output'] ?? ''));
+    $ok = ($result['code'] ?? 1) === 0;
     return [
-        'ok' => ($result['code'] ?? 1) === 0,
-        'version' => trim((string) ($result['output'] ?? '')),
-        'output' => (string) ($result['output'] ?? ''),
+        'ok' => $ok,
+        'version' => $ok ? $output : '',
+        'output' => $output,
+        'binary' => $docker,
+    ];
+}
+
+/**
+ * Diagnostic snapshot of the current docker runtime — what the web server
+ * sees right now. Useful when something is misconfigured (PATH, permissions,
+ * missing socket, etc).
+ */
+function station_docker_runtime_diagnostics(): array
+{
+    $docker = station_docker_binary();
+    $compose = station_docker_compose_cli();
+    $engine = station_docker_engine_available();
+
+    $whoami = trim((string) (function_exists('posix_getpwuid') && function_exists('posix_geteuid')
+        ? (posix_getpwuid(posix_geteuid())['name'] ?? '')
+        : (string) (getenv('USER') ?: '')));
+
+    $socketPath = '/var/run/docker.sock';
+    $socketExists = file_exists($socketPath);
+    $socketReadable = $socketExists && is_readable($socketPath);
+    $socketWritable = $socketExists && is_writable($socketPath);
+
+    return [
+        'binary' => $docker,
+        'binaryExists' => is_file($docker) || $docker !== 'docker',
+        'composeCommand' => implode(' ', $compose),
+        'runtimePath' => station_docker_runtime_path(),
+        'inheritedPath' => (string) (getenv('PATH') ?: ''),
+        'engineOk' => !empty($engine['ok']),
+        'engineVersion' => (string) ($engine['version'] ?? ''),
+        'engineOutput' => (string) ($engine['output'] ?? ''),
+        'phpUser' => $whoami !== '' ? $whoami : 'unknown',
+        'socketExists' => $socketExists,
+        'socketReadable' => $socketReadable,
+        'socketWritable' => $socketWritable,
     ];
 }
 
@@ -805,7 +986,7 @@ function station_run_shell_cmd(array $command, ?string $cwd = null, int $timeout
 
     $envSnapshot = getenv();
     $env = is_array($envSnapshot) ? $envSnapshot : [];
-    $env['PATH'] = (string) ($env['PATH'] ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+    $env['PATH'] = station_docker_runtime_path();
     $env['HOME'] = (string) ($env['HOME'] ?? sys_get_temp_dir());
     if (!isset($env['DOCKER_BUILDKIT'])) {
         $env['DOCKER_BUILDKIT'] = '1';

@@ -126,6 +126,7 @@ $composePath = station_projects_dir() . '/' . $projectSlug . '/docker-compose.ym
 $composeExists = is_file($composePath);
 $dockerfileExists = is_file(station_projects_dir() . '/' . $projectSlug . '/Dockerfile');
 $engineCheck = station_docker_engine_available();
+$dockerDiagnostics = station_docker_runtime_diagnostics();
 $status = station_project_docker_status($projectSlug);
 $logTail = station_read_project_docker_log($projectSlug, 8192);
 
@@ -181,9 +182,11 @@ $stateMeta = $stateLabels[$stateKey] ?? $stateLabels['unknown'];
             <?= !empty($engineCheck['ok']) ? station_h('OK · ' . ($engineCheck['version'] ?: 'available')) : 'Unreachable' ?>
           </strong>
           <span class="docker-status-meta">
-            <?= !empty($engineCheck['ok'])
-              ? 'Web server can call docker.'
-              : 'The PHP user can\'t reach the Docker daemon — add it to the docker group or run dockerd.' ?>
+            <?php if (!empty($engineCheck['ok'])): ?>
+              Web server can call docker at <code><?= station_h($dockerDiagnostics['binary']) ?></code>.
+            <?php else: ?>
+              <a href="admin-settings.php?tab=docker">Open Admin Settings → Docker</a> for full diagnostics + binary path override.
+            <?php endif; ?>
           </span>
         </div>
         <div class="docker-status-card status-info">

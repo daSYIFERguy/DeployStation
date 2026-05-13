@@ -71,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dockerSettings['enabled'] = isset($_POST['dockerEnabled']);
             $dockerSettings['composeVersion'] = (string) ($_POST['composeVersion'] ?? '3.9');
             $dockerSettings['defaultDatabase'] = (string) ($_POST['defaultDatabase'] ?? 'mysql');
+            $dockerSettings['dockerBinaryPath'] = trim((string) ($_POST['dockerBinaryPath'] ?? ''));
 
             // Enable/disable services
             foreach ($dockerServices as $serviceKey => $serviceConfig) {
@@ -292,6 +293,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <p class="settings-panel-subtitle">Configure Docker container deployment, services, and database options.</p>
             </div>
 
+            <?php
+              $dockerDiagnostics = station_docker_runtime_diagnostics();
+              $engineOk = !empty($dockerDiagnostics['engineOk']);
+              $socketExists = !empty($dockerDiagnostics['socketExists']);
+              $socketWritable = !empty($dockerDiagnostics['socketWritable']);
+            ?>
+            <div class="docker-diag-card <?= $engineOk ? 'is-ok' : 'is-bad' ?>">
+              <div class="docker-diag-header">
+                <strong><?= $engineOk ? '✓ Docker engine reachable from PHP' : '⚠ Docker engine not reachable from PHP' ?></strong>
+                <span class="docker-diag-meta"><?= $engineOk ? 'v' . station_h($dockerDiagnostics['engineVersion'] ?: 'unknown') : 'Fix below before enabling Docker' ?></span>
+              </div>
+              <dl class="docker-diag-list">
+                <dt>Resolved docker binary</dt><dd><code><?= station_h($dockerDiagnostics['binary']) ?></code></dd>
+                <dt>Compose command</dt><dd><code><?= station_h($dockerDiagnostics['composeCommand']) ?></code></dd>
+                <dt>PHP user</dt><dd><code><?= station_h($dockerDiagnostics['phpUser']) ?></code></dd>
+                <dt>Docker socket</dt><dd>
+                  <?php if (!$socketExists): ?>
+                    <code>/var/run/docker.sock</code> not found — is dockerd running on this host?
+                  <?php elseif (!$socketWritable): ?>
+                    <code>/var/run/docker.sock</code> exists but PHP user (<code><?= station_h($dockerDiagnostics['phpUser']) ?></code>) cannot write to it. Add the user to the <code>docker</code> group: <code>sudo usermod -aG docker <?= station_h($dockerDiagnostics['phpUser']) ?> &amp;&amp; sudo systemctl restart php*-fpm apache2 nginx</code>
+                  <?php else: ?>
+                    <code>/var/run/docker.sock</code> readable &amp; writable.
+                  <?php endif; ?>
+                </dd>
+                <dt>Effective PATH</dt><dd><code><?= station_h($dockerDiagnostics['runtimePath']) ?></code></dd>
+                <?php if (!$engineOk && trim($dockerDiagnostics['engineOutput']) !== ''): ?>
+                  <dt>Last output</dt><dd><pre class="code-mini"><?= station_h($dockerDiagnostics['engineOutput']) ?></pre></dd>
+                <?php endif; ?>
+              </dl>
+              <?php if (!$engineOk): ?>
+                <p class="docker-diag-hint">Most often this means PHP-FPM's PATH doesn't include where docker lives, or the web user isn't in the <code>docker</code> group. Set "Docker Binary Path" below to the absolute path (e.g. <code>/usr/local/bin/docker</code>) and save, then refresh this page.</p>
+              <?php endif; ?>
+            </div>
+
             <h3 style="font-size: 15px; margin: 0 0 16px;">Docker Deployment</h3>
             <label class="feature-toggle">
               <input type="checkbox" name="dockerEnabled" <?= !empty($dockerSettings['enabled']) ? 'checked' : '' ?>>
@@ -300,6 +335,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <span class="feature-toggle-desc">Allow projects to be deployed inside Docker containers with automatic service orchestration.</span>
               </div>
             </label>
+
+            <div class="settings-form-group" style="margin-top: 18px;">
+              <div class="setting-item">
+                <label class="setting-label" for="dockerBinaryPath">Docker Binary Path</label>
+                <input id="dockerBinaryPath" type="text" name="dockerBinaryPath" value="<?= station_h((string) ($dockerSettings['dockerBinaryPath'] ?? '')) ?>" placeholder="auto-detect (e.g. /usr/local/bin/docker)" autocomplete="off">
+                <p class="setting-description">Leave blank to auto-detect. Override when PHP-FPM can't find docker on its PATH — run <code>which docker</code> in your terminal to get the right value (commonly <code>/usr/local/bin/docker</code>, <code>/usr/bin/docker</code>, or <code>/snap/bin/docker</code>).</p>
+              </div>
+            </div>
 
             <div class="settings-form-group" style="margin-top: 24px;">
               <div class="setting-item">
