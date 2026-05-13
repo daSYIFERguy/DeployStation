@@ -6,7 +6,10 @@ header('Content-Type: application/javascript; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
 ?>
-const CACHE_NAME = 'deploystation-shell-v1';
+// Bumped from v1 because the previous version served assets/style.css
+// cache-first, which prevented CSS updates (e.g. clipboard FAB visibility
+// rules) from reaching returning visitors.
+const CACHE_NAME = 'deploystation-shell-v3';
 const CORE_ASSETS = [
   './assets/style.css',
   './index.php',
@@ -37,16 +40,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first for the stylesheet so deploys take effect on next page
+  // load. Falls back to the cached copy only when offline.
   if (url.pathname.endsWith('/assets/style.css')) {
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        const network = fetch(event.request).then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          return response;
-        }).catch(() => cached);
-        return cached || network;
-      })
+      fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => caches.match(event.request))
     );
   }
 });

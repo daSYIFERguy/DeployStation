@@ -774,6 +774,16 @@ function station_clipboard_fab_html(): string
 
   function setOpen(open) {
     var o = !!open;
+
+    // Before hiding the panel, move focus out — otherwise marking it
+    // aria-hidden / inert while a descendant is focused trips the
+    // browser's a11y warning ("Blocked aria-hidden on an element because
+    // its descendant retained focus").
+    if (!o && panel.contains(document.activeElement)) {
+      try { document.activeElement.blur(); } catch (_) {}
+      try { toggle.focus({ preventScroll: true }); } catch (_) { try { toggle.focus(); } catch (__) {} }
+    }
+
     fab.classList.toggle('is-open', o);
     panel.classList.toggle('clip-fab-panel--open', o);
     panel.setAttribute('aria-hidden', o ? 'false' : 'true');
@@ -781,10 +791,20 @@ function station_clipboard_fab_html(): string
       panel.toggleAttribute('inert', !o);
     }
     toggle.setAttribute('aria-expanded', o ? 'true' : 'false');
+    // Force layout regardless of which CSS version the browser cached.
+    // Some clients still have the old service-worker cache that doesn't
+    // know about .clip-fab-panel--open, so we drive `display` inline.
+    panel.style.display = o ? 'flex' : 'none';
     if (o) {
       window.setTimeout(function () { text && text.focus(); }, 60);
       refresh();
     }
+  }
+
+  // Ensure the panel starts hidden no matter what CSS the browser has.
+  panel.style.display = 'none';
+  if (typeof panel.toggleAttribute === 'function') {
+    panel.toggleAttribute('inert', true);
   }
 
   function renderFiles(items) {
