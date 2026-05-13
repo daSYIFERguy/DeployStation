@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/docker.php';
 
 /**
  * Structured starter template definitions.
@@ -104,15 +105,15 @@ FROM nginx:alpine
 COPY . /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
         ],
     ];
 
-    // ───────── php-apache ─────────
-    $templates['php-apache'] = [
-        'key' => 'php-apache',
-        'label' => 'PHP (Apache)',
-        'description' => 'Single-file PHP starter running on php:8.3-apache with mod_rewrite enabled.',
+    // ───────── php (nginx + php-fpm) ─────────
+    $templates['php-nginx'] = [
+        'key' => 'php-nginx',
+        'label' => 'PHP (Nginx + PHP-FPM)',
+        'description' => 'PHP 8.3 starter served by nginx + php-fpm — no Apache anywhere in the stack.',
         'icon' => '🐘',
         'stack' => 'php',
         'appPort' => 80,
@@ -134,23 +135,24 @@ $slug  = '{{PROJECT_SLUG}}';
 </head>
 <body style="font-family:system-ui;margin:2rem;color:#13233f;">
   <h1><?= htmlspecialchars($title) ?></h1>
-  <p>PHP <?= htmlspecialchars(PHP_VERSION) ?> is running inside Docker.</p>
+  <p>PHP <?= htmlspecialchars(PHP_VERSION) ?> is running inside Docker (nginx + php-fpm).</p>
   <p>Slug: <code><?= htmlspecialchars($slug) ?></code></p>
 </body>
 </html>
 PHP,
-            'README.md' => "# {{PROJECT_NAME}}\n\nPHP 8.3 + Apache, Docker-ready.\n\n```bash\ndocker build -t {{PROJECT_SLUG}} .\ndocker run -p 8080:80 {{PROJECT_SLUG}}\n```\n",
+            'README.md' => "# {{PROJECT_NAME}}\n\nPHP 8.3 served by nginx + php-fpm. No Apache.\n\n```bash\ndocker build -t {{PROJECT_SLUG}} .\ndocker run -p 8080:80 {{PROJECT_SLUG}}\n```\n\nEdit `docker/nginx.conf` to tweak the web server. Edit `docker/supervisord.conf` to tweak the process supervisor.\n",
             '.gitignore' => "vendor/\n.env\n*.log\n.DS_Store\n",
-            'Dockerfile' => <<<'DOCKER'
-FROM php:8.3-apache
-RUN a2enmod rewrite
-COPY . /var/www/html/
-RUN chown -R www-data:www-data /var/www/html
-EXPOSE 80
-DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nvendor\n.env\n*.log\n.DS_Store\n",
+            'Dockerfile' => station_php_nginx_dockerfile_text(),
+            'docker/nginx.conf' => station_php_nginx_nginx_conf(),
+            'docker/supervisord.conf' => station_php_nginx_supervisord_conf(),
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nvendor\n.env\n*.log\n.DS_Store\n",
         ],
     ];
+
+    // Back-compat aliases — the dropdown used to call this template `php-apache`.
+    $templates['php-apache'] = $templates['php-nginx'];
+    $templates['php-apache']['key'] = 'php-apache';
+    $templates['php-apache']['label'] = 'PHP (Nginx + PHP-FPM)';
 
     // ───────── node-express ─────────
     $templates['node-express'] = [
@@ -223,7 +225,7 @@ COPY . .
 EXPOSE 3000
 CMD ["npm", "start"]
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nnode_modules\nnpm-debug.log\n.env\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nnode_modules\nnpm-debug.log\n.env\n.DS_Store\n",
         ],
     ];
 
@@ -307,7 +309,7 @@ RUN npm run build || echo 'skip build'
 EXPOSE 3000
 CMD ["npm", "start"]
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nnode_modules\n.next\n.env\n.env.local\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nnode_modules\n.next\n.env\n.env.local\n.DS_Store\n",
         ],
     ];
 
@@ -405,7 +407,7 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nnode_modules\ndist\n.env\n.env.local\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nnode_modules\ndist\n.env\n.env.local\n.DS_Store\n",
         ],
     ];
 
@@ -462,7 +464,7 @@ COPY . .
 EXPOSE 8000
 CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 2 app:app"]
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\n.venv\n__pycache__\n*.pyc\n.env\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\n.venv\n__pycache__\n*.pyc\n.env\n.DS_Store\n",
         ],
     ];
 
@@ -522,7 +524,7 @@ COPY . .
 EXPOSE 8000
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\n.venv\n__pycache__\n*.pyc\n.env\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\n.venv\n__pycache__\n*.pyc\n.env\n.DS_Store\n",
         ],
     ];
 
@@ -575,7 +577,7 @@ FROM nginx:alpine
 COPY . /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\n.DS_Store\n",
         ],
     ];
 
@@ -626,7 +628,7 @@ FROM nginx:alpine
 COPY . /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
         ],
     ];
 
@@ -653,7 +655,7 @@ FROM nginx:alpine
 COPY . /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nREADME.md\nnode_modules\n.DS_Store\n",
         ],
     ];
 
@@ -684,7 +686,7 @@ FROM nginx:alpine
 COPY ./dashboard /usr/share/nginx/html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nnode_modules\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nnode_modules\n.DS_Store\n",
         ],
     ];
 
@@ -709,7 +711,7 @@ FROM nginx:alpine
 RUN echo '<!doctype html><meta charset=utf-8><title>Windows app</title><body style="font-family:system-ui;padding:40px;color:#13233f"><h1>Windows app placeholder</h1><p>This project is a Windows desktop scaffold and is not built inside Docker.</p></body>' > /usr/share/nginx/html/index.html
 EXPOSE 80
 DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.git\n.gitignore\nbin\nobj\n*.user\n.DS_Store\n",
+            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nbin\nobj\n*.user\n.DS_Store\n",
         ],
     ];
 

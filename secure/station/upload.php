@@ -396,9 +396,49 @@ function station_handle_single_upload(string $projectPath): array
         return ['ok' => false, 'message' => 'That file is ignored automatically.'];
     }
 
-    return move_uploaded_file($tmp, $projectPath . '/' . $name)
-        ? ['ok' => true, 'message' => 'File uploaded.']
-        : ['ok' => false, 'message' => 'Could not move the uploaded file into the project.'];
+    if (!move_uploaded_file($tmp, $projectPath . '/' . $name)) {
+        return ['ok' => false, 'message' => 'Could not move the uploaded file into the project.'];
+    }
+
+    station_maybe_promote_single_upload_to_index($projectPath, $name);
+
+    return ['ok' => true, 'message' => 'File uploaded.'];
+}
+
+/**
+ * If the project has no index document yet, copy a lone .html/.htm/.php upload to index.*
+ * so Apache/nginx serve "/" inside Docker.
+ */
+function station_maybe_promote_single_upload_to_index(string $projectPath, string $uploadedName): void
+{
+    $uploadedName = basename($uploadedName);
+    $src = $projectPath . '/' . $uploadedName;
+    if ($uploadedName === '' || !is_file($src)) {
+        return;
+    }
+
+    foreach (['index.html', 'index.htm', 'index.php'] as $idx) {
+        if (is_file($projectPath . '/' . $idx)) {
+            return;
+        }
+    }
+
+    $ext = strtolower(pathinfo($uploadedName, PATHINFO_EXTENSION));
+    $targetName = match ($ext) {
+        'html', 'htm', 'xhtml' => 'index.html',
+        'php' => 'index.php',
+        default => '',
+    };
+    if ($targetName === '') {
+        return;
+    }
+
+    $dest = $projectPath . '/' . $targetName;
+    if (is_file($dest)) {
+        return;
+    }
+
+    @copy($src, $dest);
 }
 
 function station_handle_template_create(string $projectPath, string $templateType, string $projectName): array

@@ -715,14 +715,16 @@ function station_clipboard_fab_html(): string
     <span class="clip-fab-label">Clipboard</span>
     <span class="clip-fab-badge" id="stationClipboardFabBadge" hidden>•</span>
   </button>
-  <section class="clip-fab-panel" id="stationClipboardFabPanel" role="dialog" aria-label="Shared clipboard" hidden>
+  <section class="clip-fab-panel" id="stationClipboardFabPanel" role="dialog" aria-label="Shared clipboard" aria-hidden="true">
     <header class="clip-fab-head">
       <div>
         <p class="clip-fab-kicker">Shared clipboard</p>
         <h3 class="clip-fab-title">Paste &amp; pick up anywhere</h3>
         <p class="clip-fab-hint">Synced to your account. Open on another device to read it back.</p>
       </div>
-      <button type="button" class="clip-fab-close" id="stationClipboardFabClose" aria-label="Close clipboard">✕</button>
+      <button type="button" class="clip-fab-close" id="stationClipboardFabClose" aria-label="Close clipboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
     </header>
     <div class="clip-fab-toolbar">
       <button type="button" class="clip-fab-action" data-clip-action="paste" title="Read from your device clipboard">⇩ Paste</button>
@@ -771,10 +773,15 @@ function station_clipboard_fab_html(): string
   }
 
   function setOpen(open) {
-    fab.classList.toggle('is-open', !!open);
-    panel.hidden = !open;
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) {
+    var o = !!open;
+    fab.classList.toggle('is-open', o);
+    panel.classList.toggle('clip-fab-panel--open', o);
+    panel.setAttribute('aria-hidden', o ? 'false' : 'true');
+    if (typeof panel.toggleAttribute === 'function') {
+      panel.toggleAttribute('inert', !o);
+    }
+    toggle.setAttribute('aria-expanded', o ? 'true' : 'false');
+    if (o) {
       window.setTimeout(function () { text && text.focus(); }, 60);
       refresh();
     }
@@ -891,7 +898,7 @@ function station_clipboard_fab_html(): string
   toggle.addEventListener('click', function (ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    setOpen(panel.hidden);
+    setOpen(!panel.classList.contains('clip-fab-panel--open'));
   });
   if (closeBtn) {
     closeBtn.addEventListener('click', function (ev) {
@@ -909,7 +916,7 @@ function station_clipboard_fab_html(): string
   });
 
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && !panel.hidden) { setOpen(false); }
+    if (event.key === 'Escape' && panel.classList.contains('clip-fab-panel--open')) { setOpen(false); }
   });
 
   panel.querySelectorAll('[data-clip-action]').forEach(function (btn) {
@@ -963,7 +970,7 @@ function station_clipboard_fab_html(): string
   window.__stationClipboardFabPoll = pollTimer;
 
   document.addEventListener('click', function (ev) {
-    if (panel.hidden || !fab.classList.contains('is-open')) { return; }
+    if (!panel.classList.contains('clip-fab-panel--open') || !fab.classList.contains('is-open')) { return; }
     if (fab.contains(ev.target)) { return; }
     setOpen(false);
   });

@@ -118,7 +118,8 @@ if (!empty($dockerConfig)) {
     $dockerfilePath = $projectPath . '/Dockerfile';
     $refreshCompose = in_array($action, ['start', 'rebuild', 'restart'], true) || !is_file($composePath);
     if ($refreshCompose) {
-        $composeContent = station_generate_docker_compose($dockerConfig);
+        station_merge_station_entries_into_project_dockerignore($projectPath);
+        $composeContent = station_generate_docker_compose($dockerConfig, $project);
         if (@file_put_contents($composePath, $composeContent, LOCK_EX) === false) {
             station_docker_action_respond(false, 'Could not write docker-compose.yml for ' . $project . '.', $returnTo, [], $wantsJson);
         }

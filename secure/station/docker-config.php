@@ -109,6 +109,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $newConfig['composePath'] = '/docker-compose.yml';
     $newConfig['forceRebuildDockerfile'] = isset($_POST['rebuild_dockerfile']);
 
+    $prevDocker = isset($existing['docker']) && is_array($existing['docker']) ? $existing['docker'] : [];
+    $prevStack = trim((string) ($prevDocker['stack'] ?? ''));
+    $newConfig['stack'] = $prevStack !== '' ? $prevStack : station_infer_docker_stack($projectSlug);
+    $prevRec = $prevDocker['recommendedServices'] ?? null;
+    $newConfig['recommendedServices'] = is_array($prevRec)
+        ? array_values(array_filter($prevRec, static fn ($svc): bool => is_string($svc) && $svc !== ''))
+        : [];
+
     if (station_encrypt_credentials($newConfig['credentials'], $projectSlug)) {
         $projectSettings = station_project_settings($projectSlug);
         $projectSettings['docker'] = $newConfig;
@@ -118,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             station_ensure_project_dockerfile($projectSlug, !empty($newConfig['forceRebuildDockerfile']));
             station_ensure_docker_service_stub_files($projectSlug, (array) ($newConfig['services'] ?? []));
             $composePath = station_projects_dir() . '/' . $projectSlug . '/docker-compose.yml';
-            $composeContent = station_generate_docker_compose($newConfig);
+            $composeContent = station_generate_docker_compose($newConfig, $projectSlug);
             if (@file_put_contents($composePath, $composeContent, LOCK_EX) !== false) {
                 station_log_event('project.docker.configured', ['project' => $projectSlug]);
                 $includeResult = station_write_nginx_projects_conf();
@@ -246,7 +254,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <strong class="docker-status-value">
             <?= $dockerfileExists ? '✓ Dockerfile' : '— Dockerfile' ?> · <?= $composeExists ? '✓ Compose' : '— Compose' ?>
           </strong>
-          <span class="docker-status-meta">Saved on the next form submit.</span>
+          <span class="docker-status-meta">Saving this form regenerates <code>docker-compose.yml</code>. Tick <strong>Regenerate Dockerfile</strong> below to also overwrite the Dockerfile with the detected stack — or click <strong>Rebuild image</strong> to regenerate the Dockerfile and rebuild the container in one step.</span>
         </div>
         <div class="docker-status-card status-info">
           <span class="docker-status-label">Reverse-proxy URL</span>
@@ -309,7 +317,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           </form>
           <a class="quick-link" href="launch.php?project=<?= urlencode($projectSlug) ?>" target="_blank" rel="noreferrer">Open app ↗</a>
         </div>
-        <p class="docker-actions-hint"><strong>Start</strong> brings containers up without forcing an image rebuild (images build automatically the first time). Use <strong>Rebuild image</strong> after Dockerfile or dependency changes. Tear down removes containers; named volumes keep database data.</p>
+        <p class="docker-actions-hint"><strong>Start</strong> reuses the existing image and keeps the on-disk Dockerfile intact. <strong>Rebuild image</strong> regenerates the Dockerfile from the detected stack and runs <code>docker compose up -d --build --force-recreate</code> — use it after upgrading Station, switching stacks (e.g. from the old PHP/Apache image to nginx + php-fpm), or after Dockerfile/dependency changes. Tear down removes containers; named volumes keep database data.</p>
       </section>
       <?php endif; ?>
 
@@ -351,11 +359,18 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
             </div>
 
             <div class="settings-form-group" style="margin-top: 18px;">
+              <?php
+                $devMountTarget = match (station_infer_docker_stack($projectSlug)) {
+                    'php' => '/var/www/html',
+                    'static' => '/usr/share/nginx/html',
+                    default => '/app',
+                };
+              ?>
               <label class="feature-toggle">
                 <input type="checkbox" name="dev_mount" <?= $projectConfig['devMount'] ? 'checked' : '' ?>>
                 <div class="feature-toggle-content">
                   <span class="feature-toggle-title">Live-reload bind mount</span>
-                  <span class="feature-toggle-desc">Mount the project directory into the container at <code>/app</code> so on-disk edits reload instantly. Disable for production builds.</span>
+                  <span class="feature-toggle-desc">Mount the project directory into the container at <code><?= station_h($devMountTarget) ?></code> so on-disk edits reload instantly. Disable for production builds.</span>
                 </div>
               </label>
 

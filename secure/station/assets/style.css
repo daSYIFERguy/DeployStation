@@ -2507,7 +2507,6 @@ tr:last-child td { border-bottom: none; }
   bottom: 64px;
   width: min(380px, calc(100vw - 32px));
   max-height: min(72vh, 620px);
-  display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 18px;
@@ -2517,10 +2516,18 @@ tr:last-child td { border-bottom: none; }
   box-shadow: 0 32px 80px rgba(19,35,63,.28);
 }
 
-/* Author rules above this used display:flex which silently overrides the
- * browser default of `[hidden] { display: none }` — making the close button
- * appear to do nothing. Restore the expected behavior. */
-.clip-fab-panel[hidden] { display: none !important; }
+.clip-fab-panel:not(.clip-fab-panel--open) {
+  display: none !important;
+}
+
+.clip-fab-panel.clip-fab-panel--open {
+  display: flex !important;
+}
+
+/* Legacy: if `hidden` is ever reintroduced, do not let layout rules resurrect the panel. */
+.clip-fab-panel[hidden]:not(.clip-fab-panel--open) {
+  display: none !important;
+}
 
 .clip-fab.is-open .clip-fab-button {
   box-shadow: 0 8px 18px rgba(var(--brand-rgb, 47,125,226), .28);
@@ -2564,24 +2571,37 @@ tr:last-child td { border-bottom: none; }
 }
 
 .clip-fab-close {
-  width: 32px;
-  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--panel-soft);
   color: var(--soft);
   cursor: pointer;
-  font-size: 14px;
   flex-shrink: 0;
   position: relative;
   z-index: 5;
   pointer-events: auto;
+  line-height: 0;
+}
+
+.clip-fab-close svg {
+  flex-shrink: 0;
 }
 
 .clip-fab-close:hover {
   background: var(--brand-soft);
   color: var(--brand-dark);
   border-color: var(--line-mid);
+}
+
+.clip-fab-close:focus-visible {
+  outline: 2px solid rgba(var(--brand-rgb, 47,125,226), 0.45);
+  outline-offset: 2px;
 }
 
 .clip-fab-toolbar {
@@ -2730,7 +2750,7 @@ tr:last-child td { border-bottom: none; }
     height: 28px;
   }
 
-  .clip-fab-panel {
+  .clip-fab-panel.clip-fab-panel--open {
     position: fixed;
     left: 12px;
     right: 12px;
@@ -2741,7 +2761,7 @@ tr:last-child td { border-bottom: none; }
     border-radius: 24px 24px 18px 18px;
   }
 
-  .clip-fab.is-open .clip-fab-panel {
+  .clip-fab.is-open .clip-fab-panel.clip-fab-panel--open {
     bottom: 76px;
   }
 }
