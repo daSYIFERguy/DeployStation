@@ -1340,13 +1340,22 @@ function station_yaml_scalar($value): string
         return $value ? 'true' : 'false';
     }
     if (is_int($value) || is_float($value)) {
-        return (string) $value;
+        $s = is_float($value)
+            ? rtrim(rtrim(sprintf('%.12F', $value), '0'), '.')
+            : (string) $value;
+        // Bare `3.9` in YAML parses as a float; Compose's JSON schema requires
+        // some fields (e.g. legacy top-level `version`) to be strings.
+        if (preg_match('/^\d+\.\d+$/', $s) === 1) {
+            return "'" . str_replace("'", "''", $s) . "'";
+        }
+        return $s;
     }
     $value = (string) $value;
 
     if ($value === '' ||
         in_array(strtolower($value), ['true', 'false', 'null', 'yes', 'no', 'on', 'off'], true) ||
-        preg_match('/^\d+$/', $value) ||
+        preg_match('/^\d+$/', $value) === 1 ||
+        preg_match('/^\d+\.\d+$/', $value) === 1 ||
         strpos($value, ':') !== false ||
         strpos($value, '#') === 0 ||
         strpos($value, '\n') !== false ||
@@ -1813,8 +1822,7 @@ function station_run_shell_cmd(array $command, ?string $cwd = null, int $timeout
 }
 
 /**
- * Run a docker compose command for a project (always rebuilds the compose file
- * unless told otherwise) and persist the most recent log output.
+ * Run a docker compose command for a project and persist the most recent log output.
  */
 function station_run_project_docker_compose(string $projectSlug, array $args, int $timeout = 600): array
 {
@@ -2001,6 +2009,30 @@ function station_nginx_include_dir(): string
 function station_nginx_include_path(): string
 {
     return station_nginx_include_dir() . '/projects.conf';
+}
+
+/**
+ * True when the auto-generated nginx include contains a reverse-proxy route for
+ * this project slug. Used by launch.php to avoid redirecting to /p/slug/
+ * when nginx has not picked up the include yet (which would fall through to
+ * the site root and show the wrong page).
+ */
+function station_nginx_proxy_route_present_for_slug(string $slug): bool
+{
+    $slug = preg_replace('/[^a-zA-Z0-9_-]/', '', station_safe_name($slug));
+    if ($slug === '') {
+        return false;
+    }
+    $path = station_nginx_include_path();
+    if (!is_readable($path)) {
+        return false;
+    }
+    $body = (string) @file_get_contents($path);
+    if ($body === '') {
+        return false;
+    }
+    $needle = 'location ^~ /p/' . $slug . '/';
+    return str_contains($body, $needle);
 }
 
 /**

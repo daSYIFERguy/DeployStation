@@ -2930,3 +2930,52 @@ tr:last-child td { border-bottom: none; }
   min-height: 160px;
 }
 
+/* Project settings (dashboard layout) */
+.project-settings-shell {
+  margin-top: 8px;
+}
+.settings-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+.project-settings-textarea {
+  width: 100%;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.settings-panel-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 28px 0 20px;
+}
+.settings-subheading {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+.project-runtime-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.project-runtime-card .btn-primary,
+.project-runtime-card .secondary-btn {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .project-runtime-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

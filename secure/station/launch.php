@@ -128,10 +128,25 @@ if ($isContainerized) {
     $adminSettingsForLaunch = station_admin_settings();
     $usesNginx = station_normalize_server_infrastructure((string) ($adminSettingsForLaunch['serverInfrastructure'] ?? 'apache')) === 'nginx';
     $friendlyTarget = $scheme . '://' . $host . '/p/' . rawurlencode($slug) . '/';
-    $target = $usesNginx ? $friendlyTarget : $directTarget;
 
     $status = station_project_docker_status($slug);
     if (($status['state'] ?? '') === 'running') {
+        // Only use /p/<slug>/ when the managed include actually contains this
+        // route; otherwise nginx falls through to the site root (wrong page).
+        $target = $directTarget;
+        if ($usesNginx) {
+            $sync = station_write_nginx_projects_conf();
+            if (empty($sync['ok'])) {
+                station_log_event('nginx.include.failed', [
+                    'project' => $slug,
+                    'phase' => 'launch',
+                    'message' => (string) ($sync['message'] ?? ''),
+                ]);
+            }
+            if (station_nginx_proxy_route_present_for_slug($slug)) {
+                $target = $friendlyTarget;
+            }
+        }
         header('Location: ' . $target);
         exit;
     }
@@ -164,16 +179,10 @@ if ($isContainerized) {
         </span>
       </p>
 
-      <?php if (($status['state'] ?? '') === 'running'): ?>
-        <p>Open the running app:</p>
-        <a class="download-btn" href="<?= station_h($target) ?>" target="_blank" rel="noreferrer">Open <?= station_h($target) ?></a>
-        <?php if ($usesNginx): ?>
-          <p class="topbar-sub" style="margin-top:8px;">Routed through nginx at <code><?= station_h($friendlyTarget) ?></code>. Direct host port: <code><?= station_h($directTarget) ?></code>.</p>
-        <?php endif; ?>
-      <?php else: ?>
+      <?php if (($status['state'] ?? '') !== 'running'): ?>
         <p>The container is not running. Use the controls below to start it.</p>
         <?php if ($usesNginx): ?>
-          <p class="topbar-sub">Once it starts and your nginx server block includes the auto-generated docker routes, users will reach it at <code><?= station_h($friendlyTarget) ?></code>.</p>
+          <p class="topbar-sub">After start, reload nginx if you use friendly URLs. Put <code>include …/projects.conf</code> <strong>before</strong> <code>location /</code> in your server block, then <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>. Friendly URL: <code><?= station_h($friendlyTarget) ?></code></p>
         <?php else: ?>
           <p class="topbar-sub">Direct access (when running): <code><?= station_h($directTarget) ?></code>. Switch the production web server to Nginx in Admin Settings to also expose a friendly <code>/p/<?= station_h($slug) ?>/</code> URL.</p>
         <?php endif; ?>

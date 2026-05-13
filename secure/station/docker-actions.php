@@ -37,7 +37,7 @@ if (!preg_match('/^[a-z0-9\-_.?=&%]+\.php(?:\?[a-z0-9\-_.?=&%]*)?$/i', $returnTo
 
 $readActions = ['status', 'logs'];
 $writeActions = [
-    'start' => ['up', '-d', '--build'],
+    'start' => ['up', '-d'],
     'stop' => ['stop'],
     'restart' => ['restart'],
     'down' => ['down'],
@@ -115,10 +115,18 @@ if (!empty($dockerConfig)) {
         station_save_project_settings($project, $projectSettings);
     }
 
-    station_ensure_project_dockerfile($project, !empty($dockerConfig['forceRebuildDockerfile']));
-    $composeContent = station_generate_docker_compose($dockerConfig);
-    if (@file_put_contents($composePath, $composeContent, LOCK_EX) === false) {
-        station_docker_action_respond(false, 'Could not write docker-compose.yml for ' . $project . '.', $returnTo, [], $wantsJson);
+    $dockerfilePath = $projectPath . '/Dockerfile';
+    $refreshCompose = in_array($action, ['start', 'rebuild', 'restart'], true) || !is_file($composePath);
+    if ($refreshCompose) {
+        $composeContent = station_generate_docker_compose($dockerConfig);
+        if (@file_put_contents($composePath, $composeContent, LOCK_EX) === false) {
+            station_docker_action_respond(false, 'Could not write docker-compose.yml for ' . $project . '.', $returnTo, [], $wantsJson);
+        }
+    }
+
+    $mustRefreshDockerfile = $action === 'rebuild' || !is_file($dockerfilePath);
+    if ($mustRefreshDockerfile) {
+        station_ensure_project_dockerfile($project, $action === 'rebuild');
     }
 }
 

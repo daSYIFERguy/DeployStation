@@ -338,8 +338,12 @@ function station_nginx_project_route_snippet(): string
         : station_data_dir() . '/nginx/projects.conf';
 
     $lines = [
-        '# Add these locations inside your server {} block, above any generic PHP location.',
-        '# Do not use ^~ here, or Nginx will serve station PHP files as downloads instead of passing them to PHP-FPM.',
+        '# Add these locations inside your server {} block.',
+        '# IMPORTANT: put the `include …/projects.conf` line BEFORE `location / {`',
+        '# so per-project /p/<slug>/ routes win over the site root (otherwise /p/',
+        '# requests fall through to your main index).',
+        '# Do not use ^~ on the station PHP locations here, or Nginx will serve',
+        '# station PHP files as downloads instead of passing them to PHP-FPM.',
         '',
         'location ' . $stationPrefix . ' {',
         '    try_files $uri $uri/ ' . $stationPrefix . '/index.php?$query_string;',

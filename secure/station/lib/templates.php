@@ -666,7 +666,7 @@ DOCKER,
     $templates['scraper-builder'] = [
         'key' => 'scraper-builder',
         'label' => 'Web Scraper Builder',
-        'description' => 'Hybrid dashboard + Chrome capture extension scaffold (legacy).',
+        'description' => 'Legacy hybrid dashboard + Chrome capture scaffold. Edit prompts and structure under Admin → Templates; project settings only cover env, GitHub, and Docker.',
         'icon' => '🕷️',
         'stack' => 'static',
         'appPort' => 80,

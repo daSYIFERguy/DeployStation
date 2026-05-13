@@ -1319,7 +1319,7 @@ $statsCards = !$canBuild
                   ? 'https://github.dev/' . rawurlencode($ghOwner) . '/' . rawurlencode($ghRepo)
                   : '';
               $dockerConfig = isset($ps['docker']) && is_array($ps['docker']) ? $ps['docker'] : [];
-              $dockerConfigured = $dockerConfig !== [] || is_file(station_project_path($slug) . '/docker-compose.yml');
+              $dockerContainerized = !empty($dockerConfig['containerized']);
             ?>
             <article class="project-card" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>">
               <div class="project-card-head">
@@ -1398,22 +1398,27 @@ $statsCards = !$canBuild
                 <?php if ($canBuild): ?>
                   <a class="quick-link" href="project-settings.php?project=<?= urlencode($slug) ?>">Settings</a>
                   <?php if (station_docker_enabled()): ?>
-                    <?php if ($dockerConfigured): ?>
+                    <?php if ($dockerContainerized): ?>
                     <details class="docker-menu" data-docker-menu data-project-slug="<?= station_h($slug) ?>">
                       <summary class="quick-link docker-trigger" data-docker-pill>
                         <span class="docker-dot" data-docker-dot></span>
-                        <span data-docker-state-label>Deploy</span>
+                        <span data-docker-state-label>Containers</span>
                       </summary>
                       <div class="docker-menu-body">
                         <form class="quick-action-form" method="post" action="docker-actions.php">
                           <input type="hidden" name="project" value="<?= station_h($slug) ?>">
                           <input type="hidden" name="action" value="start">
-                          <button class="docker-menu-action" type="submit">▶ Start / Build</button>
+                          <button class="docker-menu-action" type="submit">▶ Start</button>
+                        </form>
+                        <form class="quick-action-form" method="post" action="docker-actions.php">
+                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                          <input type="hidden" name="action" value="rebuild">
+                          <button class="docker-menu-action" type="submit">↻ Rebuild image</button>
                         </form>
                         <form class="quick-action-form" method="post" action="docker-actions.php">
                           <input type="hidden" name="project" value="<?= station_h($slug) ?>">
                           <input type="hidden" name="action" value="restart">
-                          <button class="docker-menu-action" type="submit">↻ Restart</button>
+                          <button class="docker-menu-action" type="submit">⟳ Restart</button>
                         </form>
                         <form class="quick-action-form" method="post" action="docker-actions.php">
                           <input type="hidden" name="project" value="<?= station_h($slug) ?>">
@@ -1424,7 +1429,7 @@ $statsCards = !$canBuild
                       </div>
                     </details>
                     <?php else: ?>
-                      <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>">Configure Docker</a>
+                      <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>" title="Enable container deployment">Containers</a>
                     <?php endif; ?>
                   <?php endif; ?>
                 <?php endif; ?>
@@ -2073,9 +2078,9 @@ $statsCards = !$canBuild
         running: { label: 'Running', tone: 'ok' },
         partial: { label: 'Partial', tone: 'warn' },
         stopped: { label: 'Stopped', tone: 'bad' },
-        unknown: { label: 'Deploy', tone: 'idle' },
+        unknown: { label: 'Containers', tone: 'idle' },
         unavailable: { label: 'Docker offline', tone: 'bad' },
-        unconfigured: { label: 'Deploy', tone: 'idle' }
+        unconfigured: { label: 'Containers', tone: 'idle' }
       };
 
       function applyDockerState(menu, state) {

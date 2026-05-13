@@ -186,6 +186,7 @@ $adminSettingsForRoute = station_admin_settings();
 $isNginxInfrastructure = station_normalize_server_infrastructure((string) ($adminSettingsForRoute['serverInfrastructure'] ?? 'apache')) === 'nginx';
 $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
+$nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
 ?>
 <!doctype html>
 <html lang="en">
@@ -252,22 +253,41 @@ $nginxIncludePathDisplay = station_nginx_include_path();
           <strong class="docker-status-value"><code><?= station_h($reverseProxyPath) ?></code></strong>
           <span class="docker-status-meta">
             <?php if ($isNginxInfrastructure): ?>
-              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Make sure your nginx server block includes the snippet from <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
+              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Include that file <strong>before</strong> <code>location /</code> in your server block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>). Run <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code> after routes change.
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>
           </span>
         </div>
+        <?php if ($isNginxInfrastructure && $projectConfig['containerized']): ?>
+        <div class="docker-status-card status-<?= $nginxRouteOk ? 'ok' : 'warn' ?>">
+          <span class="docker-status-label">Nginx include</span>
+          <strong class="docker-status-value"><?= $nginxRouteOk ? 'Route present' : 'Route missing' ?></strong>
+          <span class="docker-status-meta">
+            <?php if ($nginxRouteOk): ?>
+              This project’s <code>location ^~ /p/<?= station_h($projectSlug) ?>/</code> block is in the generated file. Reload nginx if you still get the main site when opening the friendly URL.
+            <?php else: ?>
+              Save Docker settings or start the stack, then reload nginx. Until then, Launch uses the direct <code>:<?= (int) $projectConfig['hostPort'] ?></code> URL.
+            <?php endif; ?>
+          </span>
+        </div>
+        <?php endif; ?>
       </section>
 
-      <?php if ($projectConfig['containerized'] || $composeExists): ?>
+      <?php if ($projectConfig['containerized']): ?>
       <section class="docker-actions-panel">
         <div class="docker-actions-row">
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="start">
             <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
-            <button type="submit" class="btn-primary">Start / Rebuild</button>
+            <button type="submit" class="btn-primary">Start</button>
+          </form>
+          <form method="post" action="docker-actions.php" data-docker-action>
+            <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
+            <input type="hidden" name="action" value="rebuild">
+            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <button type="submit" class="secondary-btn">Rebuild image</button>
           </form>
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
@@ -289,7 +309,7 @@ $nginxIncludePathDisplay = station_nginx_include_path();
           </form>
           <a class="quick-link" href="launch.php?project=<?= urlencode($projectSlug) ?>" target="_blank" rel="noreferrer">Open app ↗</a>
         </div>
-        <p class="docker-actions-hint">Starting will rebuild the image and bring up dependencies. Tear down removes containers without deleting persistent volumes.</p>
+        <p class="docker-actions-hint"><strong>Start</strong> brings containers up without forcing an image rebuild (images build automatically the first time). Use <strong>Rebuild image</strong> after Dockerfile or dependency changes. Tear down removes containers; named volumes keep database data.</p>
       </section>
       <?php endif; ?>
 

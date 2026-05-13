@@ -67,8 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
             'releaseWorkflow' => isset($_POST['release_workflow'])
         ];
-        $settings['scraperBuilder']['targetDomain'] = trim((string) ($_POST['target_domain'] ?? ''));
-        $settings['scraperBuilder']['useCase'] = trim((string) ($_POST['use_case'] ?? ''));
 
         if (station_save_project_settings($project, $settings) && station_write_env_file($project, $settings['environment'])) {
             station_log_event('project.settings.saved', ['project' => $project]);
@@ -77,27 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         $error = 'Could not save project settings.';
-    }
-
-    if ($action === 'add_preset') {
-        $name = trim((string) ($_POST['preset_name'] ?? ''));
-        $prompt = trim((string) ($_POST['preset_prompt'] ?? ''));
-        if ($name === '' || $prompt === '') {
-            $error = 'Preset name and prompt are required.';
-        } else {
-            $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['scraperBuilder']['presets']) ? $settings['scraperBuilder']['presets'] : [];
-            $presets[] = [
-                'name' => $name,
-                'prompt' => $prompt,
-                'createdAt' => gmdate('c')
-            ];
-            $settings['scraperBuilder']['presets'] = $presets;
-            station_save_project_settings($project, $settings);
-            station_log_event('scraper.preset.added', ['project' => $project, 'name' => $name]);
-            station_flash_set('ok', 'Prompt preset added.');
-            header('Location: project-settings.php?project=' . urlencode($project));
-            exit;
-        }
     }
 
     if ($action === 'generate_github') {
@@ -120,137 +97,183 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['scraperBuilder']['presets']) ? $settings['scraperBuilder']['presets'] : [];
+$dockerPs = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
+$dockerContainerized = !empty($dockerPs['containerized']);
 ?>
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings', 'Manage environment variables, GitHub setup, scraper presets, and notes for this project.') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
     <?= station_dashboard_nav_html('dashboard') ?>
     <main class="dashboard-main">
-      <div class="station-shell">
-    <header class="topbar card">
-      <div>
-        <p class="kicker">Project Control</p>
-        <h1><?= station_h($project) ?></h1>
-        <p>Environment variables, GitHub bootstrap, scraper prompt wizard, and notes.</p>
-      </div>
-      <nav class="nav-pills">
-        <a href="station.php">Dashboard</a>
-        <a href="viewer.php?project=<?= urlencode($project) ?>">Viewer</a>
-        <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch</a>
-      </nav>
-    </header>
-
-    <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-    <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
-
-    <section class="grid-two">
-      <form method="post" class="card form-grid">
-        <input type="hidden" name="action" value="save_settings">
-        <input type="hidden" name="project" value="<?= station_h($project) ?>">
-        <h2>Environment + Notes</h2>
-        <label>Environment Variables
-          <textarea name="environment_text" rows="14" placeholder="API_URL=https://example.com&#10;API_KEY=secret"><?= station_h(station_env_text($settings['environment'] ?? [])) ?></textarea>
-        </label>
-        <label>Notes
-          <textarea name="notes" rows="8"><?= station_h((string) ($settings['notes'] ?? '')) ?></textarea>
-        </label>
-        <button type="submit">Save Project Settings</button>
-      </form>
-
-      <form method="post" class="card form-grid">
-        <input type="hidden" name="action" value="generate_github">
-        <input type="hidden" name="project" value="<?= station_h($project) ?>">
-        <h2>GitHub Repo Bootstrap</h2>
-        <label>Repo Owner
-          <input type="text" name="repo_owner" value="<?= station_h((string) ($settings['github']['repoOwner'] ?? '')) ?>">
-        </label>
-        <label>Repo Name
-          <input type="text" name="repo_name" value="<?= station_h((string) ($settings['github']['repoName'] ?? $project)) ?>">
-        </label>
-        <label>Repository Visibility
-          <select name="repo_visibility">
-            <option value="private" <?= ((string) ($settings['github']['visibility'] ?? 'private')) === 'private' ? 'selected' : '' ?>>private</option>
-            <option value="public" <?= ((string) ($settings['github']['visibility'] ?? 'private')) === 'public' ? 'selected' : '' ?>>public</option>
-          </select>
-        </label>
-        <label>Default Branch
-          <input type="text" name="default_branch" value="<?= station_h((string) ($settings['github']['defaultBranch'] ?? 'main')) ?>">
-        </label>
-        <label><input type="checkbox" name="release_workflow" <?= !empty($settings['github']['releaseWorkflow']) ? 'checked' : '' ?>> Generate release workflow</label>
-        <button type="submit">Generate GitHub Files</button>
-      </form>
-    </section>
-
-    <section class="grid-two">
-      <form method="post" class="card form-grid">
-        <input type="hidden" name="action" value="save_settings">
-        <input type="hidden" name="project" value="<?= station_h($project) ?>">
-        <h2>Scraper Builder Wizard</h2>
-        <label>Target Domain
-          <input type="text" name="target_domain" value="<?= station_h((string) ($settings['scraperBuilder']['targetDomain'] ?? '')) ?>" placeholder="example.com">
-        </label>
-        <label>End Goal / Use Case
-          <textarea name="use_case" rows="8" placeholder="Explain the business goal, extracted fields, crawl behavior, and final output."><?= station_h((string) ($settings['scraperBuilder']['useCase'] ?? '')) ?></textarea>
-        </label>
-        <button type="submit">Save Scraper Wizard</button>
-      </form>
-
-      <form method="post" class="card form-grid">
-        <input type="hidden" name="action" value="add_preset">
-        <input type="hidden" name="project" value="<?= station_h($project) ?>">
-        <h2>Saved Prompt Presets</h2>
-        <label>Preset Name
-          <input type="text" name="preset_name" placeholder="Lead scrape preset">
-        </label>
-        <label>Preset Prompt
-          <textarea name="preset_prompt" rows="10" placeholder="Describe the target domain, extraction fields, anti-duplication rules, and export format."></textarea>
-        </label>
-        <button type="submit">Save Prompt Preset</button>
-      </form>
-    </section>
-
-    <section class="card form-grid" id="docker">
-      <h2>Docker Deployment</h2>
-      <?php if (station_docker_enabled()): ?>
-        <p>Choose the services this project needs and generate its Docker Compose file.</p>
-        <div class="action-row">
-          <a class="quick-link" href="docker-config.php?project=<?= urlencode($project) ?>">Configure Docker Services</a>
+      <header class="dashboard-topbar">
+        <div>
+          <p class="dashboard-kicker">Project</p>
+          <h1 class="dashboard-heading"><?= station_h($project) ?></h1>
+          <p class="dashboard-subheading">Configuration for this deployment: environment, integrations, and where to manage containers.</p>
         </div>
-      <?php else: ?>
-        <p>Docker deployment is currently disabled for this station.</p>
-        <?php if (station_is_owner($user)): ?>
-          <div class="action-row">
-            <a class="quick-link" href="admin-settings.php?tab=docker">Enable Docker in Admin Settings</a>
-          </div>
-        <?php endif; ?>
-      <?php endif; ?>
-    </section>
+        <nav class="nav-pills">
+          <a href="station.php">Dashboard</a>
+          <a href="viewer.php?project=<?= urlencode($project) ?>">Files</a>
+          <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
+          <?php if (station_docker_enabled()): ?>
+            <a href="docker-config.php?project=<?= urlencode($project) ?>">Docker</a>
+          <?php endif; ?>
+          <?php if (station_is_admin($user)): ?>
+            <a href="template-manager.php">Templates</a>
+          <?php endif; ?>
+        </nav>
+      </header>
 
-    <section class="card">
-      <h2>Preset Library</h2>
-      <?php if (!$presets): ?>
-        <p>No saved presets yet.</p>
-      <?php else: ?>
-        <div class="grid-two">
-          <?php foreach ($presets as $preset): ?>
-            <article class="card feature-card">
-              <h2><?= station_h((string) ($preset['name'] ?? 'Preset')) ?></h2>
-              <p><?= station_h((string) ($preset['createdAt'] ?? '')) ?></p>
-              <pre class="code-mini"><?= station_h((string) ($preset['prompt'] ?? '')) ?></pre>
-            </article>
-          <?php endforeach; ?>
+      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+      <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+
+      <form method="post" class="settings-shell project-settings-shell" id="project-settings-form">
+        <input type="hidden" name="project" value="<?= station_h($project) ?>">
+
+        <nav class="settings-nav" aria-label="Project settings sections">
+          <a class="settings-nav-item active" href="#general"><span class="settings-nav-icon">⚙</span><span>General</span></a>
+          <a class="settings-nav-item" href="#integrations"><span class="settings-nav-icon">🔗</span><span>Integrations</span></a>
+          <a class="settings-nav-item" href="#runtime"><span class="settings-nav-icon">🐳</span><span>Runtime</span></a>
+        </nav>
+
+        <div class="settings-content">
+          <section id="general" class="settings-panel">
+            <div class="settings-panel-head">
+              <h2 class="settings-panel-heading">General</h2>
+              <p class="settings-panel-subtitle">Environment variables are written to <code>.env</code> in the project tree for local tooling. One <code>KEY=value</code> per line; lines starting with <code>#</code> are ignored.</p>
+            </div>
+
+            <div class="settings-form-group">
+              <div class="setting-item">
+                <label class="setting-label" for="environment_text">Environment variables</label>
+                <textarea id="environment_text" name="environment_text" class="project-settings-textarea" rows="16" placeholder="API_URL=https://example.com&#10;API_KEY=secret"><?= station_h(station_env_text($settings['environment'] ?? [])) ?></textarea>
+              </div>
+              <div class="setting-item">
+                <label class="setting-label" for="notes">Internal notes</label>
+                <textarea id="notes" name="notes" class="project-settings-textarea" rows="8" placeholder="Runbooks, credentials location, staging URLs…"><?= station_h((string) ($settings['notes'] ?? '')) ?></textarea>
+                <p class="setting-description">Visible to everyone who can open this project’s settings. Do not store secrets here unless the project is appropriately restricted.</p>
+              </div>
+            </div>
+
+            <div class="settings-form-actions">
+              <button type="submit" class="btn-primary" name="action" value="save_settings">Save changes</button>
+            </div>
+          </section>
+
+          <section id="integrations" class="settings-panel">
+            <div class="settings-panel-head">
+              <h2 class="settings-panel-heading">GitHub</h2>
+              <p class="settings-panel-subtitle">Metadata used when generating workflow and helper files into the repository. This does not create the remote repository for you.</p>
+            </div>
+
+            <div class="settings-form-group grid-2">
+              <div class="setting-item">
+                <label class="setting-label" for="repo_owner">Owner or organization</label>
+                <input id="repo_owner" type="text" name="repo_owner" value="<?= station_h((string) ($settings['github']['repoOwner'] ?? '')) ?>" placeholder="octocat" autocomplete="organization">
+              </div>
+              <div class="setting-item">
+                <label class="setting-label" for="repo_name">Repository name</label>
+                <input id="repo_name" type="text" name="repo_name" value="<?= station_h((string) ($settings['github']['repoName'] ?? $project)) ?>" placeholder="<?= station_h($project) ?>" autocomplete="off">
+              </div>
+              <div class="setting-item">
+                <label class="setting-label" for="repo_visibility">Visibility</label>
+                <select id="repo_visibility" name="repo_visibility">
+                  <option value="private" <?= ((string) ($settings['github']['visibility'] ?? 'private')) === 'private' ? 'selected' : '' ?>>Private</option>
+                  <option value="public" <?= ((string) ($settings['github']['visibility'] ?? 'private')) === 'public' ? 'selected' : '' ?>>Public</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label class="setting-label" for="default_branch">Default branch</label>
+                <input id="default_branch" type="text" name="default_branch" value="<?= station_h((string) ($settings['github']['defaultBranch'] ?? 'main')) ?>" placeholder="main">
+              </div>
+            </div>
+
+            <label class="feature-toggle">
+              <input type="checkbox" name="release_workflow" <?= !empty($settings['github']['releaseWorkflow']) ? 'checked' : '' ?>>
+              <div class="feature-toggle-content">
+                <span class="feature-toggle-title">Generate release workflow</span>
+                <span class="feature-toggle-desc">Adds a GitHub Actions workflow file tailored to this repo name when you click generate below.</span>
+              </div>
+            </label>
+
+            <div class="settings-form-actions" style="margin-top: 20px;">
+              <button type="submit" class="btn-primary" name="action" value="save_settings">Save GitHub metadata</button>
+            </div>
+
+            <div class="settings-panel-divider"></div>
+
+            <h3 class="settings-subheading">Bootstrap files</h3>
+            <p class="setting-description">Writes supporting files (e.g. CI workflow stubs) into the project directory based on the fields above.</p>
+            <div class="settings-form-actions">
+              <button type="submit" class="secondary-btn" name="action" value="generate_github" onclick="return confirm('Generate or overwrite bootstrap files in this project?');">Generate GitHub files</button>
+            </div>
+          </section>
+
+          <section id="runtime" class="settings-panel">
+            <div class="settings-panel-head">
+              <h2 class="settings-panel-heading">Containers &amp; templates</h2>
+              <p class="settings-panel-subtitle">Docker is configured per project on a dedicated page. Starting templates and legacy scaffolds (for example scraper-builder) are managed under Templates.</p>
+            </div>
+
+            <?php if (station_docker_enabled()): ?>
+              <div class="project-runtime-card">
+                <div>
+                  <strong>Docker</strong>
+                  <p class="setting-description" style="margin: 6px 0 0;">
+                    <?php if ($dockerContainerized): ?>
+                      This project is set to run in a container. Open the Docker page to change services, ports, or lifecycle actions.
+                    <?php else: ?>
+                      Container deployment is available but not enabled for this project yet.
+                    <?php endif; ?>
+                  </p>
+                </div>
+                <a class="btn-primary" href="docker-config.php?project=<?= urlencode($project) ?>"><?= $dockerContainerized ? 'Open Docker' : 'Enable containers' ?></a>
+              </div>
+            <?php else: ?>
+              <p class="setting-description">Docker deployment is disabled station-wide. An owner can enable it under Admin Settings → Docker.</p>
+              <?php if (station_is_owner($user)): ?>
+                <a class="quick-link" href="admin-settings.php?tab=docker">Admin → Docker</a>
+              <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if (station_is_admin($user)): ?>
+              <div class="project-runtime-card" style="margin-top: 16px;">
+                <div>
+                  <strong>Templates</strong>
+                  <p class="setting-description" style="margin: 6px 0 0;">Create projects from stacks, edit built-in scaffolds, and duplicate custom templates — including the legacy scraper-builder layout and prompts.</p>
+                </div>
+                <a class="secondary-btn" href="template-manager.php">Open Templates</a>
+              </div>
+            <?php endif; ?>
+          </section>
         </div>
-      <?php endif; ?>
-    </section>
-      </div>
+      </form>
     </main>
   </div>
   <?= station_dashboard_nav_script_html() ?>
+  <script>
+    (function () {
+      var shell = document.querySelector('.project-settings-shell');
+      if (!shell) return;
+      var navLinks = shell.querySelectorAll('.settings-nav-item');
+      navLinks.forEach(function (link) {
+        link.addEventListener('click', function (event) {
+          event.preventDefault();
+          var hash = (link.getAttribute('href') || '').replace('#', '');
+          var target = document.getElementById(hash);
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            navLinks.forEach(function (n) { n.classList.remove('active'); });
+            link.classList.add('active');
+          }
+        });
+      });
+    })();
+  </script>
   <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
