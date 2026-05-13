@@ -104,7 +104,10 @@ $editingFilesJson = $editingTemplate !== null
   <?= station_pwa_head_html('Template Manager', 'Create and maintain custom starter templates for new projects.') ?>
 </head>
 <body class="station-body">
-  <main class="station-shell">
+  <div class="dashboard-shell">
+    <?= station_dashboard_nav_html('templates') ?>
+    <main class="dashboard-main">
+      <div class="station-shell">
     <header class="topbar card">
       <div>
         <p class="kicker">Admin Tools</p>
@@ -176,7 +179,11 @@ $editingFilesJson = $editingTemplate !== null
         </div>
       </section>
     </section>
-  </main>
+      </div>
+    </main>
+  </div>
+  <?= station_dashboard_nav_script_html() ?>
+  <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>

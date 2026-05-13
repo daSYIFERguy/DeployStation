@@ -56,7 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= station_pwa_head_html('User Settings', $canBuild ? 'Configure integrations and API keys for GitHub, VS Code, ChatGPT, and Codex.' : 'Manage your account settings.') ?>
 </head>
 <body class="station-body">
-    <main class="station-shell">
+    <div class="dashboard-shell">
+        <?= station_dashboard_nav_html('user-settings') ?>
+        <main class="dashboard-main">
+            <div class="station-shell">
         <header class="topbar card">
             <div>
                 <p class="kicker">Account Setup</p>
@@ -88,7 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             <button type="submit">Save Settings</button>
         </form>
-    </main>
-    <?= station_pwa_register_html() ?>
+            </div>
+        </main>
+    </div>
+    <?= station_dashboard_nav_script_html() ?>
+    <?= station_clipboard_fab_html() ?>
+  <?= station_pwa_register_html() ?>
 </body>
 </html>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/docker.php';
 
 station_require_builder();
 
@@ -127,7 +128,10 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
   <?= station_pwa_head_html('Project Settings', 'Manage environment variables, GitHub setup, scraper presets, and notes for this project.') ?>
 </head>
 <body class="station-body">
-  <main class="station-shell">
+  <div class="dashboard-shell">
+    <?= station_dashboard_nav_html('dashboard') ?>
+    <main class="dashboard-main">
+      <div class="station-shell">
     <header class="topbar card">
       <div>
         <p class="kicker">Project Control</p>
@@ -210,6 +214,23 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
       </form>
     </section>
 
+    <section class="card form-grid" id="docker">
+      <h2>Docker Deployment</h2>
+      <?php if (station_docker_enabled()): ?>
+        <p>Choose the services this project needs and generate its Docker Compose file.</p>
+        <div class="action-row">
+          <a class="quick-link" href="docker-config.php?project=<?= urlencode($project) ?>">Configure Docker Services</a>
+        </div>
+      <?php else: ?>
+        <p>Docker deployment is currently disabled for this station.</p>
+        <?php if (station_is_owner($user)): ?>
+          <div class="action-row">
+            <a class="quick-link" href="admin-settings.php?tab=docker">Enable Docker in Admin Settings</a>
+          </div>
+        <?php endif; ?>
+      <?php endif; ?>
+    </section>
+
     <section class="card">
       <h2>Preset Library</h2>
       <?php if (!$presets): ?>
@@ -226,7 +247,11 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
         </div>
       <?php endif; ?>
     </section>
-  </main>
+      </div>
+    </main>
+  </div>
+  <?= station_dashboard_nav_script_html() ?>
+  <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>

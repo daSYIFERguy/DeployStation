@@ -83,6 +83,7 @@ $ok = station_flash_get('ok');
       </section>
     </section>
   </main>
+  <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
+require_once __DIR__ . '/lib/docker.php';
 
 station_require_login();
 
@@ -144,11 +145,6 @@ $statsCards = !$canBuild
       ['count' => $builderAdminCount, 'label' => 'Builder / Admin', 'filterType' => 'access', 'filterValue' => 'buildersoradmin'],
       ['count' => $ownerOnlyCount, 'label' => 'Owner Only', 'filterType' => 'access', 'filterValue' => 'adminsonly'],
     ];
-$brandIconUrl  = trim((string) ($uiConfig['faviconUrl'] ?? '')) !== ''
-  ? trim((string) ($uiConfig['faviconUrl'] ?? ''))
-  : trim((string) ($uiConfig['appIconUrl'] ?? ''));
-$brandInitial  = 'DS';
-$userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 ?>
 <!doctype html>
 <html lang="en">
@@ -1196,76 +1192,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
-    <aside class="dashboard-nav">
-      <div class="dashboard-mobile-bar">
-        <a class="dashboard-brand" href="station.php">
-          <span class="dashboard-brand-mark"><?php if ($brandIconUrl !== ''): ?><img src="<?= station_h($brandIconUrl) ?>" alt="<?= station_h($appName) ?> icon"><?php else: ?><?= station_h($brandInitial !== '' ? $brandInitial : 'S') ?><?php endif; ?></span>
-          <span class="dashboard-brand-copy">
-            <span class="dashboard-brand-kicker"><?= station_h($uiConfig['heading']) ?></span>
-            <span class="dashboard-brand-name"><?= station_h($appName) ?></span>
-          </span>
-        </a>
-        <button type="button" class="dashboard-mobile-toggle" id="dashboardMobileToggle" aria-label="Open navigation" aria-controls="dashboardMenu" aria-expanded="false">
-          <span class="dashboard-mobile-toggle-lines" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
-        </button>
-      </div>
-      <div class="dashboard-nav-inner">
-        <a class="dashboard-brand" href="station.php">
-          <span class="dashboard-brand-mark"><?php if ($brandIconUrl !== ''): ?><img src="<?= station_h($brandIconUrl) ?>" alt="<?= station_h($appName) ?> icon"><?php else: ?><?= station_h($brandInitial !== '' ? $brandInitial : 'S') ?><?php endif; ?></span>
-          <span class="dashboard-brand-copy">
-            <span class="dashboard-brand-kicker"><?= station_h($uiConfig['heading']) ?></span>
-            <span class="dashboard-brand-name"><?= station_h($appName) ?></span>
-          </span>
-        </a>
-
-        <nav class="dashboard-menu" id="dashboardMenu" aria-label="Primary navigation">
-          <div class="dashboard-mobile-user">
-            <strong><?= station_h(station_current_username()) ?></strong>
-            <span><?= station_h((string) ($user['role'] ?? 'user')) ?></span>
-          </div>
-          <a href="station.php" class="dashboard-menu-link active">
-            <span class="menu-icon">⌂</span>
-            <span>Dashboard</span>
-          </a>
-          <?php if ($isAdmin): ?>
-          <a href="users.php" class="dashboard-menu-link">
-            <span class="menu-icon">◎</span>
-            <span>Users</span>
-          </a>
-          <a href="template-manager.php" class="dashboard-menu-link">
-            <span class="menu-icon">⋔</span>
-            <span>Templates</span>
-          </a>
-          <?php endif; ?>
-          <?php if ($isOwner): ?>
-          <a href="admin-settings.php" class="dashboard-menu-link">
-            <span class="menu-icon">◫</span>
-            <span>Settings</span>
-          </a>
-          <?php endif; ?>
-          <a href="user-settings.php" class="dashboard-menu-link">
-            <span class="menu-icon">◌</span>
-            <span>User Settings</span>
-          </a>
-          <a href="logout.php" class="dashboard-menu-link logout-link">
-            <span class="menu-icon">↗</span>
-            <span>Sign out</span>
-          </a>
-        </nav>
-
-        <a class="dashboard-account" href="user-settings.php">
-          <span class="dashboard-avatar"><?= station_h($userInitial) ?></span>
-          <span class="dashboard-account-copy">
-            <strong><?= station_h(station_current_username()) ?></strong>
-            <span><?= station_h((string) ($user['role'] ?? 'user')) ?></span>
-          </span>
-        </a>
-      </div>
-    </aside>
+    <?= station_dashboard_nav_html('dashboard') ?>
 
     <main class="dashboard-main">
       <?php if ($ok !== '' || $error !== ''): ?>
@@ -1391,6 +1318,8 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               $ghdevUrl   = ($ghOwner !== '' && $ghRepo !== '')
                   ? 'https://github.dev/' . rawurlencode($ghOwner) . '/' . rawurlencode($ghRepo)
                   : '';
+              $dockerConfig = isset($ps['docker']) && is_array($ps['docker']) ? $ps['docker'] : [];
+              $dockerConfigured = $dockerConfig !== [] || is_file(station_project_path($slug) . '/docker-compose.yml');
             ?>
             <article class="project-card" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>">
               <div class="project-card-head">
@@ -1461,13 +1390,43 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               </div>
 
               <div class="proj-quick-actions">
-                <a class="quick-link" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
+                <a class="quick-link primary-link" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
                 <a class="quick-link" href="viewer.php?project=<?= urlencode($slug) ?>">Files</a>
                 <?php if ($ghdevUrl !== ''): ?>
                   <a class="quick-link ghdev-link" href="<?= station_h($ghdevUrl) ?>" target="_blank" rel="noreferrer">github.dev ↗</a>
                 <?php endif; ?>
                 <?php if ($canBuild): ?>
                   <a class="quick-link" href="project-settings.php?project=<?= urlencode($slug) ?>">Settings</a>
+                  <?php if (station_docker_enabled()): ?>
+                    <?php if ($dockerConfigured): ?>
+                    <details class="docker-menu" data-docker-menu data-project-slug="<?= station_h($slug) ?>">
+                      <summary class="quick-link docker-trigger" data-docker-pill>
+                        <span class="docker-dot" data-docker-dot></span>
+                        <span data-docker-state-label>Deploy</span>
+                      </summary>
+                      <div class="docker-menu-body">
+                        <form class="quick-action-form" method="post" action="docker-actions.php">
+                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                          <input type="hidden" name="action" value="start">
+                          <button class="docker-menu-action" type="submit">▶ Start / Build</button>
+                        </form>
+                        <form class="quick-action-form" method="post" action="docker-actions.php">
+                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                          <input type="hidden" name="action" value="restart">
+                          <button class="docker-menu-action" type="submit">↻ Restart</button>
+                        </form>
+                        <form class="quick-action-form" method="post" action="docker-actions.php">
+                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                          <input type="hidden" name="action" value="stop">
+                          <button class="docker-menu-action" type="submit">■ Stop</button>
+                        </form>
+                        <a class="docker-menu-action" href="docker-config.php?project=<?= urlencode($slug) ?>">⚙ Configure</a>
+                      </div>
+                    </details>
+                    <?php else: ?>
+                      <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>">Configure Docker</a>
+                    <?php endif; ?>
+                  <?php endif; ?>
                 <?php endif; ?>
                 <button class="quick-link share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
               </div>
@@ -1608,6 +1567,9 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
         <button class="tab-btn" type="button" data-tab="folder">Folder</button>
         <button class="tab-btn" type="button" data-tab="file">Single File</button>
         <button class="tab-btn" type="button" data-tab="template">Template</button>
+        <?php if (!empty($adminSettings['githubEnabled'])): ?>
+          <button class="tab-btn" type="button" data-tab="github">GitHub</button>
+        <?php endif; ?>
       </div>
       <div class="tab-pane active" id="tab-zip">
         <div class="create-project-pane-head">
@@ -1672,6 +1634,30 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <button type="submit">Create Starter</button>
         </form>
       </div>
+      <?php if (!empty($adminSettings['githubEnabled'])): ?>
+      <div class="tab-pane" id="tab-github">
+        <div class="create-project-pane-head">
+          <h3>Import from GitHub</h3>
+        </div>
+        <form action="upload.php" method="post" class="form-grid create-project-form">
+          <input type="hidden" name="action" value="import_github">
+          <label>Project Name<input type="text" name="project_name" placeholder="github-project" required></label>
+          <label>Repository URL<input type="text" name="github_repo_url" placeholder="https://github.com/owner/repo" required></label>
+          <label>Branch<input type="text" name="github_branch" placeholder="main"></label>
+          <label>One-time Token<input type="password" name="github_token" placeholder="Leave blank to use saved GitHub token"></label>
+          <?php if (station_docker_enabled()): ?>
+            <label class="feature-toggle">
+              <input type="checkbox" name="configure_docker_next" value="1" checked>
+              <div class="feature-toggle-content">
+                <span class="feature-toggle-title">Configure Docker services next</span>
+                <span class="feature-toggle-desc">Choose databases and service credentials after the repo is cloned locally.</span>
+              </div>
+            </label>
+          <?php endif; ?>
+          <button type="submit">Import Repository</button>
+        </form>
+      </div>
+      <?php endif; ?>
     </div>
   </dialog>
   <?php endif; ?>
@@ -2080,6 +2066,60 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       });
     }
 
+    /* ── Live Docker status ── */
+    const dockerMenus = Array.from(document.querySelectorAll('[data-docker-menu]'));
+    if (dockerMenus.length > 0) {
+      const stateMeta = {
+        running: { label: 'Running', tone: 'ok' },
+        partial: { label: 'Partial', tone: 'warn' },
+        stopped: { label: 'Stopped', tone: 'bad' },
+        unknown: { label: 'Deploy', tone: 'idle' },
+        unavailable: { label: 'Docker offline', tone: 'bad' },
+        unconfigured: { label: 'Deploy', tone: 'idle' }
+      };
+
+      function applyDockerState(menu, state) {
+        const meta = stateMeta[state] || stateMeta.unknown;
+        const label = menu.querySelector('[data-docker-state-label]');
+        const trigger = menu.querySelector('[data-docker-pill]');
+        if (label) { label.textContent = meta.label; }
+        if (trigger) {
+          trigger.dataset.tone = meta.tone;
+        }
+      }
+
+      function pollDockerStatus() {
+        const slugs = dockerMenus.map((m) => m.dataset.projectSlug || '').filter(Boolean);
+        if (slugs.length === 0) { return; }
+        fetch('docker-status.php?projects=' + encodeURIComponent(slugs.join(',')), { credentials: 'same-origin' })
+          .then((r) => r.json())
+          .then((payload) => {
+            if (!payload || !payload.projects) { return; }
+            dockerMenus.forEach((menu) => {
+              const slug = menu.dataset.projectSlug || '';
+              const entry = payload.projects[slug];
+              if (entry && entry.state) {
+                applyDockerState(menu, entry.state);
+              } else if (payload.engine === false) {
+                applyDockerState(menu, 'unavailable');
+              }
+            });
+          })
+          .catch(() => {});
+      }
+
+      pollDockerStatus();
+      window.setInterval(pollDockerStatus, 15000);
+
+      // Refresh when any docker action form is submitted, so the pill updates faster.
+      document.querySelectorAll('.docker-menu form').forEach((form) => {
+        form.addEventListener('submit', () => {
+          window.setTimeout(pollDockerStatus, 2500);
+          window.setTimeout(pollDockerStatus, 8000);
+        });
+      });
+    }
+
     /* ── Share buttons ── */
     document.querySelectorAll('.share-btn').forEach((btn) => {
       btn.addEventListener('click', async function () {
@@ -2335,6 +2375,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     scheduleClipboardPolling();
   })();
   </script>
+  <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>

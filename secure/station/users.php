@@ -188,7 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?= station_pwa_head_html('User Admin', 'Manage station users, roles, and passwords.') ?>
 </head>
 <body class="station-body">
-  <main class="station-shell">
+  <div class="dashboard-shell">
+    <?= station_dashboard_nav_html('users') ?>
+    <main class="dashboard-main">
+      <div class="station-shell">
     <header class="topbar card">
       <div>
         <p class="kicker"><?= $isOwner ? 'Owner Console' : 'Admin Console' ?></p>
@@ -286,7 +289,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </tbody>
       </table>
     </section>
-  </main>
+      </div>
+    </main>
+  </div>
+  <?= station_dashboard_nav_script_html() ?>
+  <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>

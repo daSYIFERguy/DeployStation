@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/docker.php';
 
 station_require_setup();
 
@@ -17,12 +18,12 @@ if ($slug === '' || !station_project_exists($slug)) {
 $accessMode = station_project_access_mode($slug);
 $user = station_current_user();
 if (!station_can_access_project($user, $accessMode)) {
-  if (!$user) {
-    header('Location: ' . station_station_url('index.php'));
-    exit;
-  }
+    if (!$user) {
+        header('Location: ' . station_station_url('index.php'));
+        exit;
+    }
 
-  header('Location: ' . station_station_url('access-denied.php?project=' . urlencode($slug)));
+    header('Location: ' . station_station_url('access-denied.php?project=' . urlencode($slug)));
     exit;
 }
 
@@ -98,6 +99,91 @@ if ($templateType === 'chrome-extension') {
       <pre class="code-block"><?= station_h($readme) ?></pre>
     </section>
     <?php endif; ?>
+  </main>
+  <?= station_pwa_register_html() ?>
+</body>
+</html>
+    <?php
+    exit;
+}
+
+$projectSettings = station_project_settings($slug);
+$dockerConfig = isset($projectSettings['docker']) && is_array($projectSettings['docker']) ? $projectSettings['docker'] : [];
+$isContainerized = $dockerConfig !== [] && !empty($dockerConfig['containerized']);
+
+if ($isContainerized) {
+    $appPort = station_normalize_docker_port($dockerConfig['appPort'] ?? 80);
+    $hostPort = (int) ($dockerConfig['hostPort'] ?? 0);
+    if ($hostPort <= 0) {
+        $hostPort = station_allocate_project_host_port($slug);
+        $dockerConfig['hostPort'] = $hostPort;
+        $projectSettings['docker'] = $dockerConfig;
+        station_save_project_settings($slug, $projectSettings);
+    }
+
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? 'localhost')) ?: 'localhost';
+    $target = $scheme . '://' . $host . ':' . $hostPort . '/';
+
+    $status = station_project_docker_status($slug);
+    if (($status['state'] ?? '') === 'running') {
+        header('Location: ' . $target);
+        exit;
+    }
+
+    $stateLabels = [
+        'running' => ['label' => 'Running', 'tone' => 'ok'],
+        'partial' => ['label' => 'Partially Running', 'tone' => 'warn'],
+        'stopped' => ['label' => 'Stopped', 'tone' => 'bad'],
+        'unknown' => ['label' => 'Unknown', 'tone' => 'warn'],
+        'unavailable' => ['label' => 'Docker Engine Unreachable', 'tone' => 'bad'],
+        'unconfigured' => ['label' => 'Not Configured', 'tone' => 'warn'],
+    ];
+    $stateMeta = $stateLabels[$status['state'] ?? 'unknown'] ?? $stateLabels['unknown'];
+    $canBuild = station_can_build($user);
+    ?>
+<!doctype html>
+<html lang="en">
+<head>
+  <?= station_pwa_head_html('Launch ' . $slug, 'Container deployment status for ' . $slug . '.') ?>
+</head>
+<body class="station-body">
+  <main class="station-shell narrow" style="padding-top: 32px;">
+    <section class="card form-grid">
+      <p class="kicker">Container deployment</p>
+      <h1><?= station_h($slug) ?></h1>
+      <p>This project is configured to run in Docker. Current status:</p>
+      <p>
+        <span class="status-pill <?= $stateMeta['tone'] === 'ok' ? 'is-public' : 'is-private' ?>" style="font-size:12px;padding:6px 14px;">
+          ● <?= station_h($stateMeta['label']) ?>
+        </span>
+      </p>
+
+      <?php if (($status['state'] ?? '') === 'running'): ?>
+        <p>Open the running app:</p>
+        <a class="download-btn" href="<?= station_h($target) ?>" target="_blank" rel="noreferrer">Open <?= station_h($target) ?></a>
+      <?php else: ?>
+        <p>The container is not running. Use the controls below to start it.</p>
+        <div class="action-row">
+          <?php if ($canBuild): ?>
+            <form method="post" action="docker-actions.php">
+              <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+              <input type="hidden" name="action" value="start">
+              <input type="hidden" name="return" value="launch.php?project=<?= urlencode($slug) ?>">
+              <button type="submit" class="btn-primary">Start container</button>
+            </form>
+            <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>">Configure Docker</a>
+          <?php endif; ?>
+          <a class="quick-link" href="station.php">Back to dashboard</a>
+        </div>
+        <?php if (!empty($status['output'])): ?>
+          <details>
+            <summary class="mini-link">Show diagnostic output</summary>
+            <pre class="code-block"><?= station_h((string) $status['output']) ?></pre>
+          </details>
+        <?php endif; ?>
+      <?php endif; ?>
+    </section>
   </main>
   <?= station_pwa_register_html() ?>
 </body>

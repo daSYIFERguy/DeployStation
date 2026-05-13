@@ -157,7 +157,7 @@ function station_ensure_data_dir(): void
         @file_put_contents($iconsIndexPath, '<!doctype html><title>Icons</title>');
     }
 
-    foreach ([station_user_profiles_dir(), station_archives_dir(), station_archived_projects_dir(), station_project_settings_dir()] as $childDir) {
+    foreach ([station_user_profiles_dir(), station_archives_dir(), station_archived_projects_dir(), station_project_settings_dir(), station_data_dir() . '/project-credentials'] as $childDir) {
         if (!is_dir($childDir)) {
             @mkdir($childDir, 0700, true);
         }
@@ -537,6 +537,368 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.php', { scope: './' }).catch(function () {});
   });
 }
+</script>
+HTML;
+}
+
+function station_dashboard_nav_link(string $active, string $key, string $href, string $icon, string $label, string $extraClass = ''): string
+{
+    $classes = trim('dashboard-menu-link ' . ($active === $key ? 'active ' : '') . $extraClass);
+
+    return '<a href="' . station_h($href) . '" class="' . station_h($classes) . '">' .
+        '<span class="menu-icon">' . station_h($icon) . '</span>' .
+        '<span>' . station_h($label) . '</span>' .
+    '</a>';
+}
+
+function station_dashboard_nav_html(string $active = 'dashboard'): string
+{
+    $uiConfig = station_ui_config();
+    $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
+    $brandIconUrl = trim((string) ($uiConfig['faviconUrl'] ?? '')) !== ''
+        ? trim((string) ($uiConfig['faviconUrl'] ?? ''))
+        : trim((string) ($uiConfig['appIconUrl'] ?? ''));
+    $brandInitial = 'DS';
+    $username = station_current_username();
+    $user = function_exists('station_current_user') ? station_current_user() : null;
+    $isAdmin = function_exists('station_is_admin') && station_is_admin($user);
+    $isOwner = function_exists('station_is_owner') && station_is_owner($user);
+    $role = $user ? (string) ($user['role'] ?? 'user') : 'user';
+    $userInitial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));
+
+    $brandMark = $brandIconUrl !== ''
+        ? '<img src="' . station_h($brandIconUrl) . '" alt="' . station_h($appName) . ' icon">'
+        : station_h($brandInitial);
+
+    $links = [
+        station_dashboard_nav_link($active, 'dashboard', 'station.php', '⌂', 'Dashboard'),
+    ];
+
+    if ($isAdmin) {
+        $links[] = station_dashboard_nav_link($active, 'users', 'users.php', '◎', 'Users');
+        $links[] = station_dashboard_nav_link($active, 'templates', 'template-manager.php', '⋔', 'Templates');
+    }
+
+    if ($isOwner) {
+        $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', '◫', 'Settings');
+    }
+
+    $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', '◌', 'User Settings');
+    $links[] = station_dashboard_nav_link($active, 'logout', 'logout.php', '↗', 'Sign out', 'logout-link');
+
+    return '<aside class="dashboard-nav">' .
+        '<div class="dashboard-mobile-bar">' .
+            '<a class="dashboard-brand" href="station.php">' .
+                '<span class="dashboard-brand-mark">' . $brandMark . '</span>' .
+                '<span class="dashboard-brand-copy">' .
+                    '<span class="dashboard-brand-kicker">' . station_h((string) ($uiConfig['heading'] ?? 'Deployment Station')) . '</span>' .
+                    '<span class="dashboard-brand-name">' . station_h($appName) . '</span>' .
+                '</span>' .
+            '</a>' .
+            '<button type="button" class="dashboard-mobile-toggle" id="dashboardMobileToggle" aria-label="Open navigation" aria-controls="dashboardMenu" aria-expanded="false">' .
+                '<span class="dashboard-mobile-toggle-lines" aria-hidden="true"><span></span><span></span><span></span></span>' .
+            '</button>' .
+        '</div>' .
+        '<div class="dashboard-nav-inner">' .
+            '<a class="dashboard-brand" href="station.php">' .
+                '<span class="dashboard-brand-mark">' . $brandMark . '</span>' .
+                '<span class="dashboard-brand-copy">' .
+                    '<span class="dashboard-brand-kicker">' . station_h((string) ($uiConfig['heading'] ?? 'Deployment Station')) . '</span>' .
+                    '<span class="dashboard-brand-name">' . station_h($appName) . '</span>' .
+                '</span>' .
+            '</a>' .
+            '<nav class="dashboard-menu" id="dashboardMenu" aria-label="Primary navigation">' .
+                '<div class="dashboard-mobile-user"><strong>' . station_h($username) . '</strong><span>' . station_h($role) . '</span></div>' .
+                implode('', $links) .
+            '</nav>' .
+            '<a class="dashboard-account" href="user-settings.php">' .
+                '<span class="dashboard-avatar">' . station_h($userInitial) . '</span>' .
+                '<span class="dashboard-account-copy"><strong>' . station_h($username) . '</strong><span>' . station_h($role) . '</span></span>' .
+            '</a>' .
+        '</div>' .
+    '</aside>';
+}
+
+function station_dashboard_nav_script_html(): string
+{
+    return <<<'HTML'
+<script>
+(function () {
+  var mobileNav = document.querySelector('.dashboard-nav');
+  var mobileToggle = document.getElementById('dashboardMobileToggle');
+
+  if (!mobileNav || !mobileToggle) {
+    return;
+  }
+
+  mobileToggle.addEventListener('click', function () {
+    var isOpen = mobileNav.classList.toggle('is-open');
+    mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    mobileToggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+  });
+})();
+</script>
+HTML;
+}
+
+/**
+ * Global floating clipboard widget (FAB + drawer). Available on any page that
+ * embeds it, so users can paste from mobile and pick up the text on desktop
+ * (or vice versa) without going back to the dashboard.
+ */
+function station_clipboard_fab_html(): string
+{
+    $username = station_current_username();
+    if ($username === '') {
+        return '';
+    }
+
+    return <<<'HTML'
+<aside class="clip-fab" id="stationClipboardFab" aria-live="polite">
+  <button class="clip-fab-button" type="button" id="stationClipboardFabToggle" aria-label="Open clipboard" aria-controls="stationClipboardFabPanel" aria-expanded="false">
+    <span class="clip-fab-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        <rect x="8" y="2" width="8" height="4" rx="1"/>
+      </svg>
+    </span>
+    <span class="clip-fab-label">Clipboard</span>
+    <span class="clip-fab-badge" id="stationClipboardFabBadge" hidden>•</span>
+  </button>
+  <section class="clip-fab-panel" id="stationClipboardFabPanel" role="dialog" aria-label="Shared clipboard" hidden>
+    <header class="clip-fab-head">
+      <div>
+        <p class="clip-fab-kicker">Shared clipboard</p>
+        <h3 class="clip-fab-title">Paste &amp; pick up anywhere</h3>
+        <p class="clip-fab-hint">Synced to your account. Open on another device to read it back.</p>
+      </div>
+      <button type="button" class="clip-fab-close" id="stationClipboardFabClose" aria-label="Close clipboard">✕</button>
+    </header>
+    <div class="clip-fab-toolbar">
+      <button type="button" class="clip-fab-action" data-clip-action="paste" title="Read from your device clipboard">⇩ Paste</button>
+      <button type="button" class="clip-fab-action" data-clip-action="copy" title="Copy to your device clipboard">⇧ Copy</button>
+      <label class="clip-fab-action clip-fab-upload" title="Attach a file">
+        <input type="file" id="stationClipboardFabFile" hidden>
+        ＋ File
+      </label>
+      <button type="button" class="clip-fab-action danger" data-clip-action="clear" title="Clear shared clipboard">🗑 Clear</button>
+    </div>
+    <textarea id="stationClipboardFabText" placeholder="Type or paste text here — it syncs to all your devices."></textarea>
+    <div class="clip-fab-files" id="stationClipboardFabFiles"></div>
+    <p class="clip-fab-status" id="stationClipboardFabStatus" aria-live="polite"></p>
+  </section>
+</aside>
+<script>
+(function () {
+  if (window.__stationClipboardFabInit) { return; }
+  window.__stationClipboardFabInit = true;
+
+  var fab = document.getElementById('stationClipboardFab');
+  var toggle = document.getElementById('stationClipboardFabToggle');
+  var panel = document.getElementById('stationClipboardFabPanel');
+  var closeBtn = document.getElementById('stationClipboardFabClose');
+  var text = document.getElementById('stationClipboardFabText');
+  var status = document.getElementById('stationClipboardFabStatus');
+  var filesBox = document.getElementById('stationClipboardFabFiles');
+  var badge = document.getElementById('stationClipboardFabBadge');
+  var fileInput = document.getElementById('stationClipboardFabFile');
+  if (!fab || !toggle || !panel || !text) { return; }
+
+  var saveTimer = null;
+  var dirty = false;
+  var pollTimer = null;
+  var revision = '0';
+  var lastApplied = '';
+
+  function setStatus(message, sticky) {
+    if (!status) { return; }
+    status.textContent = message || '';
+    if (!message || sticky) { return; }
+    window.clearTimeout(setStatus._t);
+    setStatus._t = window.setTimeout(function () { status.textContent = ''; }, 1800);
+  }
+
+  function setOpen(open) {
+    fab.classList.toggle('is-open', !!open);
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      window.setTimeout(function () { text && text.focus(); }, 60);
+      refresh();
+    }
+  }
+
+  function renderFiles(items) {
+    if (!filesBox) { return; }
+    filesBox.innerHTML = '';
+    if (!Array.isArray(items) || items.length === 0) {
+      if (badge) { badge.hidden = true; }
+      return;
+    }
+    if (badge) { badge.hidden = false; }
+    items.forEach(function (item) {
+      var row = document.createElement('div');
+      row.className = 'clip-fab-file';
+
+      var link = document.createElement('a');
+      link.href = item.url || '#';
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.className = 'clip-fab-file-link';
+      var badgeText = document.createElement('span');
+      badgeText.className = 'clip-fab-file-type';
+      badgeText.textContent = item.isImage ? 'Image' : 'File';
+      var name = document.createElement('span');
+      name.className = 'clip-fab-file-name';
+      name.textContent = item.originalName || 'attachment';
+      link.appendChild(badgeText);
+      link.appendChild(name);
+
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'clip-fab-file-remove';
+      remove.textContent = '×';
+      remove.title = 'Remove attachment';
+      remove.addEventListener('click', function () {
+        if (!item.name) { return; }
+        fetch('clipboard.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          credentials: 'same-origin',
+          body: 'action=remove_file&name=' + encodeURIComponent(item.name)
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.ok) {
+              renderFiles(d.files || []);
+              revision = String((d && d.revision) || revision);
+              setStatus('Attachment removed');
+            }
+          }).catch(function () { setStatus('Delete failed'); });
+      });
+
+      row.appendChild(link);
+      row.appendChild(remove);
+      filesBox.appendChild(row);
+    });
+  }
+
+  function applyPayload(payload) {
+    if (!payload || !payload.ok) { return; }
+    revision = String(payload.revision || revision);
+    if (typeof payload.content === 'string' && (!dirty || payload.content === text.value)) {
+      var active = document.activeElement === text;
+      var start = text.selectionStart;
+      var end = text.selectionEnd;
+      if (payload.content !== text.value) {
+        text.value = payload.content;
+      }
+      lastApplied = payload.content;
+      if (active) { try { text.setSelectionRange(start, end); } catch (_) {} }
+    }
+    renderFiles(payload.files || []);
+  }
+
+  function refresh() {
+    fetch('clipboard.php?action=get', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(applyPayload)
+      .catch(function () {});
+  }
+
+  function save() {
+    fetch('clipboard.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'same-origin',
+      body: 'action=save&content=' + encodeURIComponent(text.value)
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) { setStatus('Save failed'); return; }
+        dirty = false;
+        revision = String(d.revision || revision);
+        lastApplied = typeof d.content === 'string' ? d.content : text.value;
+        setStatus('Saved');
+      }).catch(function () { setStatus('Save error'); });
+  }
+
+  function uploadFile(file) {
+    if (!file) { return; }
+    var data = new FormData();
+    data.append('action', 'upload_file');
+    data.append('clip_file', file);
+    setStatus('Uploading…', true);
+    fetch('clipboard.php', { method: 'POST', body: data, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) { setStatus('Upload failed'); return; }
+        renderFiles(d.files || []);
+        setStatus('Attached');
+      }).catch(function () { setStatus('Upload error'); });
+  }
+
+  toggle.addEventListener('click', function () { setOpen(panel.hidden); });
+  if (closeBtn) { closeBtn.addEventListener('click', function () { setOpen(false); }); }
+
+  text.addEventListener('input', function () {
+    dirty = true;
+    setStatus('Syncing…', true);
+    window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(save, 400);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !panel.hidden) { setOpen(false); }
+  });
+
+  panel.querySelectorAll('[data-clip-action]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.getAttribute('data-clip-action');
+      if (action === 'copy') {
+        try {
+          navigator.clipboard.writeText(text.value)
+            .then(function () { setStatus('Copied to device'); })
+            .catch(function () { setStatus('Copy blocked'); });
+        } catch (_) { setStatus('Copy blocked'); }
+      } else if (action === 'paste') {
+        try {
+          navigator.clipboard.readText()
+            .then(function (value) {
+              if (typeof value !== 'string') { return; }
+              text.value = (text.value ? text.value + '\n' : '') + value;
+              dirty = true;
+              save();
+              setStatus('Pasted');
+            }).catch(function () { setStatus('Paste blocked — focus the field and paste manually.'); });
+        } catch (_) { setStatus('Paste blocked'); }
+      } else if (action === 'clear') {
+        text.value = '';
+        fetch('clipboard.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          credentials: 'same-origin',
+          body: 'action=clear'
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+            renderFiles([]);
+            revision = String((d && d.revision) || revision);
+            setStatus('Cleared');
+          });
+      }
+    });
+  });
+
+  if (fileInput) {
+    fileInput.addEventListener('change', function () {
+      if (this.files && this.files[0]) {
+        uploadFile(this.files[0]);
+        this.value = '';
+      }
+    });
+  }
+
+  refresh();
+  pollTimer = window.setInterval(refresh, 4000);
+})();
 </script>
 HTML;
 }
