@@ -2526,6 +2526,13 @@ tr:last-child td { border-bottom: none; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  position: relative;
+}
+
+.clip-fab-head > div:first-child {
+  min-width: 0;
+  flex: 1;
+  padding-right: 6px;
 }
 
 .clip-fab-kicker {
@@ -2560,6 +2567,10 @@ tr:last-child td { border-bottom: none; }
   color: var(--soft);
   cursor: pointer;
   font-size: 14px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
 }
 
 .clip-fab-close:hover {

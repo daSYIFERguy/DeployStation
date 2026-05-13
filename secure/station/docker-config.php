@@ -253,7 +253,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <strong class="docker-status-value"><code><?= station_h($reverseProxyPath) ?></code></strong>
           <span class="docker-status-meta">
             <?php if ($isNginxInfrastructure): ?>
-              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Include that file <strong>before</strong> <code>location /</code> in your server block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>). Run <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code> after routes change.
+              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Include that file <strong>before</strong> <code>location /</code> in this <code>server_name</code> block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>), then reload nginx. Verify with <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> — you should see <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>. If that header is missing, the request never hit the proxy <code>location</code> (wrong server block, wrong include path, or stale nginx config).
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>

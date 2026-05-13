@@ -2111,6 +2111,7 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = '    proxy_set_header Upgrade $http_upgrade;';
         $lines[] = '    proxy_set_header Connection "upgrade";';
         $lines[] = '    proxy_read_timeout 300s;';
+        $lines[] = '    add_header X-Station-Docker-Project "' . $slug . '" always;';
         $lines[] = '    proxy_pass http://127.0.0.1:' . $hostPort . '/;';
         $lines[] = '}';
         $lines[] = '';
