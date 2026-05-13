@@ -1072,6 +1072,59 @@ label {
 .grid-two  { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
 .grid-split { display: grid; grid-template-columns: minmax(260px,.4fr) minmax(0,1fr); gap: 16px; }
 
+/* ── Settings and launch pages ─────────────────────────────────── */
+.settings-hero {
+  background:
+    radial-gradient(circle at top right, rgba(var(--brand-rgb), .16), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #f4f8ff 100%);
+}
+
+.settings-grid {
+  align-items: start;
+}
+
+.setting-card,
+.launch-panel {
+  border-radius: 26px;
+}
+
+.settings-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.docker-launch-card {
+  background:
+    radial-gradient(circle at top left, rgba(var(--brand-rgb), .10), transparent 32%),
+    #fff;
+}
+
+.launch-grid {
+  margin: 14px 0;
+}
+
+.secondary-link {
+  background: #f7faff;
+  color: var(--brand-dark);
+  border: 1px solid var(--line-mid);
+  box-shadow: none;
+}
+
+.section-note code,
+.launch-panel code {
+  color: var(--brand-dark);
+}
+
 /* ── Tables ────────────────────────────────────────────────────── */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }

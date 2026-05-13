@@ -11,6 +11,7 @@ This folder provides a secured micro deployment and devops center for your `/sec
   - Folder upload (webkitdirectory browser mode).
   - Single file upload into a new project folder.
   - Template project generation for: PHP, static JS, Node, PWA.
+- Docker launch preparation for uploaded or generated web apps.
 - Project metadata with ownership (`owner` shown in dashboard table).
 - Project visibility controls (`private` / `public`).
 - Viewer page to browse and preview project files.
@@ -48,6 +49,18 @@ This is recommended if you can place it fully outside web root.
 
 - Station itself does not use MariaDB.
 - Uploaded projects can still contain and use MariaDB apps independently.
+
+## Docker Project Launches
+
+Station can prepare and launch projects with Docker when the web server user can access a working Docker CLI and daemon.
+
+- New uploads/templates include a "Prepare Docker launch" option.
+- Projects with an existing `Dockerfile` are detected and Docker launch is enabled automatically.
+- Project settings include Docker runtime, image/container names, host/container ports, launch path, and generated Dockerfile controls.
+- Opening `launch.php?project=...` starts or opens the Docker app when Docker launch is enabled; otherwise it falls back to Station's direct project serving.
+- `.env.local` generated from project environment variables is passed to `docker run --env-file`.
+
+If Docker is unavailable to PHP, the launch center shows the equivalent CLI commands so the project can still be built manually.
 
 ## Important Server Settings
 

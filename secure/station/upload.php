@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
+require_once __DIR__ . '/lib/docker.php';
 
 @set_time_limit(0);
 ignore_user_abort(true);
@@ -97,6 +98,16 @@ $project = [
     'updatedAt' => gmdate('c')
 ];
 station_upsert_project_meta($project);
+$projectSettings = station_project_settings($slug);
+$hasDockerfile = is_file($projectPath . '/Dockerfile');
+$prepareDocker = isset($_POST['prepare_docker']) || $hasDockerfile;
+if ($prepareDocker) {
+    $docker = station_project_docker_settings($slug, $projectSettings);
+    $docker['enabled'] = true;
+    $projectSettings['docker'] = station_project_docker_settings($slug, ['docker' => $docker]);
+    station_save_project_settings($slug, $projectSettings);
+    station_generate_project_docker_assets($slug, $projectSettings, false);
+}
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
 station_upload_finish(true, 'Project deployed: ' . $slug, 'viewer.php?project=' . urlencode($slug), $expectsJson);

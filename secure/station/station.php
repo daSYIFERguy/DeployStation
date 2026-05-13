@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
+require_once __DIR__ . '/lib/docker.php';
 
 station_require_login();
 
@@ -755,6 +756,14 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 
     .status-pill.is-public { background: #eaf6ef; color: #14683a; }
     .status-pill.is-private { background: #f2f5fb; color: #4e5e82; }
+    .status-pill.is-docker { background: #e8f2ff; color: #174ea6; }
+
+    .deployment-stack {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-items: center;
+    }
 
     .quick-link {
       display: inline-flex;
@@ -1231,6 +1240,10 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
             <span class="menu-icon">⌂</span>
             <span>Dashboard</span>
           </a>
+          <a href="#clipboard" class="dashboard-menu-link">
+            <span class="menu-icon">▣</span>
+            <span>Clipboard</span>
+          </a>
           <?php if ($isAdmin): ?>
           <a href="users.php" class="dashboard-menu-link">
             <span class="menu-icon">◎</span>
@@ -1277,13 +1290,13 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
 
       <header class="dashboard-topbar">
         <div>
-          <p class="dashboard-kicker">Deployment workspace</p>
+          <p class="dashboard-kicker">Deployment command center</p>
           <h1 class="dashboard-heading"><?= station_h($appName) ?></h1>
           <p class="dashboard-subheading">
             <?php if ($uiConfig['subheading'] !== ''): ?>
               <?= station_h($uiConfig['subheading']) ?>
             <?php else: ?>
-              Build, edit, launch, and manage projects from one dashboard.
+              Dockerize, launch, share, and manage project deployments from one dashboard.
             <?php endif; ?>
           </p>
         </div>
@@ -1307,10 +1320,11 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
       </section>
 
       <section class="workspace-strip<?= !$canBuild ? ' workspace-strip-wide' : '' ?>">
-        <section class="workspace-card clipboard-card clipboard-card-compact clipboard-composer<?= !$canBuild ? ' clipboard-card-expanded' : '' ?>">
+        <section class="workspace-card clipboard-card clipboard-card-compact clipboard-composer<?= !$canBuild ? ' clipboard-card-expanded' : '' ?>" id="clipboard">
           <div class="section-head clipboard-section-head">
             <div>
               <h2>Clipboard</h2>
+              <p class="section-note">Fast handoff between phone and desktop for text, links, images, and files.</p>
             </div>
             <div class="clipboard-toolbar">
               <label class="icon-pill upload-pill" for="clipFileInput" title="Add file">
@@ -1321,6 +1335,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
                 <span class="icon-pill-symbol">◫</span>
                 <span>Image</span>
               </label>
+              <button class="secondary-btn" id="saveClipboardNowBtn" type="button">Save now</button>
               <button class="secondary-btn" id="copyClipboardBtn" type="button">Copy</button>
               <button class="secondary-btn" id="clearClipboardBtn" type="button">Clear all</button>
             </div>
@@ -1386,18 +1401,21 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               $createdAt  = substr((string) ($project['createdAt'] ?? ''), 0, 10);
               $isPublic   = $visibility === 'public';
               $ps         = station_project_settings($slug);
+              $docker     = station_project_docker_settings($slug, $ps);
+              $dockerOn   = !empty($docker['enabled']);
               $ghOwner    = (string) ($ps['github']['repoOwner'] ?? '');
               $ghRepo     = (string) ($ps['github']['repoName'] ?? '');
               $ghdevUrl   = ($ghOwner !== '' && $ghRepo !== '')
                   ? 'https://github.dev/' . rawurlencode($ghOwner) . '/' . rawurlencode($ghRepo)
                   : '';
             ?>
-            <article class="project-card" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>">
+            <article class="project-card" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt . ' ' . ($dockerOn ? 'docker container' : 'direct'))) ?>">
               <div class="project-card-head">
                 <div class="project-card-heading">
                   <div class="proj-name-row">
                     <strong class="proj-slug"><?= station_h($slug) ?></strong>
                     <span class="status-pill <?= $isPublic ? 'is-public' : 'is-private' ?>"><?= $isPublic ? 'Public' : 'Private' ?></span>
+                    <?php if ($dockerOn): ?><span class="status-pill is-docker">Docker</span><?php endif; ?>
                   </div>
                   <div class="proj-meta">
                     <span>Owner: <?= station_h($pOwner) ?></span>
@@ -1461,7 +1479,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               </div>
 
               <div class="proj-quick-actions">
-                <a class="quick-link" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
+                <a class="quick-link" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer"><?= $dockerOn ? 'Launch Docker' : 'Launch' ?> ↗</a>
                 <a class="quick-link" href="viewer.php?project=<?= urlencode($slug) ?>">Files</a>
                 <?php if ($ghdevUrl !== ''): ?>
                   <a class="quick-link ghdev-link" href="<?= station_h($ghdevUrl) ?>" target="_blank" rel="noreferrer">github.dev ↗</a>
@@ -1617,6 +1635,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <input type="hidden" name="action" value="upload_zip">
           <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="my-app" required></label>
           <label>Zip File<input type="file" name="zip_file" class="project-source-input" data-project-name-source="file" accept=".zip" required></label>
+          <label><input type="checkbox" name="prepare_docker" checked> Prepare Docker launch after upload</label>
           <div class="upload-progress" hidden>
             <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
             <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
@@ -1632,6 +1651,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <input type="hidden" name="action" value="upload_folder">
           <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="my-folder" required></label>
           <label>Folder<input type="file" name="folder_files[]" class="project-source-input project-folder-input" data-project-name-source="folder" webkitdirectory directory multiple required></label>
+          <label><input type="checkbox" name="prepare_docker" checked> Prepare Docker launch after upload</label>
           <div class="upload-progress" hidden>
             <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
             <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
@@ -1647,6 +1667,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           <input type="hidden" name="action" value="upload_single">
           <label>Project Name<input type="text" name="project_name" class="project-name-input" placeholder="single-file-project" required></label>
           <label>File<input type="file" name="single_file" class="project-source-input" data-project-name-source="file" required></label>
+          <label><input type="checkbox" name="prepare_docker" checked> Prepare Docker launch after upload</label>
           <div class="upload-progress" hidden>
             <div class="upload-progress-bar"><span class="upload-progress-fill"></span></div>
             <div class="upload-progress-meta"><strong class="upload-progress-label">Preparing upload…</strong><span class="upload-progress-value">0%</span></div>
@@ -1668,6 +1689,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
               <?php endforeach; ?>
             </select>
           </label>
+          <label><input type="checkbox" name="prepare_docker" checked> Prepare Docker launch for this starter</label>
           <?php if ($isAdmin): ?><p><a class="mini-link" href="template-manager.php">Manage templates</a></p><?php endif; ?>
           <button type="submit">Create Starter</button>
         </form>
@@ -2100,6 +2122,7 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
     const clipText    = document.getElementById('clipboardText');
     const clipStatus  = document.getElementById('clipStatus');
     const copyClipBtn = document.getElementById('copyClipboardBtn');
+    const saveNowBtn = document.getElementById('saveClipboardNowBtn');
     const clearClipBtn = document.getElementById('clearClipboardBtn');
     const clipFileInput = document.getElementById('clipFileInput');
     const clipImageInput = document.getElementById('clipImageInput');
@@ -2310,6 +2333,14 @@ $userInitial    = strtoupper(substr((string) station_current_username(), 0, 1));
           const orig = this.textContent; this.textContent = 'Copied!';
           setTimeout(() => { this.textContent = orig; }, 1500);
         } catch (_) { this.textContent = 'Failed'; setTimeout(() => { this.textContent = 'Copy'; }, 1500); }
+      });
+    }
+    if (saveNowBtn && clipText) {
+      saveNowBtn.addEventListener('click', function () {
+        clearTimeout(clipTimer);
+        clipDirty = true;
+        setStatus('Saving...');
+        saveClipboard();
       });
     }
     if (clearClipBtn && clipText) {

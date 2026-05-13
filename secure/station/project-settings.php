@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/docker.php';
 
 station_require_builder();
 
@@ -57,19 +58,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? 'save_settings');
 
     if ($action === 'save_settings') {
-        $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
-        $settings['notes'] = trim((string) ($_POST['notes'] ?? ''));
-        $settings['github'] = [
-            'repoOwner' => trim((string) ($_POST['repo_owner'] ?? '')),
-            'repoName' => trim((string) ($_POST['repo_name'] ?? '')),
-            'visibility' => ((string) ($_POST['repo_visibility'] ?? 'private')) === 'public' ? 'public' : 'private',
-            'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
-            'releaseWorkflow' => isset($_POST['release_workflow'])
-        ];
-        $settings['scraperBuilder']['targetDomain'] = trim((string) ($_POST['target_domain'] ?? ''));
-        $settings['scraperBuilder']['useCase'] = trim((string) ($_POST['use_case'] ?? ''));
+        $wroteEnv = true;
+        if (array_key_exists('environment_text', $_POST)) {
+            $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
+            $wroteEnv = station_write_env_file($project, $settings['environment']);
+        }
+        if (array_key_exists('notes', $_POST)) {
+            $settings['notes'] = trim((string) ($_POST['notes'] ?? ''));
+        }
+        if (array_key_exists('repo_owner', $_POST) || array_key_exists('repo_name', $_POST)) {
+            $settings['github'] = [
+                'repoOwner' => trim((string) ($_POST['repo_owner'] ?? '')),
+                'repoName' => trim((string) ($_POST['repo_name'] ?? '')),
+                'visibility' => ((string) ($_POST['repo_visibility'] ?? 'private')) === 'public' ? 'public' : 'private',
+                'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
+                'releaseWorkflow' => isset($_POST['release_workflow'])
+            ];
+        }
+        if (array_key_exists('target_domain', $_POST) || array_key_exists('use_case', $_POST)) {
+            $settings['scraperBuilder']['targetDomain'] = trim((string) ($_POST['target_domain'] ?? ''));
+            $settings['scraperBuilder']['useCase'] = trim((string) ($_POST['use_case'] ?? ''));
+        }
 
-        if (station_save_project_settings($project, $settings) && station_write_env_file($project, $settings['environment'])) {
+        if (station_save_project_settings($project, $settings) && $wroteEnv) {
             station_log_event('project.settings.saved', ['project' => $project]);
             station_flash_set('ok', 'Project settings saved.');
             header('Location: project-settings.php?project=' . urlencode($project));
@@ -117,9 +128,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $error = (string) ($result['message'] ?? 'GitHub generation failed.');
     }
+
+    if ($action === 'save_docker' || $action === 'generate_docker') {
+        $docker = station_project_docker_settings($project, $settings);
+        $runtime = (string) ($_POST['docker_runtime'] ?? $docker['runtime']);
+        $docker['enabled'] = isset($_POST['docker_enabled']);
+        $docker['autoStart'] = isset($_POST['docker_autostart']);
+        $docker['runtime'] = in_array($runtime, ['node', 'php', 'static'], true) ? $runtime : (string) $docker['runtime'];
+        $docker['imageName'] = station_docker_safe_identifier((string) ($_POST['docker_image'] ?? $docker['imageName']), (string) $docker['imageName']);
+        $docker['containerName'] = station_docker_safe_identifier((string) ($_POST['docker_container'] ?? $docker['containerName']), (string) $docker['containerName']);
+        $docker['hostPort'] = station_normalize_docker_port($_POST['docker_host_port'] ?? $docker['hostPort'], (int) $docker['hostPort']);
+        $docker['containerPort'] = station_normalize_docker_port($_POST['docker_container_port'] ?? $docker['containerPort'], (int) $docker['containerPort']);
+        $docker['dockerfile'] = station_is_safe_relative_path((string) ($_POST['dockerfile'] ?? 'Dockerfile')) ? (string) $_POST['dockerfile'] : 'Dockerfile';
+        $launchPath = trim((string) ($_POST['docker_launch_path'] ?? '/'));
+        $docker['launchPath'] = $launchPath !== '' ? '/' . ltrim(str_replace('\\', '/', $launchPath), '/') : '/';
+        $settings['docker'] = station_project_docker_settings($project, ['docker' => $docker]);
+
+        if (!station_save_project_settings($project, $settings)) {
+            $error = 'Could not save Docker settings.';
+        } elseif ($action === 'generate_docker') {
+            $generated = station_generate_project_docker_assets($project, $settings, isset($_POST['docker_overwrite']));
+            if (!empty($generated['ok'])) {
+                station_log_event('project.docker.generated', ['project' => $project]);
+                station_flash_set('ok', (string) ($generated['message'] ?? 'Docker files generated.'));
+                header('Location: project-settings.php?project=' . urlencode($project));
+                exit;
+            }
+            $error = (string) ($generated['message'] ?? 'Could not generate Docker files.');
+        } else {
+            station_log_event('project.docker.saved', ['project' => $project, 'enabled' => $settings['docker']['enabled']]);
+            station_flash_set('ok', 'Docker launch settings saved.');
+            header('Location: project-settings.php?project=' . urlencode($project));
+            exit;
+        }
+    }
 }
 
 $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['scraperBuilder']['presets']) ? $settings['scraperBuilder']['presets'] : [];
+$dockerSettings = station_project_docker_settings($project, $settings);
+$dockerStatus = station_project_docker_status($project, $settings);
+$dockerUrl = station_project_docker_url($dockerSettings);
 ?>
 <!doctype html>
 <html lang="en">
@@ -128,11 +176,11 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
 </head>
 <body class="station-body">
   <main class="station-shell">
-    <header class="topbar card">
+    <header class="topbar card settings-hero">
       <div>
         <p class="kicker">Project Control</p>
         <h1><?= station_h($project) ?></h1>
-        <p>Environment variables, GitHub bootstrap, scraper prompt wizard, and notes.</p>
+        <p>Deployment, Docker launch, environment, GitHub bootstrap, scraper prompts, and notes.</p>
       </div>
       <nav class="nav-pills">
         <a href="station.php">Dashboard</a>
@@ -144,11 +192,12 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
     <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
-    <section class="grid-two">
-      <form method="post" class="card form-grid">
+    <section class="grid-two settings-grid">
+      <form method="post" class="card form-grid setting-card">
         <input type="hidden" name="action" value="save_settings">
         <input type="hidden" name="project" value="<?= station_h($project) ?>">
         <h2>Environment + Notes</h2>
+        <p class="section-note">Values are written to <code>.env.local</code> and are also passed into Docker launches.</p>
         <label>Environment Variables
           <textarea name="environment_text" rows="14" placeholder="API_URL=https://example.com&#10;API_KEY=secret"><?= station_h(station_env_text($settings['environment'] ?? [])) ?></textarea>
         </label>
@@ -158,7 +207,7 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
         <button type="submit">Save Project Settings</button>
       </form>
 
-      <form method="post" class="card form-grid">
+      <form method="post" class="card form-grid setting-card">
         <input type="hidden" name="action" value="generate_github">
         <input type="hidden" name="project" value="<?= station_h($project) ?>">
         <h2>GitHub Repo Bootstrap</h2>
@@ -182,8 +231,68 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
       </form>
     </section>
 
-    <section class="grid-two">
-      <form method="post" class="card form-grid">
+    <section class="card form-grid setting-card docker-launch-card">
+      <div class="settings-card-head">
+        <div>
+          <p class="kicker">Docker Launch</p>
+          <h2>Containerized Web App</h2>
+          <p class="section-note">Build and run this project as a container when the server has Docker available.</p>
+        </div>
+        <span class="status-pill <?= !empty($dockerStatus['running']) ? 'is-public' : 'is-private' ?>"><?= station_h((string) ($dockerStatus['label'] ?? 'Not started')) ?></span>
+      </div>
+      <form method="post" class="form-grid">
+        <input type="hidden" name="action" value="save_docker">
+        <input type="hidden" name="project" value="<?= station_h($project) ?>">
+        <div class="grid-two">
+          <label><input type="checkbox" name="docker_enabled" <?= !empty($dockerSettings['enabled']) ? 'checked' : '' ?>> Launch with Docker</label>
+          <label><input type="checkbox" name="docker_autostart" <?= !empty($dockerSettings['autoStart']) ? 'checked' : '' ?>> Auto-start when Launch is opened</label>
+        </div>
+        <div class="grid-two">
+          <label>Runtime
+            <select name="docker_runtime">
+              <option value="node" <?= $dockerSettings['runtime'] === 'node' ? 'selected' : '' ?>>Node / npm app</option>
+              <option value="php" <?= $dockerSettings['runtime'] === 'php' ? 'selected' : '' ?>>PHP / Apache app</option>
+              <option value="static" <?= $dockerSettings['runtime'] === 'static' ? 'selected' : '' ?>>Static web app</option>
+            </select>
+          </label>
+          <label>Dockerfile
+            <input type="text" name="dockerfile" value="<?= station_h((string) $dockerSettings['dockerfile']) ?>" placeholder="Dockerfile">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label>Host Port
+            <input type="number" name="docker_host_port" min="1" max="65535" value="<?= station_h((string) $dockerSettings['hostPort']) ?>">
+          </label>
+          <label>Container Port
+            <input type="number" name="docker_container_port" min="1" max="65535" value="<?= station_h((string) $dockerSettings['containerPort']) ?>">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label>Image Name
+            <input type="text" name="docker_image" value="<?= station_h((string) $dockerSettings['imageName']) ?>">
+          </label>
+          <label>Container Name
+            <input type="text" name="docker_container" value="<?= station_h((string) $dockerSettings['containerName']) ?>">
+          </label>
+        </div>
+        <label>Launch Path
+          <input type="text" name="docker_launch_path" value="<?= station_h((string) $dockerSettings['launchPath']) ?>" placeholder="/">
+        </label>
+        <label><input type="checkbox" name="docker_overwrite"> Overwrite generated Dockerfile and .dockerignore</label>
+        <div class="settings-actions">
+          <button type="submit">Save Docker Settings</button>
+          <button type="submit" name="action" value="generate_docker" class="secondary-btn">Generate Docker Files</button>
+          <a class="download-btn secondary-link" href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Open Launch Center</a>
+        </div>
+        <p class="section-note">Container URL: <code><?= station_h($dockerUrl) ?></code></p>
+        <?php if (!empty($dockerStatus['detail'])): ?>
+          <pre class="code-mini"><?= station_h((string) $dockerStatus['detail']) ?></pre>
+        <?php endif; ?>
+      </form>
+    </section>
+
+    <section class="grid-two settings-grid">
+      <form method="post" class="card form-grid setting-card">
         <input type="hidden" name="action" value="save_settings">
         <input type="hidden" name="project" value="<?= station_h($project) ?>">
         <h2>Scraper Builder Wizard</h2>
@@ -196,7 +305,7 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
         <button type="submit">Save Scraper Wizard</button>
       </form>
 
-      <form method="post" class="card form-grid">
+      <form method="post" class="card form-grid setting-card">
         <input type="hidden" name="action" value="add_preset">
         <input type="hidden" name="project" value="<?= station_h($project) ?>">
         <h2>Saved Prompt Presets</h2>
@@ -210,7 +319,7 @@ $presets = isset($settings['scraperBuilder']['presets']) && is_array($settings['
       </form>
     </section>
 
-    <section class="card">
+    <section class="card setting-card">
       <h2>Preset Library</h2>
       <?php if (!$presets): ?>
         <p>No saved presets yet.</p>
