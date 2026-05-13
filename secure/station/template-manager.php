@@ -517,7 +517,21 @@ foreach (array_keys($activeFiles) as $candidatePath) {
     </main>
   </div>
 
-  <script id="templateFilesData" type="application/json"><?= json_encode($activeFiles, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}' ?></script>
+  <?php
+    // Inline template files as JSON for the viewer. Two layers of defense
+    // so a template file containing `</script>` or `<!--` can't break out
+    // of the <script type="application/json"> element:
+    //   1. JSON_HEX_TAG / JSON_HEX_AMP / JSON_HEX_QUOT / JSON_HEX_APOS turn
+    //      HTML-significant characters into `\u00xx` escapes inside the JSON.
+    //   2. station_h() entity-encodes the whole payload as a safety net;
+    //      JSON.parse(textContent) decodes back to the original JSON.
+    $templateFilesJson = json_encode(
+        $activeFiles,
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+            | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    ) ?: '{}';
+  ?>
+  <script id="templateFilesData" type="application/json"><?= station_h($templateFilesJson) ?></script>
   <script>
     (function () {
       const dataEl = document.getElementById('templateFilesData');

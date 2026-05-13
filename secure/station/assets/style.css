@@ -2577,6 +2577,7 @@ tr:last-child td { border-bottom: none; }
   width: 36px;
   height: 36px;
   padding: 0;
+  margin: 0;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--panel-soft);
@@ -2586,11 +2587,19 @@ tr:last-child td { border-bottom: none; }
   position: relative;
   z-index: 5;
   pointer-events: auto;
-  line-height: 0;
+  line-height: 1;
+  font-size: 0;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .clip-fab-close svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 .clip-fab-close:hover {
