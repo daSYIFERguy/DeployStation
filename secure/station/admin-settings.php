@@ -268,10 +268,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Auto-managed include file: <code><?= station_h($nginxIncludePath) ?></code><br>
                     Currently routed projects: <strong><?= (int) count($dockerizedProjects) ?></strong>
                   </p>
-                  <form method="post" action="admin-settings.php" style="margin: 8px 0 12px;">
-                    <input type="hidden" name="action" value="rebuild_nginx_include">
-                    <button type="submit" class="secondary-btn">Regenerate now</button>
-                  </form>
+                  <div style="margin: 8px 0 12px;">
+                    <button type="submit" class="secondary-btn" name="action" value="rebuild_nginx_include" formnovalidate>Regenerate now</button>
+                  </div>
                   <?php if ($nginxIncludeContents === ''): ?>
                     <p class="setting-description">No dockerized projects yet — the file will appear as soon as you configure one.</p>
                   <?php else: ?>

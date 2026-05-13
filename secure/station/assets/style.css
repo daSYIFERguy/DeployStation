@@ -2517,6 +2517,11 @@ tr:last-child td { border-bottom: none; }
   box-shadow: 0 32px 80px rgba(19,35,63,.28);
 }
 
+/* Author rules above this used display:flex which silently overrides the
+ * browser default of `[hidden] { display: none }` — making the close button
+ * appear to do nothing. Restore the expected behavior. */
+.clip-fab-panel[hidden] { display: none !important; }
+
 .clip-fab.is-open .clip-fab-button {
   box-shadow: 0 8px 18px rgba(var(--brand-rgb, 47,125,226), .28);
 }
