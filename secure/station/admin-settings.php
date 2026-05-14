@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section']) && (string) ($_POST['action'] ?? '') === '') {
     $settings = station_admin_merge_mega_form_post_into_settings($settings, $_POST, $accessModes, $dockerServices);
     $iconResult = station_apply_brand_icon_inputs($settings, $_POST, $_FILES);
     $settings = (array) ($iconResult['settings'] ?? $settings);
@@ -125,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 
     $saved = station_save_admin_settings($settings);
     if ($saved && $error === '') {
+        clearstatcache(true, station_admin_settings_path());
         if (station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? '')) === 'nginx'
             && function_exists('station_write_nginx_projects_conf')) {
             station_write_nginx_projects_conf();
@@ -135,6 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
         exit;
     }
     if ($saved && $error !== '') {
+        clearstatcache(true, station_admin_settings_path());
         station_log_event('admin.settings.updated.partial', ['tab' => $activeTab, 'detail' => $error]);
         station_flash_set('ok', 'Other settings were saved. Issue with icon upload: ' . $error);
         header('Location: admin-settings.php?tab=' . urlencode($activeTab));
@@ -207,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
       <?php endif; ?>
 
       <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="admin_mega_form" value="1">
         <input type="hidden" name="activeTab" value="<?= station_h($activeTab) ?>">
 
         <!-- GENERAL / BRANDING SETTINGS -->

@@ -229,7 +229,11 @@ function station_read_json(string $path, array $default = []): array
 
 function station_write_json(string $path, array $data): bool
 {
-    $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    $flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
+    $json = json_encode($data, $flags);
     if (!is_string($json)) {
         return false;
     }
@@ -242,8 +246,8 @@ function station_write_json(string $path, array $data): bool
     if (@file_put_contents($tmp, $payload, LOCK_EX) === false) {
         return @file_put_contents($path, $payload, LOCK_EX) !== false;
     }
-    @chmod($tmp, 0600);
     if (@rename($tmp, $path)) {
+        @chmod($path, 0644);
         return true;
     }
     @unlink($tmp);
@@ -341,11 +345,8 @@ function station_admin_settings(): array
         'hostNginxTestCommand' => '',
     ];
     $stored = station_read_json(station_admin_settings_path(), []);
-    if ($stored === []) {
-        return $defaults;
-    }
 
-    return array_merge($defaults, $stored);
+    return array_merge($defaults, is_array($stored) ? $stored : []);
 }
 
 /**
@@ -1261,18 +1262,31 @@ function station_icon_url_with_cache_buster(string $url): string
         return $u;
     }
 
-    $webBase = station_icons_web_path();
-    if (!str_starts_with($u, $webBase . '/')) {
+    $pathPart = $u;
+    if (preg_match('#^https?://#i', $u)) {
+        $parsed = parse_url($u);
+        $pathPart = is_array($parsed) && isset($parsed['path']) ? (string) $parsed['path'] : '';
+    }
+
+    $name = basename(str_replace('\\', '/', $pathPart));
+    if ($name === '' || $name === '.' || $name === '..') {
         return $u;
     }
 
-    $name = basename($u);
     $candidate = station_icons_dir() . '/' . $name;
     if (!is_file($candidate)) {
         return $u;
     }
 
+    // Only add cache-busters for URLs we believe are served from this Station's /icos/ tree
+    // (relative paths, or absolute URLs whose path includes /icos/). Avoids mangling unrelated CDNs.
+    $isLikelyLocal = !preg_match('#^https?://#i', $u) || str_contains($u, '/icos/');
+    if (!$isLikelyLocal) {
+        return $u;
+    }
+
     $mtime = @filemtime($candidate);
+
     return $mtime ? ($u . '?v=' . (int) $mtime) : $u;
 }
 
