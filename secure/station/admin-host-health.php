@@ -254,7 +254,33 @@ TXT;
           <li><strong>Loopback fails TCP</strong> — container not listening, wrong host port, or compose not up (<code>docker compose ps</code>).</li>
           <li><strong>Loopback HTTP 5xx</strong> — fix the app or its env inside the stack; nginx is not the root cause.</li>
           <li><strong>Loopback 200 but browser 403 on /p/</strong> — Station session / project access (auth subrequest returns 403), not 500.</li>
+          <li><strong>Loopback 200 but browser 500 on /p/</strong> — often <code>auth_request</code>: nginx turns a <strong>404/502/500 from the auth subrequest</strong> (wrong path, wrong <code>server_name</code> for Cloudflare Tunnel host, PHP fatal) into <strong>HTTP 500</strong> on the public URL. The loopback container test <strong>never runs auth</strong> — use the auth <code>curl</code> block below.</li>
         </ol>
+        <?php
+          $authProbeHost = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+          $authBasePath = (string) ($routing['nginxAuthRequestBase'] ?? '');
+          $authProbeSlug = '';
+          if ($upstreamMatrix !== []) {
+              $authProbeSlug = (string) (($upstreamMatrix[0]['slug'] ?? '') ?: '');
+          }
+          if ($authProbeSlug === '' && !empty($routing['dockerProjects'][0]['slug'])) {
+              $authProbeSlug = (string) $routing['dockerProjects'][0]['slug'];
+          }
+          $authQuery = $authBasePath !== '' && $authProbeSlug !== ''
+              ? $authBasePath . '/nginx-docker-auth.php?project=' . rawurlencode($authProbeSlug)
+              : '';
+        ?>
+        <?php if ($authQuery !== '' && $authProbeHost !== ''): ?>
+        <div style="margin-top:16px;padding:12px 14px;border-left:4px solid #b45309;background:var(--panel-soft,#fffbeb);border-radius:0 8px 8px 0;">
+          <h3 style="margin:0 0 8px;font-size:15px;">Auth subrequest (Cloudflare Tunnel / extra <code>Host</code>)</h3>
+          <p class="setting-description" style="margin:0;">Nginx calls <code><?= station_h($authQuery) ?></code> as an internal GET. If your tunnel uses a different <code>Host</code> than the <code>server_name</code> block that has Station PHP, that URI can <strong>404</strong> — and nginx often reports that as <strong>500</strong> on <code>/p/…</code>. Run on the server (expect <strong>204</strong> when logged in via Station in the same browser is hard; use <strong>403</strong> unauthenticated for a private project, or <strong>204</strong> for a <strong>public</strong> project):</p>
+          <p class="setting-description" style="margin:8px 0 6px;"><strong>HTTP (port 80)</strong> — replace host if this page was opened without the public tunnel name:</p>
+          <pre class="host-routing-pre" style="margin:0 0 10px;">curl -sSI -H "Host: <?= station_h($authProbeHost) ?>" "http://127.0.0.1<?= station_h($authQuery) ?>"</pre>
+          <p class="setting-description" style="margin:0 0 6px;"><strong>HTTPS (443, self-signed ok)</strong> if nginx only answers on TLS:</p>
+          <pre class="host-routing-pre" style="margin:0;">curl -sSI -k -H "Host: <?= station_h($authProbeHost) ?>" "https://127.0.0.1<?= station_h($authQuery) ?>"</pre>
+          <p class="setting-description" style="margin:10px 0 0;font-size:12px;opacity:0.9;">If you see <strong>404</strong> here, fix nginx <code>server_name</code> / tunnel hostname mapping or set <strong>Nginx auth_request URL prefix</strong> in Admin → Projects so the path matches where PHP-FPM actually runs. If you see <strong>204</strong> but the browser still shows 500, the failure is likely on the <strong>proxy_pass</strong> leg (container Host header) — try loopback vs preserve there.</p>
+        </div>
+        <?php endif; ?>
         <?php if ($upstreamMatrix === []): ?>
           <p class="setting-description" style="margin-top:14px;">No dockerized projects — nothing to probe yet.</p>
         <?php else: ?>

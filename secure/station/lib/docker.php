@@ -2549,6 +2549,7 @@ function station_render_nginx_projects_conf(array $projects): string
         // Literal auth_request URI; Host / X-Forwarded-Host lines come from
         // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
         $lines[] = '    auth_request ' . $authUri . ';';
+        $lines[] = '    # If auth_request URL 404s (wrong Host/server block), nginx often returns HTTP 500 on /p/...';
         $lines[] = '    proxy_http_version 1.1;';
         foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
             $lines[] = $hostLine;
