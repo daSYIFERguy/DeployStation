@@ -28,7 +28,17 @@ $settingsTabs = [
     'onboarding' => 'Onboarding',
 ];
 
-$activeTab = (string) ($_POST['activeTab'] ?? $_GET['tab'] ?? 'general');
+$activeTab = (string) ($_GET['tab'] ?? 'general');
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Prefer the tab for the save button that was clicked — the hidden activeTab
+    // can be stale (e.g. ?tab=docker then #project-defaults without re-running JS).
+    if (isset($_POST['admin_save_section'])) {
+        $sec = (string) $_POST['admin_save_section'];
+        $activeTab = isset($settingsTabs[$sec]) ? $sec : 'general';
+    } else {
+        $activeTab = (string) ($_POST['activeTab'] ?? $activeTab);
+    }
+}
 if (!isset($settingsTabs[$activeTab])) {
     $activeTab = 'general';
 }
@@ -317,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <?php endforeach; ?>
             </div>
 
-            <button type="submit" style="margin-top: 20px;">Save Branding Settings</button>
+            <button type="submit" name="admin_save_section" value="general" style="margin-top: 20px;">Save Branding Settings</button>
           </div>
 
           <!-- Station identity (moved off dashboard) -->
@@ -490,7 +500,7 @@ www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
               </label>
             </div>
 
-            <button type="submit" style="margin-top: 20px;">Save Project Defaults</button>
+            <button type="submit" name="admin_save_section" value="project-defaults" style="margin-top: 20px;">Save Project Defaults</button>
           </div>
         </div>
 
@@ -728,7 +738,7 @@ sudo systemctl restart php*-fpm
               <?php endforeach; ?>
             </div>
 
-            <button type="submit" style="margin-top: 24px;">Save Docker Settings</button>
+            <button type="submit" name="admin_save_section" value="docker" style="margin-top: 24px;">Save Docker Settings</button>
           </div>
         </div>
 
@@ -774,7 +784,7 @@ sudo systemctl restart php*-fpm
               </label>
             </div>
 
-            <button type="submit" style="margin-top: 24px;">Save Integration Settings</button>
+            <button type="submit" name="admin_save_section" value="integrations" style="margin-top: 24px;">Save Integration Settings</button>
           </div>
         </div>
 
@@ -796,7 +806,7 @@ sudo systemctl restart php*-fpm
               </label>
             </div>
 
-            <button type="submit" style="margin-top: 24px;">Save Onboarding Settings</button>
+            <button type="submit" name="admin_save_section" value="onboarding" style="margin-top: 24px;">Save Onboarding Settings</button>
           </div>
         </div>
 
@@ -853,6 +863,26 @@ sudo systemctl restart php*-fpm
         window.history.replaceState(null, '', 'admin-settings.php?tab=' + encodeURIComponent(tabName));
       }
     }
+
+    (function syncTabFromHash() {
+      var allowed = { general: 1, 'project-defaults': 1, docker: 1, integrations: 1, onboarding: 1 };
+      function apply() {
+        var m = /^#(general|project-defaults|docker|integrations|onboarding)$/.exec(location.hash || '');
+        if (!m || !allowed[m[1]]) {
+          return;
+        }
+        var tabInput = document.querySelector('input[name="activeTab"]');
+        if (tabInput) {
+          tabInput.value = m[1];
+        }
+      }
+      window.addEventListener('hashchange', apply);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', apply);
+      } else {
+        apply();
+      }
+    })();
   </script>
 
   <?= station_dashboard_nav_script_html() ?>
