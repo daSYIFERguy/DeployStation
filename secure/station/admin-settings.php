@@ -352,14 +352,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
                 </div>
 
                 <div class="setting-item">
-                  <label class="feature-toggle">
-                    <input type="checkbox" name="nginxAutoReload" <?= !empty($settings['nginxAutoReload']) ? 'checked' : '' ?>>
-                    <div class="feature-toggle-content">
-                      <span class="feature-toggle-title">Automatic nginx test + reload</span>
-                      <span class="feature-toggle-desc">After <code>projects.conf</code> is regenerated, run a shell command (below) so the system nginx picks up new <code>/p/&lt;slug&gt;/</code> routes without a manual reload. Requires passwordless sudo for the PHP user — instructions below.</span>
-                    </div>
-                  </label>
-                  <label class="setting-label" for="nginxReloadCommand" style="margin-top: 14px;">Reload shell command</label>
+                  <p class="setting-description" style="margin:0 0 10px;">When production mode is <strong>Nginx</strong>, Station runs the command below after every <code>projects.conf</code> rewrite (Docker saves, Regenerate now, uploads, etc.) so new <code>/p/&lt;slug&gt;/</code> routes go live. The default uses <code>sudo -n</code>; grant the PHP user passwordless access to the shown binaries or replace this with a wrapper script.</p>
+                  <label class="setting-label" for="nginxReloadCommand">Reload shell command</label>
                   <textarea id="nginxReloadCommand" name="nginxReloadCommand" rows="3" spellcheck="false" class="code-block" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;"><?= station_h(station_admin_resolved_shell_command($settings, 'nginxReloadCommand')) ?></textarea>
                   <p class="setting-description">Default after a fresh install matches the line below (nginx test + <code>nginx -s reload</code>). Clear the field only if you use a custom wrapper script.</p>
 
@@ -372,7 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 
                       <p>2. Run <code>sudo visudo -f /etc/sudoers.d/deployment-station</code> and paste the block below (replace <code>www-data</code> with the user from step 1). Each command path must match what runs on <em>your</em> host (<code>which nginx</code>, <code>systemctl cat php8.3-fpm</code>, etc.). There must be <strong>no stray characters</strong> after a command (e.g. <code>nginx -s reload</code> — not <code>reload?</code>).</p>
                       <pre class="code-block"># Deployment Station — passwordless for the PHP user (tune paths / unit names).
-# Required for automatic nginx reload after projects.conf regen:
+# Required so Station can reload nginx after projects.conf updates:
 www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload
 
@@ -388,11 +382,11 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                       <pre class="code-block">sudo -u www-data sudo -n /usr/sbin/nginx -t</pre>
                       <p>Expected output ends with <code>syntax is ok</code> and <code>test is successful</code>. If you see a password prompt, the sudoers line didn't match — recheck the user and the exact binary path.</p>
 
-                      <p>4. Tick <strong>Automatic nginx test + reload</strong> above and click <strong>Save Project Defaults</strong>. The next time Station regenerates <code>projects.conf</code> (Docker save, project upload/delete/archive, etc.), it runs the reload command and either succeeds or logs the error.</p>
+                      <p>4. Save <strong>Project defaults</strong> in Station after sudoers works. Each time routes are regenerated, Station will attempt this reload command (success or failure is logged).</p>
 
-                      <p>5. Open <strong>Host health</strong> — the helper one-liners are prefilled to match the sudoers example; save there once after fixing sudo so quick actions work.</p>
+                      <p>5. Open <strong>Host health</strong> and save the helper one-liners once so quick actions match your host paths.</p>
 
-                      <p>Alternative if you can't grant sudo: leave automatic reload off and run <code>sudo systemctl reload nginx</code> manually after big changes — the include file on disk is still updated every time.</p>
+                      <p>If PHP cannot run <code>sudo -n</code>, change the reload command to a script your web user may execute; the include file on disk is still updated on every regeneration.</p>
                     </div>
                   </details>
                 </div>
@@ -400,7 +394,7 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                 <div class="setting-item" style="margin-top: 18px;">
                   <label class="setting-label" for="nginxAuthRequestBasePath">Nginx <code>auth_request</code> URL prefix (optional)</label>
                   <input type="text" id="nginxAuthRequestBasePath" name="nginxAuthRequestBasePath" spellcheck="false" class="code-block" style="width:100%;max-width:520px;font-family:ui-monospace,monospace;font-size:13px;padding:8px 10px;" value="<?= station_h((string) ($settings['nginxAuthRequestBasePath'] ?? '')) ?>" placeholder="/secure/station or /station">
-                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> location calls <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. That URI must hit this Station install. Leave empty to derive from the current PHP URL (see Host health “Web base path”). If you saved Docker settings from the CLI or Station is mounted at a different URL than <code>/secure/station</code>, set the real browser-visible prefix here (no trailing slash), save, then reload nginx.</p>
+                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> location calls <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. That URI must hit this Station install. Leave empty to derive from the current PHP URL (Host health shows the effective web base path). If Station lives under <code>/station</code> instead of <code>/secure/station</code>, set the prefix your nginx server uses (no trailing slash), then save project defaults.</p>
                 </div>
 
                 <div class="setting-item" style="margin-top: 18px;">
@@ -410,14 +404,14 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                     <option value="preserve" <?= $upHost !== 'loopback' ? 'selected' : '' ?>>Public hostname (<code>$host</code>) — default; best for many PHP/Laravel apps behind <code>/p/&lt;slug&gt;/</code></option>
                     <option value="loopback" <?= $upHost === 'loopback' ? 'selected' : '' ?>>Loopback (<code>127.0.0.1:&lt;port&gt;</code>) — use if the app only responds when Host matches a direct local hit</option>
                   </select>
-                  <p class="setting-description">Regenerates <code>projects.conf</code> on save. If you still see <strong>500</strong> only on <code>/p/…</code> URLs, try switching this setting, save, then check whether the footer says <strong>nginx/1.24</strong> from the <em>host</em> (Station proxy/auth) or from the <em>container</em> (app error).</p>
+                  <p class="setting-description">Regenerates <code>projects.conf</code> on save. Try <code>loopback</code> if the app only accepts requests whose <code>Host</code> matches <code>127.0.0.1:&lt;port&gt;</code>.</p>
                 </div>
 
                 <label class="feature-toggle" style="margin-top: 14px;">
                   <input type="checkbox" name="nginxDockerProxyStripCookies" <?= !empty($settings['nginxDockerProxyStripCookies']) ? 'checked' : '' ?>>
                   <div class="feature-toggle-content">
                     <span class="feature-toggle-title">Strip browser Cookie + Authorization to Docker upstream</span>
-                    <span class="feature-toggle-desc">After <code>auth_request</code> succeeds, nginx normally forwards the same <code>Cookie</code> and <code>Authorization</code> your browser sent to Station (<code>PHPSESSID</code>, API tokens, etc.). Many container apps return <strong>500</strong> only when those are present. Enabling this clears both on the <code>proxy_pass</code> hop (regenerates <code>projects.conf</code> on save; reload nginx). Leave off only if the app behind <code>/p/…</code> must receive browser cookies or Bearer tokens.</span>
+                    <span class="feature-toggle-desc">Clears the browser <code>Cookie</code> and <code>Authorization</code> headers on the hop to the container (after Station <code>auth_request</code>). Use when a stack misbehaves for signed-in Station users but works in a clean session. Turn off if the app needs those headers. Regenerates <code>projects.conf</code> when you save project defaults.</span>
                   </div>
                 </label>
               <?php endif; ?>
@@ -569,8 +563,8 @@ sudo systemctl restart php*-fpm
                 <dd><code><?= station_h($hostFleetSnap['serverInfrastructure']) ?></code></dd>
                 <dt>Nginx include file</dt>
                 <dd><code><?= station_h($hostFleetSnap['nginxIncludePath']) ?></code></dd>
-                <dt>Automatic nginx reload</dt>
-                <dd><?= !empty($hostFleetSnap['nginxAutoReload']) ? 'On' : 'Off' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command configured)</span>' : '' ?></dd>
+                <dt>Nginx reload after route updates</dt>
+                <dd><?= !empty($hostFleetSnap['nginxReloadAfterRoutes']) ? 'Yes (Nginx mode)' : 'No (not Nginx)' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command in admin)</span>' : '' ?></dd>
               </dl>
             </div>
 
@@ -637,7 +631,7 @@ sudo systemctl restart php*-fpm
             </div>
 
             <h3 style="font-size: 15px; margin: 0 0 16px;">Docker Deployment</h3>
-            <p class="setting-description" style="margin-bottom: 14px;">Running stacks are exposed at <strong>site-root</strong> URLs like <code>/p/&lt;slug&gt;/</code> (e.g. <code>https://your.domain/p/myapp/</code>) — not under <code>/secure/station/</code>. That path is defined in the generated nginx include; a wrong <code>auth_request</code> base often yields <strong>500</strong> only on <code>/p/…</code>.</p>
+            <p class="setting-description" style="margin-bottom: 14px;">Running stacks are exposed at site-root URLs like <code>/p/&lt;slug&gt;/</code> (for example <code>https://your.domain/p/myapp/</code>), not under the Station PHP folder. Nginx reads the generated include from your <code>server</code> block.</p>
             <label class="feature-toggle">
               <input type="checkbox" name="dockerEnabled" <?= !empty($dockerSettings['enabled']) ? 'checked' : '' ?>>
               <div class="feature-toggle-content">

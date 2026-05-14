@@ -165,7 +165,7 @@ function station_host_health_routing_map(): array
         'nginxInclude' => station_nginx_include_path(),
         'nginxUpstreamHostMode' => (string) ($admin['nginxDockerUpstreamHostMode'] ?? 'preserve'),
         'nginxDockerProxyStripCookies' => !empty($admin['nginxDockerProxyStripCookies']),
-        'nginxAutoReload' => !empty($admin['nginxAutoReload']),
+        'nginxReloadAfterRouteWrites' => station_normalize_server_infrastructure((string) ($admin['serverInfrastructure'] ?? 'apache')) === 'nginx',
         'nginxAuthRequestBase' => station_nginx_auth_request_base_path(),
         'webBasePath' => station_web_base_path(),
         'dataDir' => station_data_dir(),
@@ -180,7 +180,11 @@ function station_host_health_routing_map(): array
 function station_host_health_run_configured_command(string $settingsKey): array
 {
     $admin = station_admin_settings();
-    $cmd = trim((string) ($admin[$settingsKey] ?? ''));
+    if (array_key_exists($settingsKey, station_admin_default_shell_commands())) {
+        $cmd = trim(station_admin_resolved_shell_command($admin, $settingsKey));
+    } else {
+        $cmd = trim((string) ($admin[$settingsKey] ?? ''));
+    }
     if ($cmd === '') {
         return ['ok' => false, 'code' => -1, 'output' => '', 'message' => 'No command configured for this action. Open this page and save a shell one-liner in the matching field.'];
     }

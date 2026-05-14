@@ -454,7 +454,6 @@ function station_admin_settings(): array
         'themeColor' => '#2f7de2',
         'customTemplates' => [],
         'dockerSettings' => [],
-        'nginxAutoReload' => false,
         'nginxDockerUpstreamHostMode' => 'preserve',
         'nginxDockerProxyStripCookies' => false,
         'nginxAuthRequestBasePath' => '',
@@ -533,7 +532,6 @@ function station_admin_merge_mega_form_post_into_settings(
 
     $infra = station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache'));
     if ($infra === 'nginx') {
-        $settings['nginxAutoReload'] = isset($post['nginxAutoReload']);
         $settings['nginxReloadCommand'] = trim((string) ($post['nginxReloadCommand'] ?? ''));
         if (isset($post['nginxDockerUpstreamHostMode'])) {
             $hostMode = strtolower(trim((string) $post['nginxDockerUpstreamHostMode']));

@@ -100,7 +100,7 @@ $infra = (string) ($routing['infrastructure'] ?? 'apache');
 $includePath = (string) ($routing['nginxInclude'] ?? '');
 $hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
 $stripDockerCookies = !empty($routing['nginxDockerProxyStripCookies']);
-$autoReload = !empty($routing['nginxAutoReload']);
+$nginxReloadAfterWrites = !empty($routing['nginxReloadAfterRouteWrites']);
 $webBase = (string) ($routing['webBasePath'] ?? '');
 $secureBase = station_secure_base_path();
 
@@ -131,10 +131,6 @@ $diagram = <<<'TXT'
          │                                             │
          │                                    Container listens on <appPort>
          └─────────────────────────────────────────────┘
-
-500 "nginx/1.24" usually means nginx reached an upstream and the upstream
-returned 500 — compare browser response with a direct curl to the loopback URL
-for that project (see table below).
 TXT;
 
 ?>
@@ -166,7 +162,7 @@ TXT;
         <div>
           <p class="dashboard-kicker">Owner only</p>
           <h1 class="dashboard-heading">Host health & routing</h1>
-          <p class="dashboard-subheading">Bounded snapshots from the same shell user as Station (often <code>www-data</code>). The <strong>HTTP 500 playbook</strong> probes each stack on <code>127.0.0.1:&lt;hostPort&gt;</code> and lists copy-paste <code>curl</code>, <code>ss</code>, and compose log commands for SSH. Use the routing map and optional sudo one-liners the same way as Admin → Projects nginx reload.</p>
+          <p class="dashboard-subheading">Live snapshots from the same shell user as Station (often <code>www-data</code>), plus a routing map and optional maintenance commands.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -185,12 +181,6 @@ TXT;
         <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
       <?php endif; ?>
 
-      <div class="settings-panel" style="margin-top: 16px;">
-        <h2 class="settings-panel-heading" style="font-size:16px;">About nginx checks and HTTP 500</h2>
-        <p class="setting-description" style="margin:0;">The Host health page runs shell commands as the <strong>same Unix user as PHP</strong> (often <code>www-data</code>), not as root. A full <code>nginx -t</code> reads your real <code>/etc/nginx/nginx.conf</code>. If that file is invalid (for example <strong>duplicate <code>pid</code></strong> lines), the test fails until you fix the file on the server — that is unrelated to Station’s generated <code>projects.conf</code>.</p>
-        <p class="setting-description" style="margin:8px 0 0;">The card <strong>nginx: projects.conf only</strong> runs an isolated <code>nginx -t -c</code> on a temporary main config that includes only the Station-managed include, so you can still verify the generated <code>location ^~ /p/…</code> blocks even when the system main config is broken. The warning about the <code>user</code> directive is normal when the test is not run as root. For a root-equivalent full test, set <strong>Nginx config test command</strong> below to e.g. <code>sudo -n nginx -t 2>&1</code> (with matching <code>sudoers</code>). HTTP 500 on <code>/p/…</code> is often a bad <code>auth_request</code> URL, the app inside the container, or upstream — compare the public URL with the loopback URL in the routing table and check nginx / PHP error logs.</p>
-      </div>
-
       <p class="setting-description" style="margin-top:8px;">
         <label class="feature-toggle" style="display:inline-flex;align-items:center;gap:8px;">
           <input type="checkbox" id="hostHealthAutoRefresh">
@@ -204,7 +194,7 @@ TXT;
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
           Strip <code>Cookie</code> + <code>Authorization</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
-          Auto nginx reload after regen: <strong><?= $autoReload ? 'on' : 'off' ?></strong>.
+          Nginx reload after route file writes: <strong><?= $nginxReloadAfterWrites ? 'yes' : 'no' ?></strong> (yes when production web server is Nginx).
         </p>
         <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
         <p class="setting-description">Web base path: <code><?= station_h($webBase !== '' ? $webBase : '(empty — site root)') ?></code>.
@@ -249,47 +239,11 @@ TXT;
       </div>
 
       <div class="settings-panel" style="margin-top: 24px;">
-        <h2 class="settings-panel-heading" style="font-size:18px;">HTTP 500 playbook (loopback vs nginx vs app)</h2>
-        <p class="setting-description" style="margin:0;">There is no single magic test for every 500. Use this order: <strong>(1)</strong> TCP + HTTP to <code>127.0.0.1:&lt;hostPort&gt;</code> below (same user as PHP — mimics <code>proxy_pass</code> without nginx). <strong>(2)</strong> If loopback is OK but the public <code>/p/…</code> URL fails, suspect <strong>nginx</strong> (<code>auth_request</code>, wrong include, stale reload) or <strong>Host header</strong> (try Admin → Projects loopback vs preserve). <strong>(3)</strong> If loopback returns 5xx, the <strong>container app</strong> is failing — use compose logs. <strong>(4)</strong> Ping is not useful for TCP services; use <code>curl</code> or <code>ss</code> instead.</p>
-        <ol class="setting-description" style="margin:12px 0 0 18px;line-height:1.55;">
-          <li><strong>Loopback OK, public 500/502</strong> — nginx error log; verify <code>auth_request</code> URL is reachable by nginx; run isolated <code>projects.conf</code> test in the grid above.</li>
-          <li><strong>Loopback fails TCP</strong> — container not listening, wrong host port, or compose not up (<code>docker compose ps</code>).</li>
-          <li><strong>Loopback HTTP 5xx</strong> — fix the app or its env inside the stack; nginx is not the root cause.</li>
-          <li><strong>Loopback 200 but browser 403 on /p/</strong> — Station session / project access (auth subrequest returns 403), not 500.</li>
-          <li><strong>Loopback 200 but browser 500 on /p/</strong> — often <code>auth_request</code>: nginx turns a <strong>404/502/500 from the auth subrequest</strong> (wrong path, wrong <code>server_name</code> for Cloudflare Tunnel host, PHP fatal) into <strong>HTTP 500</strong> on the public URL. The loopback container test <strong>never runs auth</strong> — use the auth <code>curl</code> block below. Note: nginx maps <strong>403</strong> from the auth script to a client <strong>403</strong>, not 500 — so “500 only when logged in” is often the <strong>container</strong> after auth passes, or an auth subrequest that is <strong>not</strong> 2xx/401/403.</li>
-          <li><strong>500 in the browser when signed into Station, but fine in a private window</strong> — the app may be choking on headers nginx forwards after <code>auth_request</code> (<code>Cookie</code>, <code>Authorization</code>). Try Admin → Projects → <strong>Strip browser Cookie + Authorization to Docker upstream</strong>, save, reload nginx.</li>
-          <li><strong>Private project but anonymous / incognito still sees the app</strong> — often <strong>CDN or browser cache</strong> of an earlier 200. Station-generated <code>projects.conf</code> now hides upstream cache headers and sends <code>Cache-Control: private, no-store</code> on <code>/p/…</code> responses; purge Cloudflare cache for that URL (or use a “Bypass cache” rule for <code>/p/*</code>), then hard-reload.</li>
-        </ol>
-        <?php
-          $authProbeHost = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-          $authBasePath = (string) ($routing['nginxAuthRequestBase'] ?? '');
-          $authProbeSlug = '';
-          if ($upstreamMatrix !== []) {
-              $authProbeSlug = (string) (($upstreamMatrix[0]['slug'] ?? '') ?: '');
-          }
-          if ($authProbeSlug === '' && !empty($routing['dockerProjects'][0]['slug'])) {
-              $authProbeSlug = (string) $routing['dockerProjects'][0]['slug'];
-          }
-          $authQuery = $authBasePath !== '' && $authProbeSlug !== ''
-              ? $authBasePath . '/nginx-docker-auth.php?project=' . rawurlencode($authProbeSlug)
-              : '';
-        ?>
-        <?php if ($authQuery !== '' && $authProbeHost !== ''): ?>
-        <div style="margin-top:16px;padding:12px 14px;border-left:4px solid #b45309;background:var(--panel-soft,#fffbeb);border-radius:0 8px 8px 0;">
-          <h3 style="margin:0 0 8px;font-size:15px;">Auth subrequest (Cloudflare / reverse proxy)</h3>
-          <p class="setting-description" style="margin:0;">Nginx calls <code><?= station_h($authQuery) ?></code> as an internal GET. A bare <code>curl</code> <strong>without</strong> your browser <code>Cookie</code> almost always gets <strong>403</strong> for a <strong>private</strong> project — that is correct, not a misconfiguration. Expect <strong>HTTP 200</strong> (empty body) after pasting a real <code>PHPSESSID=…</code> from your browser, or set the project to <strong>Public</strong> in Station (then auth returns <strong>200</strong> without login).</p>
-          <p class="setting-description" style="margin:8px 0 0;">If you <strong>are</strong> signed in in the browser but <code>/p/…</code> still fails: behind Cloudflare, PHP often must trust <code>X-Forwarded-Proto: https</code> so the session cookie is marked <strong>Secure</strong>. Station now does that automatically. If your login hostname differs from the URL bar (tunnel hostname), set env <code>STATION_SESSION_COOKIE_DOMAIN</code> and optionally <code>STATION_SESSION_SAMESITE=None</code> (requires HTTPS) in PHP-FPM — see <code>station_session_cookie_params_from_env()</code> in <code>lib/bootstrap.php</code>.</p>
-          <p class="setting-description" style="margin:8px 0 6px;">Probe from SSH (add <code>-H &quot;Cookie: PHPSESSID=…&quot;</code> to mimic a logged-in browser):</p>
-          <pre class="host-routing-pre" style="margin:0 0 10px;">curl -sSI -H "Host: <?= station_h($authProbeHost) ?>" "http://127.0.0.1<?= station_h($authQuery) ?>"</pre>
-          <p class="setting-description" style="margin:0 0 6px;">If nginx only listens on TLS locally:</p>
-          <pre class="host-routing-pre" style="margin:0;">curl -sSI -k -H "Host: <?= station_h($authProbeHost) ?>" "https://127.0.0.1<?= station_h($authQuery) ?>"</pre>
-          <p class="setting-description" style="margin:10px 0 0;font-size:12px;opacity:0.9;"><strong>404</strong> on these curls → wrong <code>server_name</code> / tunnel mapping or wrong auth path (Admin → Projects). <strong>403</strong> without cookie → expected for private projects. <strong>200</strong> in curl but browser still broken → compare <code>Host</code> / cookie domain / SameSite.</p>
-        </div>
-        <?php endif; ?>
+        <h2 class="settings-panel-heading" style="font-size:18px;">Docker upstream checks</h2>
+        <p class="setting-description" style="margin:0;">Each block is a loopback probe from this PHP process. Copy commands into SSH on the server if you need deeper inspection.</p>
         <?php if ($upstreamMatrix === []): ?>
-          <p class="setting-description" style="margin-top:14px;">No dockerized projects — nothing to probe yet.</p>
+          <p class="setting-description" style="margin-top:14px;">No dockerized projects yet.</p>
         <?php else: ?>
-          <p class="setting-description" style="margin-top:14px;">Probes run from this PHP request (typically <code>www-data</code>). Copy any block into SSH on the server.</p>
           <?php foreach ($upstreamMatrix as $um): ?>
             <?php
               $slug = (string) ($um['slug'] ?? '');
@@ -313,13 +267,12 @@ TXT;
               <p class="setting-description" style="margin:0 0 6px;">Verbose loopback (headers + tail of body):</p>
               <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellCurlLoopVerbose'] ?? '')) ?></pre>
               <?php if ((string) ($um['shellCurlPublic'] ?? '') !== ''): ?>
-                <p class="setting-description" style="margin:0 0 6px;">Public URL (through nginx — same as browser without your session cookie):</p>
+                <p class="setting-description" style="margin:0 0 6px;">Public URL (through nginx):</p>
                 <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) $um['shellCurlPublic']) ?></pre>
-                <p class="setting-description" style="margin:0 0 10px;font-size:12px;opacity:0.85;">A 403 here with 200 on loopback often means <code>auth_request</code> / session; a 5xx on both points at the upstream app or nginx upstream config.</p>
               <?php endif; ?>
               <p class="setting-description" style="margin:0 0 6px;">Who is listening on this port:</p>
               <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellSs'] ?? '')) ?></pre>
-              <p class="setting-description" style="margin:0 0 6px;">Fetch recent container logs (run on server):</p>
+              <p class="setting-description" style="margin:0 0 6px;">Recent container logs:</p>
               <pre class="host-routing-pre" style="margin:0;"><?= station_h((string) ($um['shellComposeLogs'] ?? '')) ?></pre>
             </div>
           <?php endforeach; ?>
@@ -328,7 +281,7 @@ TXT;
 
       <div class="settings-panel" style="margin-top: 24px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Quick actions</h2>
-        <p class="setting-description">Default full-config test: <code>nginx -t</code> (or your custom command below). Isolated include test: see the <strong>projects.conf only</strong> card in the grid. Restart lines run only when configured.</p>
+        <p class="setting-description">Uses the shell one-liners saved at the bottom of this page (defaults match typical Debian/Ubuntu installs).</p>
         <div class="host-health-actions">
           <form method="post">
             <input type="hidden" name="host_health_action" value="run_command">

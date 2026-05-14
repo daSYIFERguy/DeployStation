@@ -15,8 +15,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 
-header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
-header('Vary: Cookie');
+header('Cache-Control: no-store, no-cache, must-revalidate');
 
 if (!station_is_setup_complete()) {
     http_response_code(503);

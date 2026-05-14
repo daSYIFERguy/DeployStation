@@ -2257,7 +2257,7 @@ function station_admin_host_config_snapshot(): array
         'webBasePath' => station_web_base_path(),
         'serverInfrastructure' => station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')),
         'nginxIncludePath' => station_nginx_include_path(),
-        'nginxAutoReload' => !empty($settings['nginxAutoReload']),
+        'nginxReloadAfterRoutes' => station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'nginx',
         'nginxReloadCommandConfigured' => $nginxCmd !== '',
         'nginxAuthRequestBasePath' => trim((string) ($settings['nginxAuthRequestBasePath'] ?? '')),
         'nginxAuthRequestResolved' => station_nginx_auth_request_base_path(),
@@ -2460,7 +2460,7 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
  *
  * Optional admin override `nginxAuthRequestBasePath`: set when auto-detection
  * is wrong (e.g. Station lives at `/station` but CLI regeneration would emit
- * `/secure/station`). Wrong auth URIs break every `/p/<slug>/` route with 500.
+ * `/secure/station`). Wrong auth URIs break every `/p/<slug>/` route.
  */
 function station_nginx_auth_request_base_path(): string
 {
@@ -2549,7 +2549,7 @@ function station_render_nginx_projects_conf(array $projects): string
         // Literal auth_request URI; Host / X-Forwarded-Host lines come from
         // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
         $lines[] = '    auth_request ' . $authUri . ';';
-        $lines[] = '    # If auth_request URL 404s (wrong Host/server block), nginx often returns HTTP 500 on /p/...';
+        $lines[] = '    # auth_request must resolve to Station PHP (correct server_name / include).';
         $lines[] = '    proxy_http_version 1.1;';
         foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
             $lines[] = $hostLine;
@@ -2565,15 +2565,6 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';
         $lines[] = '    proxy_set_header X-Forwarded-Prefix /p/' . $slug . ';';
         $lines[] = '    proxy_read_timeout 300s;';
-        // Upstream apps often send cacheable headers; CDNs (e.g. Cloudflare) may then
-        // serve that 200 to everyone — bypassing auth for "private" docker routes.
-        $lines[] = '    proxy_hide_header Cache-Control;';
-        $lines[] = '    proxy_hide_header Expires;';
-        $lines[] = '    proxy_hide_header Pragma;';
-        $lines[] = '    proxy_hide_header ETag;';
-        $lines[] = '    proxy_hide_header Last-Modified;';
-        $lines[] = '    add_header Cache-Control "private, no-store, no-cache, must-revalidate, max-age=0" always;';
-        $lines[] = '    add_header Vary "Cookie" always;';
         $lines[] = '    add_header X-Station-Docker-Project "' . $slug . '" always;';
         $lines[] = '    proxy_pass http://127.0.0.1:' . $hostPort . '/;';
         $lines[] = '}';
@@ -2671,10 +2662,6 @@ function station_nginx_maybe_reload_main(): array
         return ['ok' => true, 'skipped' => true, 'message' => 'Skipped: production web server is not Nginx.'];
     }
 
-    if (empty($settings['nginxAutoReload'])) {
-        return ['ok' => true, 'skipped' => true, 'message' => 'Skipped: automatic nginx reload is disabled in Admin → Projects.'];
-    }
-
     $cmd = station_admin_resolved_shell_command($settings, 'nginxReloadCommand');
     $result = station_run_shell_command($cmd, 90);
     if (!empty($result['ok'])) {
@@ -2707,7 +2694,7 @@ function station_nginx_include_reload_hint_for_flash(array $includeResult): stri
     }
 
     if (!empty($r['skipped'])) {
-        return $hint . ' Reload the system nginx manually (or enable automatic test + reload in Admin → Projects).';
+        return $hint . ' Nginx reload is skipped in Apache mode.';
     }
 
     if (!empty($r['ok'])) {
