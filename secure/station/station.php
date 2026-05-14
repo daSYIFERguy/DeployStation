@@ -23,10 +23,7 @@ if (station_user_needs_onboarding(station_current_username())) {
     exit;
 }
 
-$githubReady  = !empty($adminSettings['githubEnabled'])  && station_integration_ready($profile, 'github');
-$vscodeReady  = !empty($adminSettings['vscodeEnabled'])  && station_integration_ready($profile, 'vscode');
-$chatgptReady = !empty($adminSettings['chatgptEnabled']) && station_integration_ready($profile, 'chatgpt');
-$codexReady   = !empty($adminSettings['codexEnabled'])   && station_integration_ready($profile, 'codex');
+$githubReady = !empty($adminSettings['githubEnabled']) && station_integration_ready($profile, 'github');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
@@ -104,7 +101,6 @@ $builderAdminCount = count(array_filter($projects, static function (array $proje
 $ownerOnlyCount = count(array_filter($projects, static function (array $project): bool {
   return ((string) ($project['accessMode'] ?? 'admin')) === 'adminsonly';
 }));
-$readyIntegrationCount = (int) $githubReady + (int) $vscodeReady + (int) $chatgptReady + (int) $codexReady;
 $statsCards = !$canBuild
   ? [
       ['count' => $publicCount, 'label' => 'Public', 'filterType' => 'visibility', 'filterValue' => 'public'],
@@ -120,7 +116,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, integrations, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260508e') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260513a') ?>
   <style>
     .station-body {
       margin: 0;
@@ -1238,16 +1234,13 @@ $statsCards = !$canBuild
         <section class="workspace-card integrations-panel">
           <div class="section-head integrations-head">
             <div>
-              <h2>Integrations</h2>
-              <p class="section-note"><?= $readyIntegrationCount ?>/4 connected</p>
+              <h2>GitHub</h2>
+              <p class="section-note"><?= $githubReady ? 'Connected' : 'Not connected' ?></p>
             </div>
             <a class="mini-link" href="user-settings.php">Configure</a>
           </div>
-          <div class="integration-grid">
-            <a class="integration-chip <?= $githubReady  ? 'chip-on' : 'chip-off' ?>" href="<?= $githubReady  ? 'user-settings.php' : 'integration-help.php#github'  ?>"><span>GitHub</span><span><?=  $githubReady  ? '✓' : '○' ?></span></a>
-            <a class="integration-chip <?= $vscodeReady  ? 'chip-on' : 'chip-off' ?>" href="<?= $vscodeReady  ? 'user-settings.php' : 'integration-help.php#vscode'  ?>"><span>VS Code</span><span><?= $vscodeReady  ? '✓' : '○' ?></span></a>
-            <a class="integration-chip <?= $chatgptReady ? 'chip-on' : 'chip-off' ?>" href="<?= $chatgptReady ? 'user-settings.php' : 'integration-help.php#chatgpt' ?>"><span>ChatGPT</span><span><?= $chatgptReady ? '✓' : '○' ?></span></a>
-            <a class="integration-chip <?= $codexReady   ? 'chip-on' : 'chip-off' ?>" href="<?= $codexReady   ? 'user-settings.php' : 'integration-help.php#codex'   ?>"><span>Codex</span><span><?=   $codexReady   ? '✓' : '○' ?></span></a>
+          <div class="integration-grid integration-grid-single">
+            <a class="integration-chip <?= $githubReady ? 'chip-on' : 'chip-off' ?>" href="<?= $githubReady ? 'user-settings.php' : 'integration-help.php#github' ?>"><span>Account link</span><span><?= $githubReady ? '✓' : '○' ?></span></a>
           </div>
           <div class="workspace-mini-stats">
             <div class="mini-stat"><strong><?= $ownedProjectCount ?></strong><span>Projects</span></div>
@@ -1425,7 +1418,7 @@ $statsCards = !$canBuild
               <li><a href="admin-settings.php?tab=general">Branding</a> — display name, station directory, theme, icons (now with per-icon remove).</li>
               <li><a href="admin-settings.php?tab=project-defaults">Projects</a> — visibility defaults, activity log size, automatic nginx test + reload.</li>
               <li><a href="admin-settings.php?tab=docker">Docker</a> — engine path, services, diagnostics.</li>
-              <li><a href="admin-settings.php?tab=integrations">Integrations</a> — GitHub, VS Code, ChatGPT, Codex.</li>
+              <li><a href="admin-settings.php?tab=github">GitHub</a> — station-wide enable for the code connection.</li>
               <li><a href="admin-settings.php?tab=onboarding">Onboarding</a> — first-run flow.</li>
               <li><a href="admin-host-health.php">Host health</a> — live host stats, routing map, optional restarts (nginx / PHP-FPM / Docker).</li>
             </ul>

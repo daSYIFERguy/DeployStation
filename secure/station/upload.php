@@ -156,6 +156,10 @@ if (is_array($templateBootstrap)) {
     station_save_project_settings($slug, $projectSettings);
 }
 
+if (!isset($templateBootstrap) || !is_array($templateBootstrap)) {
+    station_try_bootstrap_native_docker_from_workspace($slug);
+}
+
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
 $nginxPostHint = '';

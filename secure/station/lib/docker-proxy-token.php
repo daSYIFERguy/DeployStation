@@ -5,7 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
 /**
- * Path to the HMAC secret used for optional ?dp_t= signed access to /p/<slug>/ (nginx auth_request).
+ * HMAC secret for optional ?dp_t= tokens (minted server-side; no Station UI).
+ * Nginx docker routes are open by default — this exists for custom tooling or future use.
  */
 function station_docker_proxy_token_secret_path(): string
 {
@@ -52,7 +53,7 @@ function station_docker_proxy_token_b64u_decode(string $b64): string|false
 }
 
 /**
- * Issue a time-limited token for nginx-docker-auth.php (same slug as ?project=).
+ * Issue a time-limited token for the given project slug (same slug as in /p/<slug>/).
  *
  * @param int $ttlSeconds 60–86400
  */
@@ -70,7 +71,7 @@ function station_docker_proxy_token_issue(string $slug, int $ttlSeconds = 600): 
 }
 
 /**
- * Validate token from ?dp_t= on the main /p/… request (nginx forwards it on the auth subrequest via $arg_dp_t).
+ * Validate a ?dp_t= token for slug (for custom middleware; default nginx config does not call this).
  */
 function station_docker_proxy_token_valid_for_slug(string $slug, ?string $token): bool
 {
@@ -108,4 +109,22 @@ function station_docker_proxy_token_valid_for_slug(string $slug, ?string $token)
     $expect = hash_hmac('sha256', $payload, station_docker_proxy_token_secret());
 
     return hash_equals(strtolower($expect), strtolower($sigHex));
+}
+
+/**
+ * Build https://host/p/<slug>/?dp_t=… for scripts or one-off operator use (no dashboard UI).
+ * Pass the same origin browsers use (scheme + host, no trailing slash).
+ */
+function station_docker_proxy_signed_url(string $origin, string $slug, int $ttlSeconds = 600): string
+{
+    $slug = station_safe_name($slug);
+    if ($slug === '') {
+        return '';
+    }
+    $origin = rtrim(trim($origin), '/');
+    if ($origin === '') {
+        return '/p/' . rawurlencode($slug) . '/?dp_t=' . rawurlencode(station_docker_proxy_token_issue($slug, $ttlSeconds));
+    }
+
+    return $origin . '/p/' . rawurlencode($slug) . '/?dp_t=' . rawurlencode(station_docker_proxy_token_issue($slug, $ttlSeconds));
 }

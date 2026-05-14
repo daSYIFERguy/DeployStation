@@ -113,7 +113,7 @@ $dockerContainerized = !empty($dockerPs['containerized']);
         <div>
           <p class="dashboard-kicker">Project</p>
           <h1 class="dashboard-heading"><?= station_h($project) ?></h1>
-          <p class="dashboard-subheading">Configuration for this deployment: environment, integrations, and where to manage containers.</p>
+          <p class="dashboard-subheading">Configuration for this deployment: environment, GitHub metadata, and where to manage containers.</p>
         </div>
         <nav class="nav-pills">
           <a href="station.php">Dashboard</a>
@@ -136,7 +136,7 @@ $dockerContainerized = !empty($dockerPs['containerized']);
 
         <nav class="settings-nav" aria-label="Project settings sections">
           <a class="settings-nav-item active" href="#general"><span class="settings-nav-icon">⚙</span><span>General</span></a>
-          <a class="settings-nav-item" href="#integrations"><span class="settings-nav-icon">🔗</span><span>Integrations</span></a>
+          <a class="settings-nav-item" href="#github"><span class="settings-nav-icon">🐙</span><span>GitHub</span></a>
           <a class="settings-nav-item" href="#runtime"><span class="settings-nav-icon">🐳</span><span>Runtime</span></a>
         </nav>
 
@@ -164,7 +164,7 @@ $dockerContainerized = !empty($dockerPs['containerized']);
             </div>
           </section>
 
-          <section id="integrations" class="settings-panel">
+          <section id="github" class="settings-panel">
             <div class="settings-panel-head">
               <h2 class="settings-panel-heading">GitHub</h2>
               <p class="settings-panel-subtitle">Metadata used when generating workflow and helper files into the repository. This does not create the remote repository for you.</p>

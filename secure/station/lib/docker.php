@@ -2061,6 +2061,196 @@ function station_read_project_docker_log(string $projectSlug, int $maxBytes = 65
 }
 
 /**
+ * @return list<string>
+ */
+function station_compose_filename_candidates(): array
+{
+    return ['docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'compose.yml'];
+}
+
+/**
+ * First compose file found in the project directory, or null.
+ */
+function station_find_project_compose_path(string $projectDir): ?string
+{
+    foreach (station_compose_filename_candidates() as $name) {
+        $p = rtrim($projectDir, '/') . '/' . $name;
+        if (is_file($p)) {
+            return $p;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Absolute path to the compose file Station should use for this project slug.
+ */
+function station_project_compose_abs_path(string $projectSlug): string
+{
+    $slug = station_safe_name($projectSlug);
+    $dir = station_projects_dir() . '/' . $slug;
+    $settings = station_project_settings($slug);
+    $docker = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
+    $want = trim((string) ($docker['composeFile'] ?? ''));
+    if ($want !== '' && is_file($dir . '/' . $want)) {
+        return $dir . '/' . $want;
+    }
+    $found = station_find_project_compose_path($dir);
+
+    return $found ?? ($dir . '/docker-compose.yml');
+}
+
+/**
+ * Collect image: lines from a compose YAML (best-effort; does not parse full YAML).
+ *
+ * @return list<string>
+ */
+function station_compose_yaml_collect_images(string $yaml): array
+{
+    $images = [];
+    foreach (preg_split('/\r\n|\r|\n/', $yaml) ?: [] as $line) {
+        if (preg_match('/^\s*image:\s*(.+)$/i', (string) $line, $m) === 1) {
+            $img = trim($m[1], " \t\"'");
+            if ($img !== '' && !str_contains($img, '${')) {
+                $images[] = $img;
+            }
+        }
+    }
+
+    return array_values(array_unique($images));
+}
+
+/**
+ * Map a compose image reference to a Station docker service catalog key, if known.
+ */
+function station_compose_image_to_station_service_key(string $image): ?string
+{
+    $l = strtolower($image);
+    $pairs = [
+        'mysql' => 'mysql',
+        'mariadb' => 'mariadb',
+        'postgres' => 'postgres',
+        'postgis' => 'postgres',
+        'mongo' => 'mongodb',
+        'redis' => 'redis',
+        'elastic' => 'elasticsearch',
+        'rabbitmq' => 'rabbitmq',
+        'meilisearch' => 'meilisearch',
+        'minio' => 'minio',
+        'mailpit' => 'mailpit',
+        'memcached' => 'memcached',
+        'clickhouse' => 'clickhouse',
+        'influxdb' => 'influxdb',
+        'adminer' => 'adminer',
+        'mongo-express' => 'mongo-express',
+        'pgadmin' => 'pgadmin',
+        'caddy' => 'caddy',
+    ];
+    foreach ($pairs as $needle => $key) {
+        if (str_contains($l, $needle)) {
+            return $key;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Append unique compose image strings to admin dockerSettings for operator visibility.
+ *
+ * @param list<string> $images
+ */
+function station_admin_merge_discovered_compose_images(array $images): void
+{
+    if ($images === []) {
+        return;
+    }
+    $admin = station_admin_settings();
+    $ds = isset($admin['dockerSettings']) && is_array($admin['dockerSettings']) ? $admin['dockerSettings'] : [];
+    $known = isset($ds['discoveredComposeImages']) && is_array($ds['discoveredComposeImages']) ? $ds['discoveredComposeImages'] : [];
+    foreach ($images as $img) {
+        $img = trim((string) $img);
+        if ($img === '' || str_contains($img, '${')) {
+            continue;
+        }
+        if (!in_array($img, $known, true)) {
+            $known[] = $img;
+        }
+    }
+    if (count($known) > 300) {
+        $known = array_slice($known, -300);
+    }
+    $ds['discoveredComposeImages'] = $known;
+    $admin['dockerSettings'] = $ds;
+    station_save_admin_settings($admin);
+}
+
+/**
+ * If the workspace already contains a compose file, mark the project as using that stack
+ * (Station will not overwrite compose on start) and register discovered images for the admin catalog.
+ */
+function station_try_bootstrap_native_docker_from_workspace(string $slug): void
+{
+    if (!station_docker_enabled()) {
+        return;
+    }
+    $slug = station_safe_name($slug);
+    if ($slug === '') {
+        return;
+    }
+    $projectPath = station_projects_dir() . '/' . $slug;
+    $composePath = station_find_project_compose_path($projectPath);
+    if ($composePath === null) {
+        return;
+    }
+
+    $settings = station_project_settings($slug);
+    $docker = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
+    if (!empty($docker['nativeCompose'])) {
+        return;
+    }
+    if (!empty($docker['containerized']) && (int) ($docker['hostPort'] ?? 0) > 0) {
+        return;
+    }
+
+    $yaml = (string) @file_get_contents($composePath);
+    if (trim($yaml) === '') {
+        return;
+    }
+
+    $images = station_compose_yaml_collect_images($yaml);
+    station_admin_merge_discovered_compose_images($images);
+
+    $recommended = [];
+    foreach ($images as $img) {
+        $key = station_compose_image_to_station_service_key($img);
+        if ($key !== null) {
+            $recommended[] = $key;
+        }
+    }
+    $recommended = array_values(array_unique($recommended));
+
+    $servicesMap = [];
+    foreach ($recommended as $k) {
+        $servicesMap[$k] = true;
+    }
+
+    $settings['docker'] = array_merge($docker, [
+        'containerized' => true,
+        'nativeCompose' => true,
+        'composeFile' => basename($composePath),
+        'hostPort' => (int) ($docker['hostPort'] ?? 0) > 0 ? (int) $docker['hostPort'] : station_allocate_project_host_port($slug),
+        'appPort' => (int) ($docker['appPort'] ?? 0) > 0 ? (int) $docker['appPort'] : 80,
+        'services' => $servicesMap !== [] ? $servicesMap : (isset($docker['services']) && is_array($docker['services']) ? $docker['services'] : []),
+        'credentials' => isset($docker['credentials']) && is_array($docker['credentials']) ? $docker['credentials'] : [],
+        'recommendedServices' => $recommended,
+        'stack' => trim((string) ($docker['stack'] ?? '')) !== '' ? (string) $docker['stack'] : station_infer_docker_stack($slug),
+    ]);
+    station_save_project_settings($slug, $settings);
+}
+
+/**
  * Inspect the current docker-compose state for a project: returns one of
  * 'running', 'partial', 'stopped', 'unknown', 'unavailable', 'unconfigured'.
  */
@@ -2068,7 +2258,7 @@ function station_project_docker_status(string $projectSlug): array
 {
     $slug = station_safe_name($projectSlug);
     $projectPath = station_projects_dir() . '/' . $slug;
-    $composePath = $projectPath . '/docker-compose.yml';
+    $composePath = station_project_compose_abs_path($slug);
     if (!is_file($composePath)) {
         return ['state' => 'unconfigured', 'services' => [], 'output' => ''];
     }
@@ -2259,10 +2449,6 @@ function station_admin_host_config_snapshot(): array
         'nginxIncludePath' => station_nginx_include_path(),
         'nginxReloadAfterRoutes' => station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')) === 'nginx',
         'nginxReloadCommandConfigured' => $nginxCmd !== '',
-        'nginxAuthRequestBasePath' => trim((string) ($settings['nginxAuthRequestBasePath'] ?? '')),
-        'nginxAuthRequestResolved' => station_nginx_auth_request_base_path(),
-        'nginxDockerAuthBypassAdmin' => !empty($settings['nginxDockerAuthBypass']),
-        'nginxDockerAuthBypassEffective' => station_nginx_docker_auth_bypass_active(),
     ];
 }
 
@@ -2456,57 +2642,6 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
 }
 
 /**
- * URI prefix for `auth_request` inside generated nginx snippets. Must match
- * the browser-visible URL path to Station PHP (not the filesystem path).
- *
- * Resolution order:
- * 1. `$_SERVER['STATION_AUTH_REQUEST_BASE']` (set via nginx `fastcgi_param` on Station PHP)
- *    or getenv('STATION_AUTH_REQUEST_BASE') (php-fpm pool `env[...]`).
- * 2. Admin override `nginxAuthRequestBasePath`.
- * 3. `station_web_base_path()` when it looks like a URL path (not /var/…).
- * 4. Fallback `/station`; use step 1–2 if your vhost uses `/secure/station` only.
- */
-function station_nginx_auth_request_base_path(): string
-{
-    $raw = trim((string) ($_SERVER['STATION_AUTH_REQUEST_BASE'] ?? ''));
-    if ($raw === '') {
-        $g = getenv('STATION_AUTH_REQUEST_BASE');
-        $raw = is_string($g) ? trim($g) : '';
-    }
-    if ($raw !== '') {
-        $normalized = '/' . trim($raw, "/ \t\r\n");
-        $normalized = rtrim($normalized, '/');
-        if ($normalized !== '' && $normalized !== '/') {
-            return $normalized;
-        }
-    }
-
-    $admin = station_admin_settings();
-    $override = trim((string) ($admin['nginxAuthRequestBasePath'] ?? ''));
-    if ($override !== '') {
-        $normalized = '/' . trim($override, "/ \t\r\n");
-        $normalized = rtrim($normalized, '/');
-        if ($normalized === '' || $normalized === '/') {
-            return '/station';
-        }
-
-        return $normalized;
-    }
-
-    $base = rtrim(station_web_base_path(), '/');
-    if ($base === '' || $base === '.') {
-        return '/station';
-    }
-    foreach (['/var/', '/srv/', '/usr/', '/opt/', '/home/'] as $prefix) {
-        if (str_starts_with($base, $prefix)) {
-            return '/station';
-        }
-    }
-
-    return $base;
-}
-
-/**
  * Nginx proxy lines for Host / X-Forwarded-Host toward dockerized apps.
  *
  * @return list<string>
@@ -2539,8 +2674,14 @@ function station_render_nginx_projects_conf(array $projects): string
         '# Auto-generated by Deployment Station — managed file.',
         '# Regenerated whenever a docker project is configured, started,',
         '# stopped, rebuilt, or torn down. Manual edits will be lost.',
-        '# Each /p/<slug>/ block uses auth_request against nginx-docker-auth.php',
-        '# so access matches project-serve.php (requires ngx_http_auth_request_module).',
+        '# Each /p/<slug>/ block reverse-proxies to the container (no Station auth_request).',
+        '# Browser Cookie/Authorization are cleared before proxy_pass (avoids many app 500s when',
+        '# the Station session is present). Optional ?dp_t= query is ignored here unless you add',
+        '# your own validation — use lib/docker-proxy-token.php from custom tooling if needed.',
+        '# Large header buffers: nginx only allows client_header_buffer_size /',
+        '# large_client_header_buffers in http{} or server{}, not inside location{}. If you',
+        '# still see 400/494 on /p/… with huge cookies, set those directives in this vhost\'s',
+        '# server{} (see Admin → Projects → nginx snippet comments).',
         '# Generated at ' . $generatedAt,
         '',
     ];
@@ -2552,7 +2693,7 @@ function station_render_nginx_projects_conf(array $projects): string
     }
 
     // One location per slug: last duplicate wins (avoids nginx merging two ^~ blocks where
-    // the second can drop auth_request and leave /p/… world-open).
+    // the second can override proxy settings).
     $bySlug = [];
     foreach ($projects as $project) {
         $slug = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($project['slug'] ?? ''));
@@ -2568,21 +2709,14 @@ function station_render_nginx_projects_conf(array $projects): string
 
         $lines[] = '# ' . $slug . ' -> host 127.0.0.1:' . $hostPort . ' (container :' . $appPort . ')';
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
-        $authBase = station_nginx_auth_request_base_path();
-        // Forward only dp_t from the browser query (not full $args) so a client cannot
-        // append a second project= and override the slug bound in this location block.
-        $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug) . '&dp_t=$arg_dp_t';
-        // Literal auth_request URI; Host / X-Forwarded-Host lines come from
-        // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
-        $lines[] = '    auth_request ' . $authUri . ';';
-        $lines[] = '    # auth_request must resolve to Station PHP (correct server_name / include).';
         $lines[] = '    proxy_http_version 1.1;';
+        $lines[] = '    proxy_set_header Connection "";';
         foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
             $lines[] = $hostLine;
         }
         // Always strip: forwarding the Station session cookie (and Authorization) to the
         // container often breaks the app or causes 500 for signed-in users while anonymous works.
-        $lines[] = '    # Do not forward browser Cookie / Authorization to the container (after auth_request).';
+        $lines[] = '    # Do not forward browser Cookie / Authorization to the container.';
         $lines[] = '    proxy_set_header Cookie "";';
         $lines[] = '    proxy_set_header Authorization "";';
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';

@@ -60,32 +60,10 @@ function station_session_cookie_params_from_env(): array
 }
 
 /**
- * True when this request is nginx auth_request hitting nginx-docker-auth.php.
- * Used to release the session file lock early (see bootstrap session block below) so
- * auth_request does not block behind another Station tab — otherwise /p/… can 500 for
- * signed-in users while anonymous still works.
+ * Session bootstrap: scripts may define STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE before
+ * loading bootstrap to start the session with read_and_close (legacy / custom use).
  */
-function station_script_is_nginx_docker_auth(): bool
-{
-    $sf = (string) ($_SERVER['SCRIPT_FILENAME'] ?? '');
-    if ($sf !== '' && str_ends_with($sf, 'nginx-docker-auth.php')) {
-        return true;
-    }
-    $sn = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
-    if ($sn !== '' && str_ends_with($sn, 'nginx-docker-auth.php')) {
-        return true;
-    }
-    // Some FPM pools leave SCRIPT_FILENAME pointing at a router; URI still names this script.
-    $ru = (string) ($_SERVER['REQUEST_URI'] ?? '');
-    if ($ru !== '' && str_contains($ru, 'nginx-docker-auth.php')) {
-        return true;
-    }
-
-    return false;
-}
-
-$stationSessionReadAndClose = station_script_is_nginx_docker_auth()
-    || (defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE') && STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE);
+$stationSessionReadAndClose = defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE') && STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE;
 
 if (session_status() === PHP_SESSION_ACTIVE) {
     if ($stationSessionReadAndClose) {
@@ -480,9 +458,6 @@ function station_admin_settings(): array
         'onboardingRequired' => true,
         'allowPublicProjects' => true,
         'githubEnabled' => true,
-        'vscodeEnabled' => true,
-        'chatgptEnabled' => true,
-        'codexEnabled' => true,
         'stationHeading' => 'Deployment Station',
         'stationSubheading' => '',
         'faviconUrl' => '',
@@ -494,34 +469,10 @@ function station_admin_settings(): array
         'customTemplates' => [],
         'dockerSettings' => [],
         'nginxDockerUpstreamHostMode' => 'preserve',
-        'nginxDockerAuthBypass' => false,
-        'nginxDockerProxySignedQueryToken' => true,
-        'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
     return array_merge($defaults, is_array($stored) ? $stored : []);
-}
-
-/**
- * When true, nginx-docker-auth.php returns 200 for any existing docker project slug without
- * session checks (emergency debugging only). Admin checkbox is the normal control; if
- * STATION_DOCKER_AUTH_BYPASS is also set in the environment (php-fpm / fastcgi_param), that
- * still enables bypass so operators can recover without opening the UI.
- */
-function station_nginx_docker_auth_bypass_active(): bool
-{
-    $admin = station_admin_settings();
-    if (!empty($admin['nginxDockerAuthBypass'])) {
-        return true;
-    }
-    $bypassRaw = trim((string) ($_SERVER['STATION_DOCKER_AUTH_BYPASS'] ?? ''));
-    if ($bypassRaw === '') {
-        $g = getenv('STATION_DOCKER_AUTH_BYPASS');
-        $bypassRaw = is_string($g) ? trim($g) : '';
-    }
-
-    return in_array(strtolower($bypassRaw), ['1', 'true', 'yes', 'on'], true);
 }
 
 /**
@@ -598,17 +549,9 @@ function station_admin_merge_mega_form_post_into_settings(
             $hostMode = strtolower(trim((string) $post['nginxDockerUpstreamHostMode']));
             $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
         }
-        $settings['nginxDockerAuthBypass'] = isset($post['nginxDockerAuthBypass']);
-        $settings['nginxDockerProxySignedQueryToken'] = isset($post['nginxDockerProxySignedQueryToken']);
-        if (array_key_exists('nginxAuthRequestBasePath', $post)) {
-            $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
-        }
     }
 
     $settings['githubEnabled'] = isset($post['githubEnabled']);
-    $settings['vscodeEnabled'] = isset($post['vscodeEnabled']);
-    $settings['chatgptEnabled'] = isset($post['chatgptEnabled']);
-    $settings['codexEnabled'] = isset($post['codexEnabled']);
 
     $settings['onboardingRequired'] = isset($post['onboardingRequired']);
 
@@ -637,6 +580,8 @@ function station_admin_merge_mega_form_post_into_settings(
     }
 
     $settings['dockerSettings'] = $dockerSettings;
+
+    unset($settings['vscodeEnabled'], $settings['chatgptEnabled'], $settings['codexEnabled']);
 
     return $settings;
 }
@@ -688,8 +633,9 @@ function station_nginx_project_route_snippet(): string
         '# proxy adds response header X-Station-Docker-Project: <slug>.',
         '# projects.conf always clears Cookie and Authorization before proxy_pass.',
         '# Optional in this server{} (not inside projects.conf): if clients still',
-        '# hit 400/502 on /p/… with huge headers, set e.g.',
-        '#   large_client_header_buffers 4 32k;',
+        '# hit 400/494 on /p/… with huge headers, set e.g.',
+        '#   client_header_buffer_size 16k;',
+        '#   large_client_header_buffers 8 64k;',
         '# Regenerated by Deployment Station whenever a docker project is',
         '# configured, started, stopped, rebuilt, or torn down. When Admin →',
         '# Projects has automatic nginx reload enabled, `nginx -t` and reload',
@@ -1651,9 +1597,6 @@ function station_user_profile(string $username): array
         'onboardingCompleted' => false,
         'integrations' => [
             'github' => ['enabled' => false, 'username' => '', 'token' => '', 'repo' => ''],
-            'vscode' => ['enabled' => false, 'syncUrl' => '', 'notes' => ''],
-            'chatgpt' => ['enabled' => false, 'apiKey' => '', 'workspace' => ''],
-            'codex' => ['enabled' => false, 'apiKey' => '', 'workspace' => '']
         ]
     ]);
 }
@@ -1685,10 +1628,8 @@ function station_integration_ready(array $profile, string $integration): bool
     if ($integration === 'github') {
         return trim((string) ($config['token'] ?? '')) !== '';
     }
-    if ($integration === 'vscode') {
-        return trim((string) ($config['syncUrl'] ?? '')) !== '';
-    }
-    return trim((string) ($config['apiKey'] ?? '')) !== '';
+
+    return false;
 }
 
 function station_user_needs_onboarding(string $username): bool

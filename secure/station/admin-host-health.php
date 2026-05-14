@@ -75,6 +75,14 @@ $settings = station_admin_settings();
 $snapshot = station_host_health_snapshot();
 $routing = station_host_health_routing_map();
 $upstreamMatrix = station_host_health_docker_upstream_matrix();
+$missionSlugs = [];
+foreach ($routing['dockerProjects'] ?? [] as $dp) {
+    $s = trim((string) ($dp['slug'] ?? ''));
+    if ($s !== '') {
+        $missionSlugs[] = $s;
+    }
+}
+$missionPayload = station_mission_fleet_payload();
 
 $nginxTestLabel = trim((string) ($settings['hostNginxTestCommand'] ?? '')) !== ''
     ? 'nginx config test (custom hostNginxTestCommand)'
@@ -100,9 +108,6 @@ $infra = (string) ($routing['infrastructure'] ?? 'apache');
 $includePath = (string) ($routing['nginxInclude'] ?? '');
 $hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
 $stripDockerCookies = !empty($routing['nginxDockerProxyStripCookies']);
-$signedQueryToken = !empty($routing['nginxDockerProxySignedQueryToken']);
-$dockerAuthBypassEffective = !empty($routing['nginxDockerAuthBypassEffective']);
-$dockerAuthBypassAdmin = !empty($routing['nginxDockerAuthBypassAdmin']);
 $nginxReloadAfterWrites = !empty($routing['nginxReloadAfterRouteWrites']);
 $webBase = (string) ($routing['webBasePath'] ?? '');
 $secureBase = station_secure_base_path();
@@ -163,9 +168,9 @@ TXT;
     <main class="dashboard-main">
       <header class="dashboard-topbar">
         <div>
-          <p class="dashboard-kicker">Owner only</p>
-          <h1 class="dashboard-heading">Host health & routing</h1>
-          <p class="dashboard-subheading">Live snapshots from the same shell user as Station (often <code>www-data</code>), plus a routing map and optional maintenance commands.</p>
+          <p class="dashboard-kicker">Owner · Mission control</p>
+          <h1 class="dashboard-heading">Host health &amp; routing</h1>
+          <p class="dashboard-subheading">Live container load, routing map, and host diagnostics from the same shell user as Station (often <code>www-data</code>), plus optional maintenance commands.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -191,18 +196,24 @@ TXT;
         </label>
       </p>
 
+      <div class="settings-panel" style="margin-top: 20px; border: none; padding: 0; background: transparent; box-shadow: none;">
+        <?= station_mission_fleet_markup(
+            $missionPayload,
+            $missionSlugs,
+            'Container fleet (live)',
+            'Bars compare each container to the current peak on this host. Stacks managed by Station are tagged when the container name includes the project slug.'
+        ) ?>
+      </div>
+
       <div class="settings-panel" style="margin-top: 20px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Routing map (from Station config)</h2>
         <p class="setting-description">Infrastructure mode: <strong><?= station_h($infra) ?></strong>.
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
           Strip <code>Cookie</code> + <code>Authorization</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
-          Signed <code>?dp_t=</code> proxy token (admin): <strong><?= $signedQueryToken ? 'on' : 'off' ?></strong>.
-          Docker <code>auth_request</code> bypass: <strong><?= $dockerAuthBypassEffective ? 'on' : 'off' ?></strong><?= $dockerAuthBypassEffective && !$dockerAuthBypassAdmin ? ' <span style="opacity:0.85;">(env <code>STATION_DOCKER_AUTH_BYPASS</code> — not the admin checkbox)</span>' : '' ?>.
-          <code>/p/…</code> proxy: requires Station login<?= $signedQueryToken ? ' or a valid short-lived <code>?dp_t=</code> URL' : '' ?>, unless bypass is on.
+          <code>/p/…</code> proxy: <strong>open</strong> at nginx (no Station <code>auth_request</code>); restrict with firewall or vhost if needed.
           Nginx reload after route file writes: <strong><?= $nginxReloadAfterWrites ? 'yes' : 'no' ?></strong> (yes when production web server is Nginx).
         </p>
-        <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — generated subrequest appends <code>&amp;dp_t=$arg_dp_t</code> so a signed <code>dp_t</code> from the browser reaches PHP without forwarding the full query string. Probe pattern: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;&amp;dp_t=$arg_dp_t</code></p>
         <p class="setting-description">Web base path: <code><?= station_h($webBase !== '' ? $webBase : '(empty — site root)') ?></code>.
           Secure path prefix: <code><?= station_h($secureBase !== '' ? $secureBase : '(empty)') ?></code>.
         </p>

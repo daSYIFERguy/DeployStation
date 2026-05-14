@@ -202,8 +202,8 @@ require_once __DIR__ . '/projects.php';
  * Whether the current user may open this project (files, launch, docker APIs).
  * Unauthenticated clients are denied whenever visibility is not public, even if accessMode
  * in projects.json was mistakenly left public (visibility and accessMode can drift).
- * The nginx docker proxy at <code>/p/&lt;slug&gt;/</code> always requires a Station session
- * in nginx-docker-auth.php before this function runs.
+ * The nginx docker proxy at <code>/p/&lt;slug&gt;/</code> does not use this function — it is an
+ * open reverse proxy at the web server; restrict at the network or vhost level if needed.
  */
 function station_user_may_access_project(?array $user, string $slug): bool
 {

@@ -71,7 +71,8 @@ if (!station_docker_enabled()) {
 $projectSettings = station_project_settings($project);
 $dockerConfig = isset($projectSettings['docker']) && is_array($projectSettings['docker']) ? $projectSettings['docker'] : [];
 $projectPath = station_project_path($project);
-$composePath = $projectPath . '/docker-compose.yml';
+$composeAbs = station_project_compose_abs_path($project);
+$nativeCompose = !empty($dockerConfig['nativeCompose']);
 
 if ($action === 'status') {
     $status = station_project_docker_status($project);
@@ -97,8 +98,9 @@ if (empty($engine['ok'])) {
     station_docker_action_respond(false, $message, $returnTo, [], $wantsJson);
 }
 
-// Always (re)generate the compose file & Dockerfile so the on-disk artifacts match the saved config.
-if ($dockerConfig === [] && !is_file($composePath)) {
+// Always (re)generate the compose file & Dockerfile so the on-disk artifacts match the saved config,
+// unless this project uses a native compose file from the repository.
+if ($dockerConfig === [] && !is_file($composeAbs)) {
     station_docker_action_respond(
         false,
         'Configure Docker for this project first.',
@@ -116,16 +118,18 @@ if (!empty($dockerConfig)) {
     }
 
     $dockerfilePath = $projectPath . '/Dockerfile';
-    $refreshCompose = in_array($action, ['start', 'rebuild', 'restart'], true) || !is_file($composePath);
+    $refreshCompose = !$nativeCompose
+        && (in_array($action, ['start', 'rebuild', 'restart'], true) || !is_file($composeAbs));
     if ($refreshCompose) {
         station_merge_station_entries_into_project_dockerignore($projectPath);
         $composeContent = station_generate_docker_compose($dockerConfig, $project);
-        if (@file_put_contents($composePath, $composeContent, LOCK_EX) === false) {
+        $writePath = $projectPath . '/docker-compose.yml';
+        if (@file_put_contents($writePath, $composeContent, LOCK_EX) === false) {
             station_docker_action_respond(false, 'Could not write docker-compose.yml for ' . $project . '.', $returnTo, [], $wantsJson);
         }
     }
 
-    $mustRefreshDockerfile = $action === 'rebuild' || !is_file($dockerfilePath);
+    $mustRefreshDockerfile = !$nativeCompose && ($action === 'rebuild' || !is_file($dockerfilePath));
     if ($mustRefreshDockerfile) {
         station_ensure_project_dockerfile($project, $action === 'rebuild');
     }

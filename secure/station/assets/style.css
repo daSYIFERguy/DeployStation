@@ -3024,3 +3024,296 @@ tr:last-child td { border-bottom: none; }
     align-items: stretch;
   }
 }
+
+/* ── Mission control — Docker fleet (host health / admin) ───────── */
+.mission-shell {
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--s1);
+}
+.mission-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  background: linear-gradient(125deg, #0b1220 0%, #152a4a 42%, #0d2844 100%);
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mission-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  font-weight: 600;
+}
+.mission-title {
+  margin: 0 0 8px;
+  font-family: "Google Sans", sans-serif;
+  font-size: clamp(18px, 2.4vw, 22px);
+  font-weight: 700;
+  color: #f8fafc;
+}
+.mission-blurb {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #cbd5e1;
+}
+.mission-blurb strong {
+  color: #fff;
+  font-weight: 600;
+}
+.mission-hero-stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.mission-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 88px;
+}
+.mission-stat strong {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.mission-stat span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+.mission-empty {
+  margin: 0;
+  padding: 20px 24px;
+  color: var(--soft);
+  font-size: 14px;
+}
+.mission-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(180deg, var(--panel-tint) 0%, var(--panel-soft) 100%);
+}
+.mission-tile {
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px 14px 14px;
+  box-shadow: var(--s0);
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+.mission-tile:hover {
+  border-color: var(--line-mid);
+}
+.mission-tile-station {
+  border-color: rgba(47, 125, 226, 0.45);
+  box-shadow: 0 0 0 1px rgba(47, 125, 226, 0.12), var(--s0);
+}
+.mission-tile-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mission-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  word-break: break-all;
+}
+.mission-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(47, 125, 226, 0.12);
+  color: var(--brand-dark);
+}
+.mission-bar-block {
+  margin-top: 8px;
+}
+.mission-bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.mission-bar-label span:last-child {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--soft);
+}
+.mission-bar-track {
+  height: 9px;
+  border-radius: 6px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+.mission-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  min-width: 2px;
+  transition: width 0.35s ease;
+}
+.mission-bar-cpu {
+  background: linear-gradient(90deg, #22d3ee, #0ea5e9);
+}
+.mission-bar-mem {
+  background: linear-gradient(90deg, #c084fc, #7c3aed);
+}
+.mission-discovered-list {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--soft);
+}
+
+/* User settings — mission-style cards */
+.user-mission-top {
+  margin-bottom: 8px;
+}
+.user-mission-form {
+  margin-top: 12px;
+}
+.mission-user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.mission-user-card {
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 20px 22px 22px;
+  box-shadow: var(--s0);
+}
+.mission-user-card-profile {
+  background: linear-gradient(160deg, #ffffff 0%, var(--panel-soft) 100%);
+}
+.mission-user-card-github {
+  background: linear-gradient(145deg, #0f172a 0%, #1e293b 55%, #172554 100%);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+.mission-user-card-github .mission-user-card-title {
+  color: #f8fafc;
+}
+.mission-user-card-github .mission-user-card-desc {
+  color: #94a3b8;
+}
+.mission-user-card-github .mission-field-label {
+  color: #cbd5e1;
+}
+.mission-user-card-github input[type="text"],
+.mission-user-card-github input[type="password"] {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #f1f5f9;
+}
+.mission-user-card-github input[type="text"]::placeholder,
+.mission-user-card-github input[type="password"]::placeholder {
+  color: #64748b;
+}
+.mission-user-card-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.mission-user-card-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--soft);
+}
+.mission-user-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.mission-badge-gh {
+  background: rgba(125, 211, 252, 0.15);
+  color: #7dd3fc;
+}
+.mission-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.mission-field-row {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mission-field-row .mission-field-label {
+  min-width: 100px;
+}
+.mission-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft);
+}
+.mission-optional {
+  font-weight: 400;
+  opacity: 0.75;
+}
+.mission-field input[type="text"],
+.mission-field input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  font-size: 14px;
+}
+.mission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.mission-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+.mission-user-card-github .mission-toggle {
+  color: #e2e8f0;
+}
+.mission-help-link {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.mission-user-actions {
+  margin-top: 20px;
+}
+
+.integration-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 260px;
+}

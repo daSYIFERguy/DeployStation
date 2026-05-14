@@ -165,11 +165,7 @@ function station_host_health_routing_map(): array
         'nginxInclude' => station_nginx_include_path(),
         'nginxUpstreamHostMode' => (string) ($admin['nginxDockerUpstreamHostMode'] ?? 'preserve'),
         'nginxDockerProxyStripCookies' => true,
-        'nginxDockerProxySignedQueryToken' => !empty($admin['nginxDockerProxySignedQueryToken']),
-        'nginxDockerAuthBypassAdmin' => !empty($admin['nginxDockerAuthBypass']),
-        'nginxDockerAuthBypassEffective' => station_nginx_docker_auth_bypass_active(),
         'nginxReloadAfterRouteWrites' => station_normalize_server_infrastructure((string) ($admin['serverInfrastructure'] ?? 'apache')) === 'nginx',
-        'nginxAuthRequestBase' => station_nginx_auth_request_base_path(),
         'webBasePath' => station_web_base_path(),
         'dataDir' => station_data_dir(),
         'projectsDir' => station_projects_dir(),
@@ -335,4 +331,185 @@ function station_host_health_docker_upstream_matrix(): array
     }
 
     return $rows;
+}
+
+/** @return list<array{name:string,cpu:string,memPerc:string,memUse:string,cpuNum:float,memNum:float}> */
+function station_host_health_docker_stats_rows(): array
+{
+    if (!function_exists('station_docker_engine_available')) {
+        return [];
+    }
+    $engine = station_docker_engine_available();
+    if (empty($engine['ok'])) {
+        return [];
+    }
+    $docker = station_docker_binary();
+    $result = station_run_shell_cmd(
+        [$docker, 'stats', '--no-stream', '--format', '{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.MemUsage}}'],
+        null,
+        25
+    );
+    if (($result['code'] ?? 1) !== 0) {
+        return [];
+    }
+    $raw = trim((string) ($result['output'] ?? ''));
+    if ($raw === '') {
+        return [];
+    }
+    $rows = [];
+    foreach (preg_split('/\r\n|\r|\n/', $raw) ?: [] as $line) {
+        $line = trim((string) $line);
+        if ($line === '') {
+            continue;
+        }
+        $parts = explode("\t", $line);
+        if (count($parts) < 3) {
+            continue;
+        }
+        $name = $parts[0];
+        $cpu = $parts[1];
+        $memPerc = $parts[2];
+        $memUse = $parts[3] ?? '';
+        $cpuNum = (float) str_replace(['%', ' '], '', $cpu);
+        $memNum = (float) str_replace(['%', ' '], '', $memPerc);
+        $cpuNum = max(0.0, min(500.0, $cpuNum));
+        $memNum = max(0.0, min(100.0, $memNum));
+        $rows[] = [
+            'name' => $name,
+            'cpu' => $cpu,
+            'memPerc' => $memPerc,
+            'memUse' => $memUse,
+            'cpuNum' => $cpuNum,
+            'memNum' => $memNum,
+        ];
+    }
+
+    return $rows;
+}
+
+/**
+ * Sorted docker stats + maxima for Mission Control–style bars (relative load vs fleet).
+ *
+ * @return array{rows: list<array<string, mixed>>, maxCpu: float, maxMem: float, engineOk: bool}
+ */
+function station_mission_fleet_payload(): array
+{
+    $rows = station_host_health_docker_stats_rows();
+    usort(
+        $rows,
+        static function (array $a, array $b): int {
+            $sa = (float) ($a['memNum'] ?? 0) + (float) ($a['cpuNum'] ?? 0) / 200.0;
+            $sb = (float) ($b['memNum'] ?? 0) + (float) ($b['cpuNum'] ?? 0) / 200.0;
+
+            return $sb <=> $sa;
+        }
+    );
+    $maxCpu = 0.01;
+    $maxMem = 0.01;
+    foreach ($rows as $r) {
+        $maxCpu = max($maxCpu, (float) ($r['cpuNum'] ?? 0));
+        $maxMem = max($maxMem, (float) ($r['memNum'] ?? 0));
+    }
+    $engineOk = false;
+    if (function_exists('station_docker_engine_available')) {
+        $eng = station_docker_engine_available();
+        $engineOk = !empty($eng['ok']);
+    }
+
+    return [
+        'rows' => $rows,
+        'maxCpu' => $maxCpu,
+        'maxMem' => $maxMem,
+        'engineOk' => $engineOk,
+    ];
+}
+
+/**
+ * @param array{rows: list<array<string, mixed>>, maxCpu: float, maxMem: float, engineOk: bool} $payload
+ * @param list<string> $stationSlugs Project slugs — container names containing a slug get a highlight.
+ */
+function station_mission_fleet_markup(
+    array $payload,
+    array $stationSlugs = [],
+    string $title = 'Live container load',
+    string $description = ''
+): string {
+    $rows = $payload['rows'] ?? [];
+    $maxCpu = max(0.01, (float) ($payload['maxCpu'] ?? 0.01));
+    $maxMem = max(0.01, (float) ($payload['maxMem'] ?? 0.01));
+    $engineOk = !empty($payload['engineOk']);
+    $n = count($rows);
+    $slugLower = [];
+    foreach ($stationSlugs as $s) {
+        $t = strtolower(trim((string) $s));
+        if ($t !== '') {
+            $slugLower[$t] = true;
+        }
+    }
+
+    ob_start();
+    ?>
+    <div class="mission-shell" data-mission-fleet>
+      <div class="mission-hero">
+        <div class="mission-hero-text">
+          <p class="mission-kicker"><?= station_h($engineOk ? 'Docker engine' : 'Docker offline') ?></p>
+          <h2 class="mission-title"><?= station_h($title) ?></h2>
+          <?php if ($description !== ''): ?>
+            <p class="mission-blurb"><?= station_h($description) ?></p>
+          <?php else: ?>
+            <p class="mission-blurb">CPU and memory bars are scaled to the <strong>busiest</strong> container on this host right now so you can compare load at a glance.</p>
+          <?php endif; ?>
+        </div>
+        <div class="mission-hero-stats">
+          <div class="mission-stat"><strong><?= (int) $n ?></strong><span>containers</span></div>
+          <div class="mission-stat"><strong><?= station_h(number_format($maxCpu, 1)) ?>%</strong><span>peak CPU</span></div>
+          <div class="mission-stat"><strong><?= station_h(number_format($maxMem, 1)) ?>%</strong><span>peak RAM %</span></div>
+        </div>
+      </div>
+      <?php if ($rows === []): ?>
+        <p class="mission-empty"><?= station_h($engineOk ? 'No running containers reported by docker stats (or none yet).' : 'Enable Docker and ensure the PHP user can access the socket to see live stats.') ?></p>
+      <?php else: ?>
+        <div class="mission-tiles" role="list">
+          <?php foreach ($rows as $r):
+              $name = (string) ($r['name'] ?? '');
+              $nameL = strtolower($name);
+              $isStation = false;
+              foreach (array_keys($slugLower) as $slug) {
+                  if ($slug !== '' && str_contains($nameL, $slug)) {
+                      $isStation = true;
+                      break;
+                  }
+              }
+              $cpuNum = (float) ($r['cpuNum'] ?? 0);
+              $memNum = (float) ($r['memNum'] ?? 0);
+              $cpuW = min(100.0, ($cpuNum / $maxCpu) * 100.0);
+              $memW = min(100.0, ($memNum / $maxMem) * 100.0);
+              ?>
+            <div class="mission-tile<?= $isStation ? ' mission-tile-station' : '' ?>" role="listitem">
+              <div class="mission-tile-head">
+                <code class="mission-name"><?= station_h($name !== '' ? $name : '(unnamed)') ?></code>
+                <?php if ($isStation): ?><span class="mission-badge">Station</span><?php endif; ?>
+              </div>
+              <div class="mission-bar-block">
+                <div class="mission-bar-label"><span>CPU</span><span><?= station_h((string) ($r['cpu'] ?? '')) ?></span></div>
+                <div class="mission-bar-track" aria-hidden="true"><div class="mission-bar-fill mission-bar-cpu" style="width:<?= station_h((string) round($cpuW, 2)) ?>%;"></div></div>
+              </div>
+              <div class="mission-bar-block">
+                <?php
+                  $__memLabel = trim((string) ($r['memPerc'] ?? ''));
+                  if ((string) ($r['memUse'] ?? '') !== '') {
+                      $__memLabel .= ($__memLabel !== '' ? ' · ' : '') . (string) $r['memUse'];
+                  }
+                ?>
+                <div class="mission-bar-label"><span>Memory</span><span><?= station_h($__memLabel) ?></span></div>
+                <div class="mission-bar-track" aria-hidden="true"><div class="mission-bar-fill mission-bar-mem" style="width:<?= station_h((string) round($memW, 2)) ?>%;"></div></div>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+    <?php
+
+    return (string) ob_get_clean();
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/host-health.php';
 
 station_require_owner();
 $settings = station_admin_settings();
@@ -19,11 +20,14 @@ $settingsTabs = [
     'general' => 'Branding',
     'project-defaults' => 'Projects',
     'docker' => 'Docker',
-    'integrations' => 'Integrations',
+    'github' => 'GitHub',
     'onboarding' => 'Onboarding',
 ];
 
 $activeTab = (string) ($_GET['tab'] ?? 'general');
+if ($activeTab === 'integrations') {
+    $activeTab = 'github';
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Prefer the tab for the save button that was clicked — the hidden activeTab
     // can be stale (e.g. ?tab=docker then #project-defaults without re-running JS).
@@ -162,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
         <div>
           <p class="dashboard-kicker">Owner Console</p>
           <h1 class="dashboard-heading">Admin Settings</h1>
-          <p class="dashboard-subheading">Configure branding, project defaults, Docker services, integrations, and onboarding from one station-wide control panel.</p>
+          <p class="dashboard-subheading">Configure branding, project defaults, Docker, GitHub as the code connection, and onboarding from one station-wide control panel.</p>
         </div>
       </header>
 
@@ -181,9 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
         <span class="settings-nav-icon">🐳</span>
         <span>Docker</span>
       </a>
-      <a href="#integrations" class="settings-nav-item <?= $activeTab === 'integrations' ? 'active' : '' ?>" onclick="switchTab(event, 'integrations')">
-        <span class="settings-nav-icon">🔌</span>
-        <span>Integrations</span>
+      <a href="#github" class="settings-nav-item <?= $activeTab === 'github' ? 'active' : '' ?>" onclick="switchTab(event, 'github')">
+        <span class="settings-nav-icon">🐙</span>
+        <span>GitHub</span>
       </a>
       <a href="#onboarding" class="settings-nav-item <?= $activeTab === 'onboarding' ? 'active' : '' ?>" onclick="switchTab(event, 'onboarding')">
         <span class="settings-nav-icon">👋</span>
@@ -347,7 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
                     <p class="setting-description">No dockerized projects yet — the file will appear as soon as you configure one.</p>
                   <?php else: ?>
                     <pre class="code-block" style="max-height: 320px; overflow: auto;"><?= station_h($nginxIncludeContents) ?></pre>
-                    <p class="setting-description">Updated whenever a docker project is configured, started, stopped, rebuilt, torn down, or when a project is deleted or archived. Users reach each running project at <code>/p/&lt;slug&gt;/</code>.</p>
+                    <p class="setting-description">Updated whenever a docker project is configured, started, stopped, rebuilt, torn down, or when a project is deleted or archived. Each running project is reachable at <code>/p/&lt;slug&gt;/</code> (open reverse proxy at nginx — no Station login on that path; use firewall or vhost rules if you need to restrict it).</p>
                   <?php endif; ?>
                 </div>
 
@@ -392,12 +396,6 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                 </div>
 
                 <div class="setting-item" style="margin-top: 18px;">
-                  <label class="setting-label" for="nginxAuthRequestBasePath">Nginx <code>auth_request</code> URL prefix (optional)</label>
-                  <input type="text" id="nginxAuthRequestBasePath" name="nginxAuthRequestBasePath" spellcheck="false" class="code-block" style="width:100%;max-width:520px;font-family:ui-monospace,monospace;font-size:13px;padding:8px 10px;" value="<?= station_h((string) ($settings['nginxAuthRequestBasePath'] ?? '')) ?>" placeholder="/station or /secure/station">
-                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> block uses <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. This path must be the same prefix browsers use to reach Station PHP (e.g. <code>/station</code> if that is your URL). If it points at the wrong prefix, nginx may run the wrong handler (anonymous users can see the container; signed-in requests can error). Set <code>fastcgi_param STATION_AUTH_REQUEST_BASE …</code> on Station PHP in nginx, or <code>env[STATION_AUTH_REQUEST_BASE]</code> in the php-fpm pool. Save project defaults, then reload nginx.</p>
-                </div>
-
-                <div class="setting-item" style="margin-top: 18px;">
                   <label class="setting-label" for="nginxDockerUpstreamHostMode">Docker proxy: Host header to containers</label>
                   <select id="nginxDockerUpstreamHostMode" name="nginxDockerUpstreamHostMode">
                     <?php $upHost = (string) ($settings['nginxDockerUpstreamHostMode'] ?? 'preserve'); ?>
@@ -407,23 +405,7 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                   <p class="setting-description">Regenerates <code>projects.conf</code> on save. Try <code>loopback</code> if the app only accepts requests whose <code>Host</code> matches <code>127.0.0.1:&lt;port&gt;</code>.</p>
                 </div>
 
-                <p class="setting-description" style="margin-top: 14px;">Every generated <code>/p/&lt;slug&gt;/</code> route clears <code>Cookie</code> and <code>Authorization</code> before <code>proxy_pass</code> to the container. If those headers were forwarded, your Station session cookie often makes the app return <strong>500 when you are signed in</strong> while a logged-out browser (fewer cookies) still loads the page. Regenerate routes after deploy so nginx picks up the snippet.</p>
-
-                <label class="feature-toggle" style="margin-top: 14px;">
-                  <input type="checkbox" name="nginxDockerProxySignedQueryToken" <?= !empty($settings['nginxDockerProxySignedQueryToken'] ?? true) ? 'checked' : '' ?>>
-                  <div class="feature-toggle-content">
-                    <span class="feature-toggle-title">Allow signed <code>?dp_t=</code> token for docker proxy auth</span>
-                    <span class="feature-toggle-desc">When enabled, <code>nginx-docker-auth.php</code> can return allow for a <strong>short-lived HMAC</strong> in the query string (same slug), so <code>/p/&lt;slug&gt;/</code> works <strong>without</strong> relying on the Station session cookie on the auth subrequest — helpful if Cloudflare or another layer strips or alters cookies only on that path. Generated nginx config appends <code>&amp;dp_t=$arg_dp_t</code> on the internal auth URI so only that parameter is forwarded (not the full browser query string). Project owners can mint a link from <strong>Docker config</strong>. Anyone with the URL can use it until expiry; disable here if you do not want link-based access at all.</span>
-                  </div>
-                </label>
-
-                <label class="feature-toggle" style="margin-top: 14px;">
-                  <input type="checkbox" name="nginxDockerAuthBypass" <?= !empty($settings['nginxDockerAuthBypass']) ? 'checked' : '' ?>>
-                  <div class="feature-toggle-content">
-                    <span class="feature-toggle-title">Bypass docker <code>auth_request</code> (emergency only)</span>
-                    <span class="feature-toggle-desc">When enabled, <code>nginx-docker-auth.php</code> returns allow for <strong>any existing</strong> dockerized project slug <strong>without</strong> checking Station login or project access — anyone with a <code>/p/&lt;slug&gt;/</code> URL can reach the container. Use only while debugging nginx or PHP errors; turn off immediately after. The environment variable <code>STATION_DOCKER_AUTH_BYPASS</code> (php-fpm pool or nginx <code>fastcgi_param</code>) still forces the same behavior if set; remove it on the server if you want this checkbox to be the sole control. <strong>If toggling this changes nothing</strong> (e.g. you still get 500 when logged in), the failure is usually <em>after</em> auth — stale <code>projects.conf</code> on disk, the container app itself, or a CDN cache — not this PHP flag. Regenerate <code>projects.conf</code>, reload nginx, and curl the origin directly with <code>Cookie:</code> set to isolate.</span>
-                  </div>
-                </label>
+                <p class="setting-description" style="margin-top: 14px;">Every generated <code>/p/&lt;slug&gt;/</code> route clears <code>Cookie</code> and <code>Authorization</code> before <code>proxy_pass</code> to the container. If those headers were forwarded, your Station session cookie often makes the app return <strong>500 when you are signed in</strong> while a logged-out browser (fewer cookies) still loads the page. Regenerate routes after deploy so nginx picks up the snippet. There is no Station <code>auth_request</code> on these paths — anyone who can reach your host’s <code>/p/&lt;slug&gt;/</code> URL can hit the container; lock down at the network or vhost level if needed. The snippet also raises nginx client header buffer sizes so very large browser cookie headers are less likely to fail at nginx (494) before they reach the proxy strip.</p>
               <?php endif; ?>
 
               <div class="setting-item">
@@ -490,6 +472,17 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
               $hostFleetSnap = station_admin_host_config_snapshot();
               $fleetRows = station_admin_containerized_project_rows();
               $globalPsLines = station_docker_global_ps();
+              $missionSlugsAdmin = [];
+              foreach ($fleetRows as $fr) {
+                  $ms = trim((string) ($fr['slug'] ?? ''));
+                  if ($ms !== '') {
+                      $missionSlugsAdmin[] = $ms;
+                  }
+              }
+              $missionPayloadAdmin = station_mission_fleet_payload();
+              $discoveredCompose = isset($dockerSettings['discoveredComposeImages']) && is_array($dockerSettings['discoveredComposeImages'])
+                  ? $dockerSettings['discoveredComposeImages']
+                  : [];
             ?>
             <?php if ($isSnap): ?>
               <div class="docker-diag-card is-bad" style="margin-bottom: 14px;">
@@ -550,6 +543,15 @@ sudo systemctl restart php*-fpm
               <?php endif; ?>
             </div>
 
+            <div class="admin-mission-wrap" style="margin-top: 22px;">
+              <?= station_mission_fleet_markup(
+                  $missionPayloadAdmin,
+                  $missionSlugsAdmin,
+                  'Fleet snapshot (this host)',
+                  'Same live view as Host health: compare every container’s CPU and memory against the current peak. Station-managed stacks are highlighted when the name contains the project slug.'
+              ) ?>
+            </div>
+
             <div class="settings-panel" style="margin-top: 22px;">
               <div class="settings-panel-head">
                 <h2 class="settings-panel-heading" style="font-size: 18px;">Host paths &amp; web server</h2>
@@ -566,19 +568,14 @@ sudo systemctl restart php*-fpm
                 <dd><code><?= station_h($hostFleetSnap['stationPhpDir']) ?></code></dd>
                 <dt>Web base path (<code>SCRIPT_NAME</code>)</dt>
                 <dd><code><?= station_h($hostFleetSnap['webBasePath'] !== '' ? $hostFleetSnap['webBasePath'] : '/') ?></code></dd>
-                <dt>Nginx <code>auth_request</code> URL prefix</dt>
-                <dd><?php $authSaved = trim((string) ($hostFleetSnap['nginxAuthRequestBasePath'] ?? '')); ?>
-                  <?php if ($authSaved !== ''): ?>Override <code><?= station_h($authSaved) ?></code> — <?php endif; ?>effective <code><?= station_h((string) ($hostFleetSnap['nginxAuthRequestResolved'] ?? '')) ?></code> (used in <code>projects.conf</code>)</dd>
                 <dt>Production web server (admin default)</dt>
                 <dd><code><?= station_h($hostFleetSnap['serverInfrastructure']) ?></code></dd>
                 <dt>Nginx include file</dt>
                 <dd><code><?= station_h($hostFleetSnap['nginxIncludePath']) ?></code></dd>
                 <dt>Nginx reload after route updates</dt>
                 <dd><?= !empty($hostFleetSnap['nginxReloadAfterRoutes']) ? 'Yes (Nginx mode)' : 'No (not Nginx)' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command in admin)</span>' : '' ?></dd>
-                <dt>Docker <code>auth_request</code> bypass</dt>
-                <dd>Admin toggle: <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? 'on' : 'off' ?></strong> — effective (includes env <code>STATION_DOCKER_AUTH_BYPASS</code>): <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) ? 'on' : 'off' ?></strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) && empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? ' <span style="opacity:0.85;">(env is set on the server)</span>' : '' ?></dd>
                 <dt><code>/p/…</code> docker proxy</dt>
-                <dd>Always requires a Station session (anonymous gets 403); use bypass above only for emergencies.</dd>
+                <dd>Open reverse proxy in generated <code>projects.conf</code> (no Station session check at nginx). Cookies are cleared before <code>proxy_pass</code> so the container does not see your Station session.</dd>
               </dl>
             </div>
 
@@ -690,6 +687,20 @@ sudo systemctl restart php*-fpm
               </div>
             </div>
 
+            <?php if ($discoveredCompose !== []): ?>
+            <div class="settings-panel" style="margin-top: 22px;">
+              <div class="settings-panel-head">
+                <h2 class="settings-panel-heading" style="font-size: 18px;">Images seen in native Compose projects</h2>
+                <p class="settings-panel-subtitle">Collected automatically when projects ship their own <code>docker-compose</code> / <code>compose.yaml</code>. Used to suggest services; capped list.</p>
+              </div>
+              <ul class="mission-discovered-list">
+                <?php foreach ($discoveredCompose as $img): ?>
+                  <li><code><?= station_h((string) $img) ?></code></li>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+            <?php endif; ?>
+
             <h3 style="font-size: 15px; margin: 28px 0 16px;">Available Services</h3>
             <p class="setting-description" style="margin-bottom: 16px;">Enable/disable services available for project deployment:</p>
 
@@ -713,49 +724,27 @@ sudo systemctl restart php*-fpm
           </div>
         </div>
 
-        <!-- INTEGRATIONS -->
-        <div class="settings-section integrations<?= $activeTab === 'integrations' ? ' active' : '' ?>" id="integrations">
+        <!-- GITHUB (code connection) -->
+        <div class="settings-section github<?= $activeTab === 'github' ? ' active' : '' ?>" id="github">
           <div class="settings-panel">
             <div class="settings-panel-head">
-              <h1 class="settings-panel-heading">Integrations</h1>
-              <p class="settings-panel-subtitle">Enable or disable optional integrations and features.</p>
+              <h1 class="settings-panel-heading">GitHub</h1>
+              <p class="settings-panel-subtitle">Station treats GitHub as the primary code connection for builders. Users configure tokens and defaults in User Settings.</p>
             </div>
 
             <div class="settings-form-group">
               <label class="feature-toggle">
                 <input type="checkbox" name="githubEnabled" <?= !empty($settings['githubEnabled']) ? 'checked' : '' ?>>
                 <div class="feature-toggle-content">
-                  <span class="feature-toggle-title">GitHub Integration</span>
-                  <span class="feature-toggle-desc">Enable importing and linking projects from GitHub repositories.</span>
-                </div>
-              </label>
-
-              <label class="feature-toggle">
-                <input type="checkbox" name="vscodeEnabled" <?= !empty($settings['vscodeEnabled']) ? 'checked' : '' ?>>
-                <div class="feature-toggle-content">
-                  <span class="feature-toggle-title">VS Code Remote</span>
-                  <span class="feature-toggle-desc">Allow opening projects directly in VS Code via remote development.</span>
-                </div>
-              </label>
-
-              <label class="feature-toggle">
-                <input type="checkbox" name="chatgptEnabled" <?= !empty($settings['chatgptEnabled']) ? 'checked' : '' ?>>
-                <div class="feature-toggle-content">
-                  <span class="feature-toggle-title">ChatGPT</span>
-                  <span class="feature-toggle-desc">Integrate ChatGPT for AI-assisted development features.</span>
-                </div>
-              </label>
-
-              <label class="feature-toggle">
-                <input type="checkbox" name="codexEnabled" <?= !empty($settings['codexEnabled']) ? 'checked' : '' ?>>
-                <div class="feature-toggle-content">
-                  <span class="feature-toggle-title">GitHub Codex</span>
-                  <span class="feature-toggle-desc">Enable AI code completion and generation features.</span>
+                  <span class="feature-toggle-title">Enable GitHub features</span>
+                  <span class="feature-toggle-desc">Allow imports, repo metadata, and per-user GitHub credentials when the feature is on for the station.</span>
                 </div>
               </label>
             </div>
 
-            <button type="submit" name="admin_save_section" value="integrations" style="margin-top: 24px;">Save Integration Settings</button>
+            <p class="setting-description" style="margin-top: 16px;">Per-user tokens and default repository live under <a href="user-settings.php">User Settings</a> for each builder account.</p>
+
+            <button type="submit" name="admin_save_section" value="github" style="margin-top: 24px;">Save GitHub settings</button>
           </div>
         </div>
 
@@ -844,15 +833,16 @@ sudo systemctl restart php*-fpm
     }
 
     (function syncTabFromHash() {
-      var allowed = { general: 1, 'project-defaults': 1, docker: 1, integrations: 1, onboarding: 1 };
+      var allowed = { general: 1, 'project-defaults': 1, docker: 1, github: 1, onboarding: 1, integrations: 1 };
       function apply() {
-        var m = /^#(general|project-defaults|docker|integrations|onboarding)$/.exec(location.hash || '');
+        var m = /^#(general|project-defaults|docker|github|onboarding|integrations)$/.exec(location.hash || '');
         if (!m || !allowed[m[1]]) {
           return;
         }
+        var tab = m[1] === 'integrations' ? 'github' : m[1];
         var tabInput = document.querySelector('input[name="activeTab"]');
         if (tabInput) {
-          tabInput.value = m[1];
+          tabInput.value = tab;
         }
       }
       window.addEventListener('hashchange', apply);
