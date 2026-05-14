@@ -49,6 +49,9 @@ $ok = station_flash_get('ok');
       <nav class="nav-pills">
         <a href="station.php">Dashboard</a>
         <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch Site</a>
+        <?php if (station_can_build($user)): ?>
+          <a href="integration-help.php#workspace-api">Workspace API</a>
+        <?php endif; ?>
         <a href="logout.php">Logout</a>
       </nav>
     </header>

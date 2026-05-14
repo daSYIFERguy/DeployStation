@@ -224,6 +224,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <span class="settings-nav-icon">👋</span>
         <span>Onboarding</span>
       </a>
+      <a href="admin-factory-reset.php" class="settings-nav-item" style="margin-top: 12px; border-top: 1px solid var(--border, #e5e7eb); padding-top: 12px;">
+        <span class="settings-nav-icon">⚠️</span>
+        <span>Factory reset</span>
+      </a>
         </nav>
 
         <!-- Right Content Area -->
