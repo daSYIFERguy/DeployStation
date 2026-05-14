@@ -2263,6 +2263,7 @@ function station_admin_host_config_snapshot(): array
         'nginxAuthRequestResolved' => station_nginx_auth_request_base_path(),
         'nginxDockerAuthBypassAdmin' => !empty($settings['nginxDockerAuthBypass']),
         'nginxDockerAuthBypassEffective' => station_nginx_docker_auth_bypass_active(),
+        'nginxDockerAuthRequireStationLogin' => !empty($settings['nginxDockerAuthRequireStationLogin']),
     ];
 }
 

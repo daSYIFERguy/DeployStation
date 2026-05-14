@@ -6,7 +6,9 @@ declare(strict_types=1);
  * Nginx `auth_request` subrequest handler for `/p/<slug>/` reverse-proxy routes.
  *
  * Returns HTTP 200 (empty body) when the browser's session is allowed to reach
- * this dockerized project (same rules as project-serve.php). Returns 403 otherwise.
+ * this dockerized project. By default (Admin → Projects) unauthenticated requests
+ * are denied even for Public projects; turn off "Require Station login for /p/…"
+ * to match launch.php for anonymous Public access. Returns 403 otherwise.
  * We use 200 instead of 204 for maximum compatibility with nginx auth_request.
  *
  * Emergency bypass (not for production): enable **Admin → Projects → Bypass docker
@@ -44,6 +46,13 @@ try {
     }
 
     $user = station_current_user();
+    if (station_nginx_docker_proxy_require_station_login() && $user === null) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Forbidden';
+        exit;
+    }
+
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_write_close();
     }

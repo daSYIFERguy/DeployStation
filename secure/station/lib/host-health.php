@@ -167,6 +167,7 @@ function station_host_health_routing_map(): array
         'nginxDockerProxyStripCookies' => !empty($admin['nginxDockerProxyStripCookies']),
         'nginxDockerAuthBypassAdmin' => !empty($admin['nginxDockerAuthBypass']),
         'nginxDockerAuthBypassEffective' => station_nginx_docker_auth_bypass_active(),
+        'nginxDockerAuthRequireStationLogin' => !empty($admin['nginxDockerAuthRequireStationLogin']),
         'nginxReloadAfterRouteWrites' => station_normalize_server_infrastructure((string) ($admin['serverInfrastructure'] ?? 'apache')) === 'nginx',
         'nginxAuthRequestBase' => station_nginx_auth_request_base_path(),
         'webBasePath' => station_web_base_path(),

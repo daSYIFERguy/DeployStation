@@ -457,6 +457,7 @@ function station_admin_settings(): array
         'nginxDockerUpstreamHostMode' => 'preserve',
         'nginxDockerProxyStripCookies' => true,
         'nginxDockerAuthBypass' => false,
+        'nginxDockerAuthRequireStationLogin' => true,
         'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
@@ -483,6 +484,16 @@ function station_nginx_docker_auth_bypass_active(): bool
     }
 
     return in_array(strtolower($bypassRaw), ['1', 'true', 'yes', 'on'], true);
+}
+
+/**
+ * When true (default), nginx-docker-auth.php denies unauthenticated browsers for /p/&lt;slug&gt;/
+ * even when the project is Public on the dashboard. Turn off to allow the same anonymous
+ * access as launch.php for Public projects.
+ */
+function station_nginx_docker_proxy_require_station_login(): bool
+{
+    return !empty(station_admin_settings()['nginxDockerAuthRequireStationLogin']);
 }
 
 /**
@@ -561,6 +572,7 @@ function station_admin_merge_mega_form_post_into_settings(
         }
         $settings['nginxDockerProxyStripCookies'] = isset($post['nginxDockerProxyStripCookies']);
         $settings['nginxDockerAuthBypass'] = isset($post['nginxDockerAuthBypass']);
+        $settings['nginxDockerAuthRequireStationLogin'] = isset($post['nginxDockerAuthRequireStationLogin']);
         if (array_key_exists('nginxAuthRequestBasePath', $post)) {
             $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
         }

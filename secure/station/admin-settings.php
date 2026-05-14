@@ -397,6 +397,14 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                   <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> block uses <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. This path must be the same prefix browsers use to reach Station PHP (e.g. <code>/station</code> if that is your URL). If it points at the wrong prefix, nginx may run the wrong handler (anonymous users can see the container; signed-in requests can error). Set <code>fastcgi_param STATION_AUTH_REQUEST_BASE …</code> on Station PHP in nginx, or <code>env[STATION_AUTH_REQUEST_BASE]</code> in the php-fpm pool. Save project defaults, then reload nginx.</p>
                 </div>
 
+                <label class="feature-toggle" style="margin-top: 14px;">
+                  <input type="checkbox" name="nginxDockerAuthRequireStationLogin" <?= !empty($settings['nginxDockerAuthRequireStationLogin']) ? 'checked' : '' ?>>
+                  <div class="feature-toggle-content">
+                    <span class="feature-toggle-title">Require Station login for <code>/p/&lt;slug&gt;/</code> docker URLs</span>
+                    <span class="feature-toggle-desc">When enabled (default), nginx <code>auth_request</code> rejects browsers that are not signed in to Station, even if the project is <strong>Public</strong> on the dashboard — Public then still allows anonymous <code>launch.php</code> / files, but not the docker reverse proxy. Turn off only if you intentionally want the world to open container apps without a Station session.</span>
+                  </div>
+                </label>
+
                 <div class="setting-item" style="margin-top: 18px;">
                   <label class="setting-label" for="nginxDockerUpstreamHostMode">Docker proxy: Host header to containers</label>
                   <select id="nginxDockerUpstreamHostMode" name="nginxDockerUpstreamHostMode">
@@ -575,6 +583,8 @@ sudo systemctl restart php*-fpm
                 <dd><?= !empty($hostFleetSnap['nginxReloadAfterRoutes']) ? 'Yes (Nginx mode)' : 'No (not Nginx)' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command in admin)</span>' : '' ?></dd>
                 <dt>Docker <code>auth_request</code> bypass</dt>
                 <dd>Admin toggle: <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? 'on' : 'off' ?></strong> — effective (includes env <code>STATION_DOCKER_AUTH_BYPASS</code>): <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) ? 'on' : 'off' ?></strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) && empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? ' <span style="opacity:0.85;">(env is set on the server)</span>' : '' ?></dd>
+                <dt>Require login for <code>/p/…</code> docker proxy</dt>
+                <dd><strong><?= !empty($hostFleetSnap['nginxDockerAuthRequireStationLogin']) ? 'yes' : 'no' ?></strong> (no = anonymous allowed for Public projects, same as <code>launch.php</code>)</dd>
               </dl>
             </div>
 
