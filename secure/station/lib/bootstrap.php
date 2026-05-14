@@ -21,12 +21,30 @@ function station_base_dir(): string
 }
 
 /**
+ * Whether $path can hold Station state: existing writable dir, or creatable then writable.
+ */
+function station_data_dir_path_is_usable(string $path): bool
+{
+    $path = trim($path);
+    if ($path === '') {
+        return false;
+    }
+    if (is_dir($path)) {
+        return is_writable($path);
+    }
+
+    return @mkdir($path, 0775, true) && is_writable($path);
+}
+
+/**
  * Persistent state directory (config, admin-settings, archives, nginx includes, …).
  *
- * - If env `STATION_DATA_DIR` is set, that path is used (recommended for production).
- * - Otherwise on Linux, `/var/lib/deployment-station` is used only when it already
- *   exists and is writable by this process, or when it can be created here. If the
- *   path exists but is not writable (e.g. root-owned), we fall back next to the tree.
+ * - If env `STATION_DATA_DIR` is set and that path is usable (writable, or can be
+ *   created by this process), it is used. If it is set but missing and not creatable,
+ *   or not writable, we log and fall through (same as an unset env) so setup is not
+ *   stuck when the guide path was never chown'd.
+ * - Otherwise on Linux, `/var/lib/deployment-station-data` then
+ *   `/var/lib/deployment-station` are tried when already writable or creatable here.
  * - Else: `<parent-of-station-php>/.secure-station-data` (same parent as the folder
  *   that contains `station/` — works when you only deploy `/secure/` and the web user
  *   owns the parent path).
@@ -40,23 +58,25 @@ function station_data_dir(): string
 
     $env = getenv('STATION_DATA_DIR');
     if (is_string($env) && trim($env) !== '') {
-        $resolved = trim($env);
+        $cand = trim($env);
+        if (station_data_dir_path_is_usable($cand)) {
+            $resolved = $cand;
 
-        return $resolved;
+            return $resolved;
+        }
+        error_log(
+            'Deployment Station: STATION_DATA_DIR is set to ' . $cand
+            . ' but that path is not writable (and could not be created). Using automatic fallback.'
+        );
     }
 
     if (PHP_OS_FAMILY === 'Linux') {
-        $lib = '/var/lib/deployment-station';
-        $useLib = false;
-        if (is_dir($lib)) {
-            $useLib = is_writable($lib);
-        } else {
-            $useLib = @mkdir($lib, 0775, true);
-        }
-        if ($useLib) {
-            $resolved = $lib;
+        foreach (['/var/lib/deployment-station-data', '/var/lib/deployment-station'] as $lib) {
+            if (station_data_dir_path_is_usable($lib)) {
+                $resolved = $lib;
 
-            return $resolved;
+                return $resolved;
+            }
         }
     }
 
