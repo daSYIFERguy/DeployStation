@@ -60,7 +60,7 @@ if ($project === '' || !station_project_exists($project)) {
 }
 
 $user = station_current_user();
-if (!station_can_access_project($user, station_project_access_mode($project))) {
+if (!station_user_may_access_project($user, $project)) {
     station_docker_action_respond(false, 'You do not have access to manage that project.', $returnTo, [], $wantsJson);
 }
 

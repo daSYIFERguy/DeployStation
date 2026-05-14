@@ -15,7 +15,7 @@ if ($project === '' || !station_project_exists($project)) {
     exit;
 }
 
-  if (!station_can_access_project($user, station_project_access_mode($project))) {
+  if (!station_user_may_access_project($user, $project)) {
     station_flash_set('error', 'You do not have access to that project.');
     header('Location: station.php');
     exit;

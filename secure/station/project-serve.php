@@ -22,9 +22,8 @@ if ($slug === '' || !station_project_exists($slug)) {
     exit('Project not found.');
 }
 
-$accessMode = station_project_access_mode($slug);
 $user = station_current_user();
-if (!station_can_access_project($user, $accessMode)) {
+if (!station_user_may_access_project($user, $slug)) {
     if (!$user) {
         header('Location: ' . station_station_url('index.php'));
         exit;

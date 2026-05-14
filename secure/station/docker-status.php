@@ -39,7 +39,7 @@ foreach (array_unique(array_map('station_safe_name', $slugs)) as $slug) {
     if ($slug === '' || !station_project_exists($slug)) {
         continue;
     }
-    if (!station_can_access_project($user, station_project_access_mode($slug))) {
+    if (!station_user_may_access_project($user, $slug)) {
         continue;
     }
 

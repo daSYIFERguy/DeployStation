@@ -195,3 +195,23 @@ function station_require_builder(): void
         exit;
     }
 }
+
+require_once __DIR__ . '/projects.php';
+
+/**
+ * Whether the current user may open this project (files, launch, docker /p/ auth, APIs).
+ * Unauthenticated clients are denied whenever visibility is not public, even if accessMode
+ * in projects.json was mistakenly left public (visibility and accessMode can drift).
+ */
+function station_user_may_access_project(?array $user, string $slug): bool
+{
+    $slug = station_safe_name($slug);
+    if ($slug === '') {
+        return false;
+    }
+    if ($user === null && station_project_visibility($slug) !== 'public') {
+        return false;
+    }
+
+    return station_can_access_project($user, station_project_access_mode($slug));
+}

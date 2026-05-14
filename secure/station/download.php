@@ -14,7 +14,7 @@ if ($slug === '' || !station_project_exists($slug)) {
 }
 
 $user = station_current_user();
-if (!station_can_access_project($user, station_project_access_mode($slug))) {
+if (!station_user_may_access_project($user, $slug)) {
     http_response_code(403);
     exit('Forbidden.');
 }

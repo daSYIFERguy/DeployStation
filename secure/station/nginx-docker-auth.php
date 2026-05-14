@@ -37,9 +37,7 @@ if (session_status() === PHP_SESSION_ACTIVE) {
     session_write_close();
 }
 
-$accessMode = station_project_access_mode($slug);
-
-if (!station_can_access_project($user, $accessMode)) {
+if (!station_user_may_access_project($user, $slug)) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Forbidden';

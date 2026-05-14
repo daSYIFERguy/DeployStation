@@ -2687,6 +2687,10 @@ function station_nginx_include_reload_hint_for_flash(array $includeResult): stri
         return '';
     }
 
+    if (array_key_exists('changed', $includeResult) && $includeResult['changed'] === false) {
+        return ' projects.conf was already current; nginx reload skipped.';
+    }
+
     $hint = ' Nginx routes file was updated.';
     $r = $includeResult['reload'] ?? null;
     if (!is_array($r)) {
@@ -2754,6 +2758,25 @@ function station_write_nginx_projects_conf(): array
     }
 
     $contents = station_render_nginx_projects_conf($projects);
+    $previous = '';
+    if (is_file($path) && is_readable($path)) {
+        $previous = (string) (@file_get_contents($path) ?: '');
+    }
+    if ($previous === $contents) {
+        return [
+            'ok' => true,
+            'path' => $path,
+            'count' => count($projects),
+            'changed' => false,
+            'message' => 'projects.conf is already up to date.',
+            'reload' => [
+                'ok' => true,
+                'skipped' => true,
+                'message' => 'Unchanged; nginx reload skipped.',
+            ],
+        ];
+    }
+
     $tmpPath = $path . '.tmp';
     $bytes = @file_put_contents($tmpPath, $contents, LOCK_EX);
     if ($bytes === false) {
@@ -2785,6 +2808,7 @@ function station_write_nginx_projects_conf(): array
         'message' => count($projects) === 0
             ? 'No dockerized projects yet — wrote empty include file.'
             : 'Wrote nginx include with ' . count($projects) . ' route block(s).',
+        'changed' => true,
         'reload' => station_nginx_maybe_reload_main(),
     ];
 

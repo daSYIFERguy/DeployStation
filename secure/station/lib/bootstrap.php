@@ -455,7 +455,7 @@ function station_admin_settings(): array
         'customTemplates' => [],
         'dockerSettings' => [],
         'nginxDockerUpstreamHostMode' => 'preserve',
-        'nginxDockerProxyStripCookies' => false,
+        'nginxDockerProxyStripCookies' => true,
         'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);

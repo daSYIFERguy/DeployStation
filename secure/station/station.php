@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $appName        = (string) (station_config()['appName'] ?? 'Deployment Station');
 $projects       = station_list_projects();
 $projects       = array_values(array_filter($projects, static function (array $p) use ($user): bool {
-    return station_can_access_project($user, (string) ($p['accessMode'] ?? 'admin'));
+    return station_user_may_access_project($user, (string) ($p['slug'] ?? ''));
 }));
 $error          = station_flash_get('error');
 $ok             = station_flash_get('ok');

@@ -32,7 +32,7 @@ if ($project === '') {
 if (!station_project_exists($project)) {
     $jsonError(404, 'Project not found.');
 }
-if (!station_can_access_project($user, station_project_access_mode($project))) {
+if (!station_user_may_access_project($user, $project)) {
     $jsonError(403, 'Forbidden.');
 }
 

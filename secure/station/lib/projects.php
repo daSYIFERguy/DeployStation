@@ -402,6 +402,9 @@ function station_set_project_visibility(string $slug, string $visibility): bool
         if ((string) ($project['slug'] ?? '') === $slug) {
             $projects[$idx]['visibility'] = $safeVisibility;
             $projects[$idx]['updatedAt'] = gmdate('c');
+            if ($safeVisibility === 'private' && (($projects[$idx]['accessMode'] ?? '') === 'public')) {
+                $projects[$idx]['accessMode'] = 'admin';
+            }
             $updated = true;
         }
     }

@@ -15,9 +15,8 @@ if ($slug === '' || !station_project_exists($slug)) {
     exit;
 }
 
-$accessMode = station_project_access_mode($slug);
 $user = station_current_user();
-if (!station_can_access_project($user, $accessMode)) {
+if (!station_user_may_access_project($user, $slug)) {
     if (!$user) {
         header('Location: ' . station_station_url('index.php'));
         exit;
@@ -27,7 +26,7 @@ if (!station_can_access_project($user, $accessMode)) {
     exit;
 }
 
-station_log_event('project.launch', ['slug' => $slug, 'accessMode' => $accessMode]);
+station_log_event('project.launch', ['slug' => $slug, 'accessMode' => station_project_access_mode($slug)]);
 
 // Detect chrome extension: check stored templateType or presence of manifest.json
 $meta = station_projects_meta();
