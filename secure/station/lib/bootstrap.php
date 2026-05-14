@@ -456,11 +456,33 @@ function station_admin_settings(): array
         'dockerSettings' => [],
         'nginxDockerUpstreamHostMode' => 'preserve',
         'nginxDockerProxyStripCookies' => true,
+        'nginxDockerAuthBypass' => false,
         'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
     return array_merge($defaults, is_array($stored) ? $stored : []);
+}
+
+/**
+ * When true, nginx-docker-auth.php returns 200 for any existing docker project slug without
+ * session checks (emergency debugging only). Admin checkbox is the normal control; if
+ * STATION_DOCKER_AUTH_BYPASS is also set in the environment (php-fpm / fastcgi_param), that
+ * still enables bypass so operators can recover without opening the UI.
+ */
+function station_nginx_docker_auth_bypass_active(): bool
+{
+    $admin = station_admin_settings();
+    if (!empty($admin['nginxDockerAuthBypass'])) {
+        return true;
+    }
+    $bypassRaw = trim((string) ($_SERVER['STATION_DOCKER_AUTH_BYPASS'] ?? ''));
+    if ($bypassRaw === '') {
+        $g = getenv('STATION_DOCKER_AUTH_BYPASS');
+        $bypassRaw = is_string($g) ? trim($g) : '';
+    }
+
+    return in_array(strtolower($bypassRaw), ['1', 'true', 'yes', 'on'], true);
 }
 
 /**
@@ -538,6 +560,7 @@ function station_admin_merge_mega_form_post_into_settings(
             $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
         }
         $settings['nginxDockerProxyStripCookies'] = isset($post['nginxDockerProxyStripCookies']);
+        $settings['nginxDockerAuthBypass'] = isset($post['nginxDockerAuthBypass']);
         if (array_key_exists('nginxAuthRequestBasePath', $post)) {
             $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
         }

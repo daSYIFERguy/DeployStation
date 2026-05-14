@@ -394,7 +394,7 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                 <div class="setting-item" style="margin-top: 18px;">
                   <label class="setting-label" for="nginxAuthRequestBasePath">Nginx <code>auth_request</code> URL prefix (optional)</label>
                   <input type="text" id="nginxAuthRequestBasePath" name="nginxAuthRequestBasePath" spellcheck="false" class="code-block" style="width:100%;max-width:520px;font-family:ui-monospace,monospace;font-size:13px;padding:8px 10px;" value="<?= station_h((string) ($settings['nginxAuthRequestBasePath'] ?? '')) ?>" placeholder="/station or /secure/station">
-                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> block uses <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. This path must be the same prefix browsers use to reach Station PHP (e.g. <code>/station</code> if that is your URL). If it points at the wrong prefix, nginx may run the wrong handler (anonymous users can see the container; signed-in requests can error). Set <code>fastcgi_param STATION_AUTH_REQUEST_BASE …</code> on Station PHP in nginx, or <code>env[STATION_AUTH_REQUEST_BASE]</code> in the php-fpm pool. For temporary debugging only, <code>STATION_DOCKER_AUTH_BYPASS=1</code> (same ways) makes <code>auth_request</code> return 200 for any existing project slug without session checks — remove when fixed. Save project defaults, then reload nginx.</p>
+                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> block uses <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. This path must be the same prefix browsers use to reach Station PHP (e.g. <code>/station</code> if that is your URL). If it points at the wrong prefix, nginx may run the wrong handler (anonymous users can see the container; signed-in requests can error). Set <code>fastcgi_param STATION_AUTH_REQUEST_BASE …</code> on Station PHP in nginx, or <code>env[STATION_AUTH_REQUEST_BASE]</code> in the php-fpm pool. Save project defaults, then reload nginx.</p>
                 </div>
 
                 <div class="setting-item" style="margin-top: 18px;">
@@ -412,6 +412,14 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                   <div class="feature-toggle-content">
                     <span class="feature-toggle-title">Strip browser Cookie + Authorization to Docker upstream</span>
                     <span class="feature-toggle-desc">Clears the browser <code>Cookie</code> and <code>Authorization</code> headers on the hop to the container (after Station <code>auth_request</code>). Use when a stack misbehaves for signed-in Station users but works in a clean session. Turn off if the app needs those headers. Regenerates <code>projects.conf</code> when you save project defaults.</span>
+                  </div>
+                </label>
+
+                <label class="feature-toggle" style="margin-top: 14px;">
+                  <input type="checkbox" name="nginxDockerAuthBypass" <?= !empty($settings['nginxDockerAuthBypass']) ? 'checked' : '' ?>>
+                  <div class="feature-toggle-content">
+                    <span class="feature-toggle-title">Bypass docker <code>auth_request</code> (emergency only)</span>
+                    <span class="feature-toggle-desc">When enabled, <code>nginx-docker-auth.php</code> returns allow for <strong>any existing</strong> dockerized project slug <strong>without</strong> checking Station login or project access — anyone with a <code>/p/&lt;slug&gt;/</code> URL can reach the container. Use only while debugging nginx or PHP errors; turn off immediately after. The environment variable <code>STATION_DOCKER_AUTH_BYPASS</code> (php-fpm pool or nginx <code>fastcgi_param</code>) still forces the same behavior if set; remove it on the server if you want this checkbox to be the sole control.</span>
                   </div>
                 </label>
               <?php endif; ?>
@@ -565,6 +573,8 @@ sudo systemctl restart php*-fpm
                 <dd><code><?= station_h($hostFleetSnap['nginxIncludePath']) ?></code></dd>
                 <dt>Nginx reload after route updates</dt>
                 <dd><?= !empty($hostFleetSnap['nginxReloadAfterRoutes']) ? 'Yes (Nginx mode)' : 'No (not Nginx)' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command in admin)</span>' : '' ?></dd>
+                <dt>Docker <code>auth_request</code> bypass</dt>
+                <dd>Admin toggle: <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? 'on' : 'off' ?></strong> — effective (includes env <code>STATION_DOCKER_AUTH_BYPASS</code>): <strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) ? 'on' : 'off' ?></strong><?= !empty($hostFleetSnap['nginxDockerAuthBypassEffective']) && empty($hostFleetSnap['nginxDockerAuthBypassAdmin']) ? ' <span style="opacity:0.85;">(env is set on the server)</span>' : '' ?></dd>
               </dl>
             </div>
 

@@ -100,6 +100,8 @@ $infra = (string) ($routing['infrastructure'] ?? 'apache');
 $includePath = (string) ($routing['nginxInclude'] ?? '');
 $hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
 $stripDockerCookies = !empty($routing['nginxDockerProxyStripCookies']);
+$dockerAuthBypassEffective = !empty($routing['nginxDockerAuthBypassEffective']);
+$dockerAuthBypassAdmin = !empty($routing['nginxDockerAuthBypassAdmin']);
 $nginxReloadAfterWrites = !empty($routing['nginxReloadAfterRouteWrites']);
 $webBase = (string) ($routing['webBasePath'] ?? '');
 $secureBase = station_secure_base_path();
@@ -194,6 +196,7 @@ TXT;
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
           Strip <code>Cookie</code> + <code>Authorization</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
+          Docker <code>auth_request</code> bypass: <strong><?= $dockerAuthBypassEffective ? 'on' : 'off' ?></strong><?= $dockerAuthBypassEffective && !$dockerAuthBypassAdmin ? ' <span style="opacity:0.85;">(env <code>STATION_DOCKER_AUTH_BYPASS</code> — not the admin checkbox)</span>' : '' ?>.
           Nginx reload after route file writes: <strong><?= $nginxReloadAfterWrites ? 'yes' : 'no' ?></strong> (yes when production web server is Nginx).
         </p>
         <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
