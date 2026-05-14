@@ -2560,8 +2560,6 @@ function station_render_nginx_projects_conf(array $projects): string
         $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
         // Literal auth_request URI; Host / X-Forwarded-Host lines come from
         // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
-        $lines[] = '    # Large browser Cookie headers (logged-in Station + CF) can exceed nginx defaults.';
-        $lines[] = '    large_client_header_buffers 4 32k;';
         $lines[] = '    auth_request ' . $authUri . ';';
         $lines[] = '    # auth_request must resolve to Station PHP (correct server_name / include).';
         $lines[] = '    proxy_http_version 1.1;';
