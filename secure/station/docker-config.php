@@ -192,7 +192,6 @@ $stateMeta = $stateLabels[$stateKey] ?? $stateLabels['unknown'];
 
 $adminSettingsForRoute = station_admin_settings();
 $isNginxInfrastructure = station_normalize_server_infrastructure((string) ($adminSettingsForRoute['serverInfrastructure'] ?? 'apache')) === 'nginx';
-$stripUpstreamCookies = $isNginxInfrastructure && !empty($adminSettingsForRoute['nginxDockerProxyStripCookies']);
 $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
@@ -266,9 +265,7 @@ $nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlenc
             <?php if ($isNginxInfrastructure): ?>
               Proxies to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> using the managed include at <code><?= station_h($nginxIncludePathDisplay) ?></code>. Access follows the same project rules as the file viewer (set visibility and access mode under Project Settings). The published port is bound to <code>127.0.0.1</code> on this host only. Add the include <strong>before</strong> a catch-all <code>location /</code> in your vhost, then save project defaults in Admin so <code>projects.conf</code> and nginx reload stay in sync. Optional check: <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> should show <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>.
               <br><br>Internal auth URL prefix: <code><?= station_h($nginxAuthProbe) ?></code> — if this path does not match where your server runs Station PHP, set <em>Nginx auth_request URL prefix</em> under Admin → Projects.
-              <?php if ($stripUpstreamCookies): ?>
-                <br><br>Admin option <strong>Strip Cookie + Authorization to Docker</strong> is on for this host (browser auth headers are not forwarded to the container).
-              <?php endif; ?>
+              <br><br>Generated <code>projects.conf</code> routes clear <strong>Cookie</strong> and <strong>Authorization</strong> before <code>proxy_pass</code> to the container (forwarding your Station session cookie often breaks the app when you are signed in).
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>

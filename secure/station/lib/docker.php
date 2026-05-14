@@ -2578,17 +2578,17 @@ function station_render_nginx_projects_conf(array $projects): string
         foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
             $lines[] = $hostLine;
         }
-        $adminGen = station_admin_settings();
-        if (!empty($adminGen['nginxDockerProxyStripCookies'])) {
-            $lines[] = '    # Admin: do not forward browser auth headers to the container (Station session / tokens).';
-            $lines[] = '    proxy_set_header Cookie "";';
-            $lines[] = '    proxy_set_header Authorization "";';
-        }
+        // Always strip: forwarding the Station session cookie (and Authorization) to the
+        // container often breaks the app or causes 500 for signed-in users while anonymous works.
+        $lines[] = '    # Do not forward browser Cookie / Authorization to the container (after auth_request).';
+        $lines[] = '    proxy_set_header Cookie "";';
+        $lines[] = '    proxy_set_header Authorization "";';
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';
         $lines[] = '    proxy_set_header X-Forwarded-Prefix /p/' . $slug . ';';
         $lines[] = '    proxy_read_timeout 300s;';
+        $lines[] = '    add_header Cache-Control "private, no-store, max-age=0" always;';
         $lines[] = '    add_header X-Station-Docker-Project "' . $slug . '" always;';
         $lines[] = '    proxy_pass http://127.0.0.1:' . $hostPort . '/;';
         $lines[] = '}';

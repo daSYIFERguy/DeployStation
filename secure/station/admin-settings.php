@@ -407,13 +407,7 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                   <p class="setting-description">Regenerates <code>projects.conf</code> on save. Try <code>loopback</code> if the app only accepts requests whose <code>Host</code> matches <code>127.0.0.1:&lt;port&gt;</code>.</p>
                 </div>
 
-                <label class="feature-toggle" style="margin-top: 14px;">
-                  <input type="checkbox" name="nginxDockerProxyStripCookies" <?= !empty($settings['nginxDockerProxyStripCookies']) ? 'checked' : '' ?>>
-                  <div class="feature-toggle-content">
-                    <span class="feature-toggle-title">Strip browser Cookie + Authorization to Docker upstream</span>
-                    <span class="feature-toggle-desc">Clears the browser <code>Cookie</code> and <code>Authorization</code> headers on the hop to the container (after Station <code>auth_request</code>). Use when a stack misbehaves for signed-in Station users but works in a clean session. Turn off if the app needs those headers. Regenerates <code>projects.conf</code> when you save project defaults.</span>
-                  </div>
-                </label>
+                <p class="setting-description" style="margin-top: 14px;">Every generated <code>/p/&lt;slug&gt;/</code> route clears <code>Cookie</code> and <code>Authorization</code> before <code>proxy_pass</code> to the container. If those headers were forwarded, your Station session cookie often makes the app return <strong>500 when you are signed in</strong> while a logged-out browser (fewer cookies) still loads the page. Regenerate routes after deploy so nginx picks up the snippet.</p>
 
                 <label class="feature-toggle" style="margin-top: 14px;">
                   <input type="checkbox" name="nginxDockerAuthBypass" <?= !empty($settings['nginxDockerAuthBypass']) ? 'checked' : '' ?>>
