@@ -10,8 +10,9 @@ $username = station_current_username();
 $user = station_current_user();
 $canBuild = station_can_build($user);
 $profile = station_user_profile($username);
+$adminForGithub = station_admin_settings();
+$githubOAuthConfigured = $canBuild && trim((string) ($adminForGithub['githubOAuthClientId'] ?? '')) !== '';
 $error = '';
-$ok = station_flash_get('ok');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profile['displayName'] = trim((string) ($_POST['display_name'] ?? $username));
@@ -21,11 +22,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isset($profile['integrations']) || !is_array($profile['integrations'])) {
             $profile['integrations'] = [];
         }
+        $prevGh = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
+            ? $profile['integrations']['github']
+            : [];
+        $tokIn = trim((string) ($_POST['github_token'] ?? ''));
+        $token = $tokIn !== '' ? $tokIn : trim((string) ($prevGh['token'] ?? ''));
+        $authMode = (string) ($prevGh['authMode'] ?? 'pat');
+        if ($tokIn !== '') {
+            $authMode = 'pat';
+        }
         $profile['integrations']['github'] = [
             'enabled' => isset($_POST['github_enabled']),
             'username' => trim((string) ($_POST['github_username'] ?? '')),
-            'token' => trim((string) ($_POST['github_token'] ?? '')),
+            'token' => $token,
             'repo' => trim((string) ($_POST['github_repo'] ?? '')),
+            'authMode' => $authMode,
+            'oauthConnectedAt' => (string) ($prevGh['oauthConnectedAt'] ?? ''),
         ];
         unset(
             $profile['integrations']['vscode'],
@@ -79,8 +91,7 @@ $gh = isset($profile['integrations']['github']) && is_array($profile['integratio
                     </nav>
                 </header>
 
-                <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-                <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+                <?= station_flash_banners_html() ?>
 
                 <form method="post" class="user-mission-form">
                     <div class="mission-user-grid">
@@ -114,13 +125,23 @@ $gh = isset($profile['integrations']['github']) && is_array($profile['integratio
                             </label>
                             <label class="mission-field">
                                 <span class="mission-field-label">Token</span>
-                                <input type="password" name="github_token" value="<?= station_h((string) ($gh['token'] ?? '')) ?>" placeholder="ghp_…" autocomplete="new-password">
+                                <input type="password" name="github_token" value="" placeholder="<?= trim((string) ($gh['token'] ?? '')) !== '' ? 'Saved — leave blank to keep' : 'ghp_… or OAuth token' ?>" autocomplete="new-password">
                             </label>
+                            <?php if ($githubOAuthConfigured && !empty($adminForGithub['githubEnabled'])): ?>
+                            <p class="mission-help-link" style="margin-top:10px;">
+                                <a class="btn-primary" style="display:inline-block;padding:8px 14px;border-radius:8px;text-decoration:none;" href="github-oauth-start.php">Sign in with GitHub</a>
+                                <span style="display:block;margin-top:8px;font-size:12px;color:#94a3b8;">Opens GitHub to authorize this station (stores token the same way as a PAT).</span>
+                            </p>
+                            <?php endif; ?>
+                            <?php if (!empty($gh['authMode']) && (string) $gh['authMode'] === 'oauth'): ?>
+                            <p class="mission-help-link" style="margin-top:6px;">Connected via <strong>OAuth</strong><?php if (!empty($gh['oauthConnectedAt'])): ?> · <?= station_h((string) $gh['oauthConnectedAt']) ?><?php endif; ?></p>
+                            <?php endif; ?>
                             <label class="mission-field">
                                 <span class="mission-field-label">Default repo <span class="mission-optional">optional</span></span>
                                 <input type="text" name="github_repo" value="<?= station_h((string) ($gh['repo'] ?? '')) ?>" placeholder="owner/name">
                             </label>
                             <p class="mission-help-link"><a href="integration-help.php#github">How tokens and scopes work</a></p>
+                            <p class="mission-help-link"><a href="github-sync.php">GitHub sync dashboard</a> — pull, push, private repos, and redeploy after pull.</p>
                         </div>
                         <?php endif; ?>
                     </div>

@@ -24,7 +24,6 @@ if (!station_user_may_access_project($user, $project)) {
 
 $settings = station_project_settings($project);
 $error = '';
-$ok = station_flash_get('ok');
 
 function station_parse_env_text(string $text): array
 {
@@ -128,8 +127,7 @@ $dockerContainerized = !empty($dockerPs['containerized']);
         </nav>
       </header>
 
-      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-      <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+      <?= station_flash_banners_html() ?>
 
       <form method="post" class="settings-shell project-settings-shell" id="project-settings-form">
         <input type="hidden" name="project" value="<?= station_h($project) ?>">

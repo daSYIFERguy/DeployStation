@@ -19,7 +19,6 @@ if (!$isAdmin) {
 $cfg = station_config();
 $users = isset($cfg['users']) && is_array($cfg['users']) ? $cfg['users'] : [];
 $error = '';
-$ok = station_flash_get('ok');
 $roleOptions = [
     'admin' => 'Admin - All Access',
     'builder' => 'Builder - Can See and Create',
@@ -204,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </nav>
     </header>
 
-    <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+    <?= station_flash_banners_html() ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
     <section class="grid-two">

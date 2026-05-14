@@ -70,8 +70,6 @@ $projects       = station_list_projects();
 $projects       = array_values(array_filter($projects, static function (array $p) use ($user): bool {
     return station_user_may_access_project($user, (string) ($p['slug'] ?? ''));
 }));
-$error          = station_flash_get('error');
-$ok             = station_flash_get('ok');
 $templates      = station_template_catalog();
 $accessModes    = station_allowed_project_access_modes();
 $auditLogLimit  = station_audit_log_limit($adminSettings);
@@ -1162,11 +1160,10 @@ $statsCards = !$canBuild
     <?= station_dashboard_nav_html('dashboard') ?>
 
     <main class="dashboard-main">
-      <?php if ($ok !== '' || $error !== ''): ?>
-      <div class="page-notices">
-        <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-        <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
-      </div>
+      <?php
+        $__flashBanners = station_flash_banners_html();
+        if ($__flashBanners !== ''): ?>
+      <div class="page-notices"><?= $__flashBanners ?></div>
       <?php endif; ?>
 
       <header class="dashboard-topbar">
@@ -1611,14 +1608,46 @@ $statsCards = !$canBuild
       <?php if (!empty($adminSettings['githubEnabled'])): ?>
       <div class="tab-pane" id="tab-github">
         <div class="create-project-pane-head">
-          <h3>Import from GitHub</h3>
+          <h3>GitHub repository</h3>
+          <p class="setting-description" style="margin:0 0 12px;">Import an existing repo or create a new <strong>private</strong> empty repository on GitHub, then clone it into this project.</p>
         </div>
-        <form action="upload.php" method="post" class="form-grid create-project-form">
+        <form action="upload.php" method="post" class="form-grid create-project-form" id="githubImportForm">
           <input type="hidden" name="action" value="import_github">
-          <label>Project Name<input type="text" name="project_name" placeholder="github-project" required></label>
-          <label>Repository URL<input type="text" name="github_repo_url" placeholder="https://github.com/owner/repo" required></label>
-          <label>Branch<input type="text" name="github_branch" placeholder="main"></label>
-          <label>One-time Token<input type="password" name="github_token" placeholder="Leave blank to use saved GitHub token"></label>
+          <div class="github-import-mode-group" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+            <label class="feature-toggle" style="margin:0;">
+              <input type="radio" name="github_import_mode" value="existing" id="ghModeExisting" checked>
+              <span>Import existing repository</span>
+            </label>
+            <label class="feature-toggle" style="margin:0;">
+              <input type="radio" name="github_import_mode" value="create_new" id="ghModeCreate">
+              <span>Create new private repository, then clone</span>
+            </label>
+          </div>
+          <div id="ghExistingBlock">
+            <label>Your repositories
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+                <button type="button" class="secondary-btn" id="githubRepoLoadBtn">Load / refresh list</button>
+                <span id="githubRepoLoadMeta" class="setting-description" style="margin:0;"></span>
+              </div>
+              <select id="githubRepoSelect" style="width:100%;margin-top:8px;min-height:120px;" size="6" aria-label="Pick a GitHub repository">
+                <option value="">— Click “Load / refresh list” —</option>
+              </select>
+            </label>
+            <label>Repository URL (optional if you pick above)
+              <input type="text" name="github_repo_url" id="github_repo_url_input" placeholder="https://github.com/owner/repo or owner/repo" autocomplete="off">
+            </label>
+            <label>Branch (optional)
+              <input type="text" name="github_branch" placeholder="main — leave blank for repo default"></label>
+          </div>
+          <div id="ghCreateBlock" hidden style="margin-top:4px;">
+            <label>Repo owner (GitHub user or org)
+              <input type="text" name="github_new_repo_owner" id="github_new_repo_owner" placeholder="defaults to your GitHub login from token"></label>
+            <label>Repository name
+              <input type="text" name="github_new_repo_name" id="github_new_repo_name" placeholder="defaults to project slug"></label>
+            <p class="setting-description" style="margin:0;">Creates an empty private repo, then clones it. Fails if that name already exists on GitHub.</p>
+          </div>
+          <label>Project name<input type="text" name="project_name" placeholder="my-app" required class="project-name-input"></label>
+          <label>One-time token (optional)<input type="password" name="github_token" placeholder="Leave blank to use saved GitHub token"></label>
           <?php if (station_docker_enabled()): ?>
             <label class="feature-toggle">
               <input type="checkbox" name="configure_docker_next" value="1" checked>
@@ -1628,7 +1657,7 @@ $statsCards = !$canBuild
               </div>
             </label>
           <?php endif; ?>
-          <button type="submit">Import Repository</button>
+          <button type="submit">Create project from GitHub</button>
         </form>
       </div>
       <?php endif; ?>
@@ -2023,6 +2052,77 @@ $statsCards = !$canBuild
         if (pane) pane.classList.add('active');
       });
     });
+
+    (function () {
+      const modeExisting = document.getElementById('ghModeExisting');
+      const modeCreate = document.getElementById('ghModeCreate');
+      const blockExisting = document.getElementById('ghExistingBlock');
+      const blockCreate = document.getElementById('ghCreateBlock');
+      const sel = document.getElementById('githubRepoSelect');
+      const urlInput = document.getElementById('github_repo_url_input');
+      const loadBtn = document.getElementById('githubRepoLoadBtn');
+      const loadMeta = document.getElementById('githubRepoLoadMeta');
+      function syncGhMode() {
+        if (!blockExisting || !blockCreate) return;
+        const create = modeCreate && modeCreate.checked;
+        blockExisting.hidden = create;
+        blockCreate.hidden = !create;
+      }
+      if (modeExisting) modeExisting.addEventListener('change', syncGhMode);
+      if (modeCreate) modeCreate.addEventListener('change', syncGhMode);
+      syncGhMode();
+      if (sel && urlInput) {
+        sel.addEventListener('change', function () {
+          const v = (sel.value || '').trim();
+          if (v !== '') {
+            urlInput.value = 'https://github.com/' + v;
+          }
+        });
+      }
+      if (loadBtn && sel && loadMeta) {
+        loadBtn.addEventListener('click', function () {
+          loadMeta.textContent = 'Loading…';
+          fetch('github-repos-api.php?pages=4', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              if (!data || !data.ok) {
+                loadMeta.textContent = (data && data.message) ? data.message : 'Could not load repositories.';
+                return;
+              }
+              const repos = data.repos || [];
+              sel.innerHTML = '';
+              const opt0 = document.createElement('option');
+              opt0.value = '';
+              opt0.textContent = '— ' + repos.length + ' repositories —';
+              sel.appendChild(opt0);
+              repos.forEach(function (row) {
+                const o = document.createElement('option');
+                o.value = row.full_name || '';
+                const priv = row.private ? ' (private)' : '';
+                o.textContent = (row.full_name || '') + priv;
+                sel.appendChild(o);
+              });
+              loadMeta.textContent = repos.length ? ('Loaded ' + repos.length + ' repos') : 'No repositories returned.';
+            })
+            .catch(function () {
+              loadMeta.textContent = 'Network error loading repositories.';
+            });
+        });
+      }
+      const ghForm = document.getElementById('githubImportForm');
+      if (ghForm && sel && urlInput && modeCreate) {
+        ghForm.addEventListener('submit', function () {
+          if (modeCreate.checked) {
+            return;
+          }
+          const u = (urlInput.value || '').trim();
+          const picked = (sel.value || '').trim();
+          if (u === '' && picked !== '') {
+            urlInput.value = 'https://github.com/' + picked;
+          }
+        });
+      }
+    })();
 
     /* ── Global search filter ── */
     const searchInput = document.getElementById('globalSearch');

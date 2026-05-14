@@ -78,7 +78,6 @@ $dockerServices = station_docker_services();
 $availableStacks = ['static', 'node', 'php', 'python', 'other'];
 
 $error = '';
-$ok = station_flash_get('ok');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? 'save_template');
@@ -319,7 +318,7 @@ foreach (array_keys($activeFiles) as $candidatePath) {
         </nav>
       </header>
 
-      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+      <?= station_flash_banners_html() ?>
       <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
       <section class="settings-shell template-manager-shell">

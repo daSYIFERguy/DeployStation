@@ -16,7 +16,6 @@ if (station_current_user()) {
 }
 
 $error = '';
-$ok = station_flash_get('ok');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = station_safe_name((string) ($_POST['username'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
@@ -46,9 +45,7 @@ $appName = (string) (station_config()['appName'] ?? 'Micro Deployment Station');
   <main class="station-shell narrow">
     <h1><?= station_h($appName) ?></h1>
     <p>Sign in to access the secured upload and deployment center.</p>
-    <?php if ($ok !== ''): ?>
-      <div class="alert ok"><?= station_h($ok) ?></div>
-    <?php endif; ?>
+    <?= station_flash_banners_html() ?>
     <?php if ($error !== ''): ?>
       <div class="alert error"><?= station_h($error) ?></div>
     <?php endif; ?>

@@ -513,3 +513,327 @@ function station_mission_fleet_markup(
 
     return (string) ob_get_clean();
 }
+
+/**
+ * Parse a single token from `free -h` / `df -h` (e.g. 15Gi, 823Mi, 100G).
+ */
+function station_host_health_parse_size_token_to_bytes(string $token): ?float
+{
+    $token = trim($token);
+    if ($token === '') {
+        return null;
+    }
+    if (preg_match('/^([\d.]+)\s*([KMGTPE])i?B?$/i', $token, $m) !== 1) {
+        return null;
+    }
+    $n = (float) $m[1];
+    $u = strtoupper((string) $m[2]);
+    $pow = ['K' => 1, 'M' => 2, 'G' => 3, 'T' => 4, 'P' => 5, 'E' => 6][$u] ?? null;
+    if ($pow === null) {
+        return null;
+    }
+
+    return $n * (1024 ** $pow);
+}
+
+/**
+ * @return array{used_frac: float, label: string}|null
+ */
+function station_host_health_parse_mem_line(string $freeOutput): ?array
+{
+    foreach (preg_split('/\r\n|\r|\n/', $freeOutput) ?: [] as $line) {
+        $line = trim((string) $line);
+        if ($line === '' || !str_starts_with($line, 'Mem:')) {
+            continue;
+        }
+        if (preg_match('/^Mem:\s+(\d+)\s+(\d+)\s+/', $line, $m) === 1) {
+            $total = (float) $m[1];
+            $used = (float) $m[2];
+            if ($total <= 0.0) {
+                return null;
+            }
+
+            return [
+                'used_frac' => max(0.0, min(1.0, $used / $total)),
+                'label' => 'RAM (used / total)',
+            ];
+        }
+        if (preg_match('/^Mem:\s+(\S+)\s+(\S+)\s+/', $line, $m) === 1) {
+            $tb = station_host_health_parse_size_token_to_bytes($m[1]);
+            $ub = station_host_health_parse_size_token_to_bytes($m[2]);
+            if ($tb !== null && $ub !== null && $tb > 0.0) {
+                return [
+                    'used_frac' => max(0.0, min(1.0, $ub / $tb)),
+                    'label' => 'RAM (used / total)',
+                ];
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * First row in df output that ends with mount point `/` (root filesystem).
+ *
+ * @return array{used_frac: float, label: string}|null
+ */
+function station_host_health_parse_root_disk(string $dfOutput): ?array
+{
+    foreach (preg_split('/\r\n|\r|\n/', $dfOutput) ?: [] as $line) {
+        $line = trim((string) $line);
+        if ($line === '' || str_starts_with($line, 'Filesystem')) {
+            continue;
+        }
+        if (preg_match('/\s(\d{1,3})%\s+\/$/', $line, $m) === 1) {
+            $pct = (float) $m[1] / 100.0;
+
+            return [
+                'used_frac' => max(0.0, min(1.0, $pct)),
+                'label' => 'Disk (root · Use%)',
+            ];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @param list<array{label: string, value: float, color: string}> $segments value >= 0; zero total yields empty ring
+ */
+function station_host_health_conic_pie_style(array $segments): string
+{
+    $total = 0.0;
+    foreach ($segments as $s) {
+        $total += max(0.0, (float) ($s['value'] ?? 0));
+    }
+    if ($total <= 0.0) {
+        return 'conic-gradient(#334155 0% 100%)';
+    }
+    $parts = [];
+    $acc = 0.0;
+    foreach ($segments as $s) {
+        $v = max(0.0, (float) ($s['value'] ?? 0));
+        if ($v <= 0.0) {
+            continue;
+        }
+        $p0 = ($acc / $total) * 100.0;
+        $acc += $v;
+        $p1 = ($acc / $total) * 100.0;
+        $c = (string) ($s['color'] ?? '#64748b');
+        $parts[] = $c . ' ' . round($p0, 3) . '% ' . round($p1, 3) . '%';
+    }
+
+    return 'conic-gradient(' . implode(', ', $parts) . ')';
+}
+
+/**
+ * @param array{rows: list<array<string, mixed>>, maxCpu: float, maxMem: float, engineOk: bool} $missionPayload
+ * @param list<string> $stationSlugs
+ * @return list<array{label: string, value: float, color: string}>
+ */
+function station_host_health_container_origin_segments(array $missionPayload, array $stationSlugs): array
+{
+    $rows = $missionPayload['rows'] ?? [];
+    $slugLower = [];
+    foreach ($stationSlugs as $s) {
+        $t = strtolower(trim((string) $s));
+        if ($t !== '') {
+            $slugLower[$t] = true;
+        }
+    }
+    $station = 0;
+    $other = 0;
+    foreach ($rows as $r) {
+        $nameL = strtolower((string) ($r['name'] ?? ''));
+        $hit = false;
+        foreach (array_keys($slugLower) as $slug) {
+            if ($slug !== '' && str_contains($nameL, $slug)) {
+                $hit = true;
+                break;
+            }
+        }
+        if ($hit) {
+            ++$station;
+        } else {
+            ++$other;
+        }
+    }
+    if ($station === 0 && $other === 0) {
+        return [
+            ['label' => 'No containers', 'value' => 1.0, 'color' => '#475569'],
+        ];
+    }
+
+    return [
+        ['label' => 'Station projects', 'value' => (float) $station, 'color' => '#38bdf8'],
+        ['label' => 'Other', 'value' => (float) $other, 'color' => '#64748b'],
+    ];
+}
+
+/**
+ * @param list<array<string, mixed>> $dockerProjects from routing map
+ * @return list<array{label: string, value: float, color: string}>
+ */
+function station_host_health_compose_state_segments(array $dockerProjects): array
+{
+    $counts = [];
+    foreach ($dockerProjects as $p) {
+        $st = strtolower(trim((string) ($p['composeState'] ?? 'unknown')));
+        if ($st === '') {
+            $st = 'unknown';
+        }
+        $counts[$st] = ($counts[$st] ?? 0) + 1;
+    }
+    if ($counts === []) {
+        return [
+            ['label' => 'No projects', 'value' => 1.0, 'color' => '#475569'],
+        ];
+    }
+    $palette = ['running' => '#22c55e', 'healthy' => '#4ade80', 'up' => '#86efac', 'exited' => '#f97316', 'dead' => '#ef4444', 'unknown' => '#94a3b8'];
+    $segments = [];
+    foreach ($counts as $label => $n) {
+        $key = str_contains($label, 'run') ? 'running' : (str_contains($label, 'exit') ? 'exited' : $label);
+        $color = $palette[$key] ?? '#818cf8';
+        $segments[] = ['label' => $label, 'value' => (float) $n, 'color' => $color];
+    }
+
+    return $segments;
+}
+
+/**
+ * Mission-control cockpit strip: conic pies + compact upstream status cards.
+ *
+ * @param array<string, array{ok: bool, code: int, output: string, message: string}> $snapshot
+ * @param array{rows: list<array<string, mixed>>, maxCpu: float, maxMem: float, engineOk: bool} $missionPayload
+ * @param array<string, mixed> $routing
+ * @param list<array<string, mixed>> $upstreamMatrix
+ * @param list<string> $stationSlugs
+ */
+function station_host_health_mission_cockpit_html(
+    array $snapshot,
+    array $missionPayload,
+    array $routing,
+    array $upstreamMatrix,
+    array $stationSlugs
+): string {
+    $memBlock = $snapshot['memory'] ?? null;
+    $dfBlock = $snapshot['disk'] ?? null;
+    $memInfo = is_array($memBlock) ? station_host_health_parse_mem_line((string) ($memBlock['output'] ?? '')) : null;
+    $diskInfo = is_array($dfBlock) ? station_host_health_parse_root_disk((string) ($dfBlock['output'] ?? '')) : null;
+    $dockerProjects = $routing['dockerProjects'] ?? [];
+    if (!is_array($dockerProjects)) {
+        $dockerProjects = [];
+    }
+    $nContainers = count($missionPayload['rows'] ?? []);
+    $nProjects = count($dockerProjects);
+    $originSeg = station_host_health_container_origin_segments($missionPayload, $stationSlugs);
+    $composeSeg = station_host_health_compose_state_segments($dockerProjects);
+    $memFrac = is_array($memInfo) ? ($memInfo['used_frac'] ?? null) : null;
+    $diskFrac = is_array($diskInfo) ? ($diskInfo['used_frac'] ?? null) : null;
+
+    ob_start();
+    ?>
+    <div class="mc-cockpit">
+      <div class="mc-cockpit-head">
+        <div>
+          <p class="mc-cockpit-kicker">Live overview</p>
+          <h2 class="mc-cockpit-title">Mission control</h2>
+          <p class="mc-cockpit-desc">Rings update with this page load. Enable auto-refresh below for a rolling picture of the host.</p>
+        </div>
+        <div class="mc-cockpit-kpis">
+          <div class="mc-kpi"><strong><?= (int) $nContainers ?></strong><span>containers</span></div>
+          <div class="mc-kpi"><strong><?= (int) $nProjects ?></strong><span>dockerized projects</span></div>
+          <div class="mc-kpi mc-kpi-<?= !empty($missionPayload['engineOk']) ? 'ok' : 'warn' ?>">
+            <strong><?= !empty($missionPayload['engineOk']) ? 'OK' : '—' ?></strong><span>Docker engine</span>
+          </div>
+        </div>
+      </div>
+      <div class="mc-ring-grid">
+        <figure class="mc-ring-card">
+          <div class="mc-ring" style="background:<?= station_h(station_host_health_conic_pie_style($originSeg)) ?>;" role="img" aria-label="Container origin split"></div>
+          <figcaption>
+            <strong>Running containers</strong>
+            <span>Station-tagged vs other workloads</span>
+            <ul class="mc-legend">
+              <?php foreach ($originSeg as $s): ?>
+                <li><span class="mc-swatch" style="background:<?= station_h((string) ($s['color'] ?? '#999')) ?>;"></span><?= station_h((string) ($s['label'] ?? '')) ?> · <?= (int) round((float) ($s['value'] ?? 0)) ?></li>
+              <?php endforeach; ?>
+            </ul>
+          </figcaption>
+        </figure>
+        <figure class="mc-ring-card">
+          <div class="mc-ring" style="background:<?= station_h(station_host_health_conic_pie_style($composeSeg)) ?>;" role="img" aria-label="Compose state split"></div>
+          <figcaption>
+            <strong>Compose status</strong>
+            <span>Per-project docker state from Station</span>
+            <ul class="mc-legend">
+              <?php foreach ($composeSeg as $s): ?>
+                <li><span class="mc-swatch" style="background:<?= station_h((string) ($s['color'] ?? '#999')) ?>;"></span><?= station_h((string) ($s['label'] ?? '')) ?> · <?= (int) round((float) ($s['value'] ?? 0)) ?></li>
+              <?php endforeach; ?>
+            </ul>
+          </figcaption>
+        </figure>
+        <figure class="mc-ring-card">
+          <?php
+            $memStyle = $memFrac !== null
+                ? 'conic-gradient(#f97316 0% ' . round($memFrac * 100, 2) . '%, #1e293b ' . round($memFrac * 100, 2) . '% 100%)'
+                : 'conic-gradient(#475569 0% 100%)';
+            ?>
+          <div class="mc-ring" style="background:<?= station_h($memStyle) ?>;" role="img" aria-label="Host memory use"></div>
+          <figcaption>
+            <strong>Host memory</strong>
+            <span><?php if ($memFrac !== null): ?><?= station_h(number_format($memFrac * 100, 1) . '% used (from free)') ?><?php elseif ($memInfo !== null): ?><?= station_h((string) ($memInfo['label'] ?? 'Could not parse memory line')) ?><?php else: ?>No memory snapshot<?php endif; ?></span>
+          </figcaption>
+        </figure>
+        <figure class="mc-ring-card">
+          <?php
+            $dStyle = $diskFrac !== null
+                ? 'conic-gradient(#a78bfa 0% ' . round($diskFrac * 100, 2) . '%, #1e293b ' . round($diskFrac * 100, 2) . '% 100%)'
+                : 'conic-gradient(#475569 0% 100%)';
+            ?>
+          <div class="mc-ring" style="background:<?= station_h($dStyle) ?>;" role="img" aria-label="Root disk use"></div>
+          <figcaption>
+            <strong>Root disk</strong>
+            <span><?= $diskFrac !== null ? station_h(number_format($diskFrac * 100, 1) . '% on / (from df)') : 'No root row found in df snapshot' ?></span>
+          </figcaption>
+        </figure>
+      </div>
+      <?php if ($upstreamMatrix !== []): ?>
+        <div class="mc-upstream-strip">
+          <h3 class="mc-upstream-strip-title">Upstream health</h3>
+          <div class="mc-upstream-cards">
+            <?php foreach ($upstreamMatrix as $um):
+                $slug = (string) ($um['slug'] ?? '');
+                $hp = (int) ($um['hostPort'] ?? 0);
+                $pr = $um['probe'] ?? [];
+                $tcpOk = !empty($pr['tcp']);
+                $httpC = (int) ($pr['httpCode'] ?? 0);
+                $pill = $tcpOk && $httpC >= 200 && $httpC < 500 ? 'mc-pill-ok' : ($tcpOk ? 'mc-pill-warn' : 'mc-pill-bad');
+                ?>
+              <div class="mc-upstream-card">
+                <div class="mc-upstream-card-top">
+                  <code class="mc-upstream-slug"><?= station_h($slug) ?></code>
+                  <span class="mc-pill <?= station_h($pill) ?>"><?= $tcpOk ? ('HTTP ' . $httpC) : 'TCP' ?></span>
+                </div>
+                <div class="mc-upstream-meta">Port <strong><?= $hp ?></strong>
+                  <?php if ((string) ($pr['httpError'] ?? '') !== ''): ?>
+                    · <span class="mc-upstream-warn"><?= station_h((string) $pr['httpError']) ?></span>
+                  <?php endif; ?>
+                </div>
+                <details class="mc-upstream-details">
+                  <summary>Debug commands</summary>
+                  <pre class="mc-upstream-pre"><?= station_h((string) ($um['shellCurlLoop'] ?? '')) ?></pre>
+                  <pre class="mc-upstream-pre"><?= station_h((string) ($um['shellCurlPublic'] ?? '')) ?></pre>
+                  <pre class="mc-upstream-pre"><?= station_h((string) ($um['shellComposeLogs'] ?? '')) ?></pre>
+                </details>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endif; ?>
+    </div>
+    <?php
+
+    return (string) ob_get_clean();
+}

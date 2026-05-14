@@ -28,10 +28,11 @@ if ($file !== '') {
     $content = station_read_project_file($project, $file);
 }
 
+$ghLinks = station_project_github_browser_links($project);
+
 station_log_event('project.viewer.opened', ['project' => $project, 'file' => $file]);
 
 $error = station_flash_get('error');
-$ok = station_flash_get('ok');
 ?>
 <!doctype html>
 <html lang="en">
@@ -49,6 +50,12 @@ $ok = station_flash_get('ok');
       <nav class="nav-pills">
         <a href="station.php">Dashboard</a>
         <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch Site</a>
+        <?php if (is_array($ghLinks)): ?>
+          <a href="<?= station_h($ghLinks['html']) ?>" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="<?= station_h($ghLinks['github_dev']) ?>" target="_blank" rel="noreferrer">github.dev</a>
+          <a href="<?= station_h($ghLinks['vscode_vfs']) ?>">Open in VS Code</a>
+          <a href="<?= station_h($ghLinks['cursor_vfs']) ?>">Open in Cursor</a>
+        <?php endif; ?>
         <?php if (station_can_build($user)): ?>
           <a href="integration-help.php#workspace-api">Workspace API</a>
         <?php endif; ?>
@@ -56,8 +63,7 @@ $ok = station_flash_get('ok');
       </nav>
     </header>
 
-    <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-    <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+    <?= station_flash_banners_html() ?>
 
     <section class="grid-split">
       <aside class="card list-panel">

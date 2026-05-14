@@ -27,7 +27,6 @@ if ($step === 2 && $armed === null) {
 }
 
 $error = '';
-$ok = station_flash_get('ok');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['factory_step'] ?? '') === '1') {
     $phrase = trim((string) ($_POST['confirm_phrase'] ?? ''));
@@ -98,7 +97,7 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
         </nav>
       </header>
 
-      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+      <?= station_flash_banners_html() ?>
       <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
       <?php if ($step === 1): ?>

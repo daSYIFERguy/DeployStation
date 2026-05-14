@@ -15,14 +15,21 @@ $wantsJson = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 
     || str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json')
     || (string) ($_REQUEST['format'] ?? '') === 'json';
 
-function station_docker_action_respond(bool $ok, string $message, string $redirect, array $extra = [], bool $asJson = false): void
+function station_docker_action_respond(bool $ok, string $message, string $redirect, array $extra = [], bool $asJson = false, string $flashWarning = ''): void
 {
     if ($asJson) {
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(array_merge(['ok' => $ok, 'message' => $message], $extra), JSON_UNESCAPED_SLASHES);
+        $payload = array_merge(['ok' => $ok, 'message' => $message], $extra);
+        if ($flashWarning !== '') {
+            $payload['warning'] = $flashWarning;
+        }
+        echo json_encode($payload, JSON_UNESCAPED_SLASHES);
         exit;
     }
     station_flash_set($ok ? 'ok' : 'error', $message);
+    if ($ok && $flashWarning !== '') {
+        station_flash_set('warning', $flashWarning);
+    }
     header('Location: ' . $redirect);
     exit;
 }
@@ -155,12 +162,18 @@ if (!empty($result['ok'])) {
             'message' => (string) ($includeResult['message'] ?? ''),
         ]);
     }
+    $flashWarn = '';
+    $rel = $includeResult['reload'] ?? null;
+    if (!empty($includeResult['ok']) && is_array($rel) && empty($rel['skipped']) && empty($rel['ok'])) {
+        $flashWarn = station_nginx_include_reload_warning_detail($rel);
+    }
     station_docker_action_respond(
         true,
         ucfirst($action) . ' completed for ' . $project . '.',
         $returnTo,
         $extra,
-        $wantsJson
+        $wantsJson,
+        $flashWarn
     );
 }
 

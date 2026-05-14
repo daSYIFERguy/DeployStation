@@ -28,7 +28,9 @@ if (!station_can_build(station_current_user())) {
 		<section class="grid-two">
 			<article id="github" class="card">
 				<h2>GitHub</h2>
-				<p>Create a <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">personal access token</a> with the repository scopes you need. Paste it under User Settings → GitHub. Store only the token you use for this server.</p>
+				<p><strong>OAuth (recommended):</strong> If the station owner configured a GitHub OAuth App under Admin → GitHub, use <strong>Sign in with GitHub</strong> on User Settings. The callback URL must match exactly what Admin shows.</p>
+				<p><strong>Personal access token:</strong> You can still create a <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">token</a> with the <code>repo</code> scope and paste it under User Settings. Leave the token field blank when saving to keep an existing stored token.</p>
+				<p><strong>Repo list API:</strong> <code>GET github-repos-api.php?pages=4</code> — JSON list of repositories visible to your token (used by the “Create project → GitHub” dialog).</p>
 			</article>
 			<article id="workspace-api" class="card">
 				<h2>Workspace API</h2>
@@ -38,6 +40,19 @@ if (!station_can_build(station_current_user())) {
 					<li><code>GET project-workspace-api.php?project=SLUG&amp;action=file&amp;path=relative/file.php</code> — read text files Station already allows in the web editor.</li>
 					<li><code>POST</code> with JSON <code>{"path":"...","content":"..."}</code> (or form fields) — save a file; requires <strong>builder</strong> role or higher.</li>
 				</ul>
+			</article>
+		</section>
+		<section class="grid-two" style="margin-top: 20px;">
+			<article id="storage" class="card">
+				<h2>MariaDB &amp; configuration storage</h2>
+				<p>Deployment Station keeps projects on disk and stores station configuration, user profiles, and project metadata as <strong>JSON files</strong> under its data directory. That keeps installs simple and works well for a single host.</p>
+				<p>If you need multi-server coordination, heavy reporting, or concurrent writes from many workers, introducing <strong>MariaDB/MySQL</strong> (or another database) for <em>metadata only</em> can make sense — but it is a larger migration: you would replace the JSON read/write helpers with SQL and run migrations. The on-disk project trees would typically stay as they are.</p>
+			</article>
+			<article id="ai-ides" class="card">
+				<h2>Copilot, Cursor, and the Files page</h2>
+				<p><strong>GitHub Copilot</strong> does not ship a public HTTP API that lets a third-party PHP app embed “Copilot chat” inside your own UI with the same guarantees as VS Code or Cursor. Copilot is tied to supported editors and GitHub’s own surfaces.</p>
+				<p>For AI-assisted editing, practical options are: open the same repo in <strong>github.dev</strong> or <strong>VS Code Desktop</strong>, use <strong>Cursor</strong> with the repo linked to your GitHub account, or call an external model API from automation you control (not Copilot’s proprietary UI).</p>
+				<p>On the <strong>Files / Editor</strong> screens, when a project has GitHub owner/name saved, Station shows links to the repo on GitHub, <strong>github.dev</strong>, and a <strong>Open in Cursor</strong> link using the <code>cursor://vscode-vfs/github/owner/repo</code> pattern. Whether that link opens Cursor depends on your OS registering the Cursor protocol handler.</p>
 			</article>
 		</section>
 	</main>

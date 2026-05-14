@@ -12,7 +12,6 @@ if (!station_is_setup_complete()) {
 
 $settings = station_admin_settings();
 $uiConfig = station_ui_config();
-$ok = station_flash_get('ok');
 $serverInfrastructure = station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache'));
 ?>
 <!doctype html>
@@ -32,7 +31,7 @@ $serverInfrastructure = station_normalize_server_infrastructure((string) ($setti
       </nav>
     </header>
 
-    <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+    <?= station_flash_banners_html() ?>
 
     <section class="card form-grid">
       <h2>Server Infrastructure</h2>

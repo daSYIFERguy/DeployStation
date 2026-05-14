@@ -48,7 +48,6 @@ if (!station_docker_enabled()) {
 }
 
 $error = '';
-$ok = station_flash_get('ok');
 $existing = station_project_settings($projectSlug);
 $projectConfig = isset($existing['docker']) && is_array($existing['docker']) ? $existing['docker'] : [
     'services' => [],
@@ -141,7 +140,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'message' => (string) ($includeResult['message'] ?? ''),
                 ]);
             }
-            station_flash_set('ok', 'Docker settings saved. Your project’s own compose file on disk was not modified.' . station_nginx_include_reload_hint_for_flash($includeResult));
+            station_flash_nginx_include_outcome(
+                'Docker settings saved. Your project’s own compose file on disk was not modified.',
+                $includeResult
+            );
             header('Location: docker-config.php?project=' . urlencode($projectSlug));
             exit;
         }
@@ -161,7 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'message' => (string) ($includeResult['message'] ?? ''),
                     ]);
                 }
-                station_flash_set('ok', 'Docker configuration saved. Generated docker-compose.yml.' . station_nginx_include_reload_hint_for_flash($includeResult));
+                station_flash_nginx_include_outcome(
+                    'Docker configuration saved. Generated docker-compose.yml.',
+                    $includeResult
+                );
                 header('Location: docker-config.php?project=' . urlencode($projectSlug));
                 exit;
             }
@@ -175,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'message' => (string) ($includeResult['message'] ?? ''),
                 ]);
             }
-            station_flash_set('ok', 'Docker configuration saved.' . station_nginx_include_reload_hint_for_flash($includeResult));
+            station_flash_nginx_include_outcome('Docker configuration saved.', $includeResult);
             header('Location: docker-config.php?project=' . urlencode($projectSlug));
             exit;
         }
@@ -242,7 +247,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
         </nav>
       </header>
 
-      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+      <?= station_flash_banners_html() ?>
       <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
       <?php if (!empty($projectConfig['nativeCompose'])): ?>
         <div class="alert ok" style="border-left:4px solid #0ea5e9;">

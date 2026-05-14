@@ -47,6 +47,8 @@ if ($content === null) {
     $error = 'This file is not editable here.';
     $content = '';
 }
+
+$ghLinks = station_project_github_browser_links($project);
 ?>
 <!doctype html>
 <html lang="en">
@@ -64,9 +66,16 @@ if ($content === null) {
       <nav class="nav-pills">
         <a href="viewer.php?project=<?= urlencode($project) ?>&file=<?= urlencode($file) ?>">Back to Viewer</a>
         <a href="station.php">Dashboard</a>
+        <?php if (is_array($ghLinks)): ?>
+          <a href="<?= station_h($ghLinks['html']) ?>" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="<?= station_h($ghLinks['github_dev']) ?>" target="_blank" rel="noreferrer">github.dev</a>
+          <a href="<?= station_h($ghLinks['vscode_vfs']) ?>">Open in VS Code</a>
+          <a href="<?= station_h($ghLinks['cursor_vfs']) ?>">Open in Cursor</a>
+        <?php endif; ?>
       </nav>
     </header>
 
+    <?= station_flash_banners_html() ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
 
     <form method="post" class="card form-grid">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/docker.php';
 require_once __DIR__ . '/lib/host-health.php';
+require_once __DIR__ . '/lib/github-oauth.php';
 
 station_require_owner();
 $settings = station_admin_settings();
@@ -12,7 +13,6 @@ $currentAppName = (string) (station_config()['appName'] ?? 'Deployment Station')
 $currentStationDirName = basename(station_base_dir());
 $uiConfig = station_ui_config();
 $error = '';
-$ok = station_flash_get('ok');
 $accessModes = station_allowed_project_access_modes();
 $dockerServices = station_docker_services();
 $dockerSettings = station_docker_settings();
@@ -57,8 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
             'count' => (int) ($result['count'] ?? 0),
             'path' => (string) ($result['path'] ?? ''),
         ]);
-        $msg = (string) ($result['message'] ?? 'Nginx include regenerated.') . station_nginx_include_reload_hint_for_flash($result);
-        station_flash_set('ok', $msg);
+        station_flash_nginx_include_outcome((string) ($result['message'] ?? 'Nginx include regenerated.'), $result);
     } else {
         station_log_event('nginx.include.failed', [
             'phase' => 'admin-manual-rebuild',
@@ -75,7 +74,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     @ignore_user_abort(true);
     $r = station_admin_bulk_docker_projects('restart');
     station_log_event('admin.docker.bulk', ['action' => 'restart', 'ok' => !empty($r['ok'])]);
-    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Bulk restart finished.'));
+    $msg = (string) ($r['message'] ?? 'Bulk restart finished.');
+    $nginx = $r['nginx_include'] ?? [];
+    $rel = is_array($nginx) ? ($nginx['reload'] ?? null) : null;
+    $nginxReloadBad = !empty($nginx['ok']) && is_array($rel) && empty($rel['skipped']) && empty($rel['ok']);
+    $nginxWriteBad = empty($nginx['ok']);
+    if (!empty($r['compose_all_failed'])) {
+        station_flash_set('error', $msg);
+    } elseif (!empty($r['compose_partial_failed']) || $nginxWriteBad || $nginxReloadBad) {
+        station_flash_set('warning', $msg);
+    } else {
+        station_flash_set('ok', $msg);
+    }
     header('Location: admin-settings.php?tab=docker');
     exit;
 }
@@ -90,7 +100,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     @ignore_user_abort(true);
     $r = station_admin_bulk_docker_projects('recreate');
     station_log_event('admin.docker.bulk', ['action' => 'recreate', 'ok' => !empty($r['ok'])]);
-    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Bulk recreate finished.'));
+    $msg = (string) ($r['message'] ?? 'Bulk recreate finished.');
+    $nginx = $r['nginx_include'] ?? [];
+    $rel = is_array($nginx) ? ($nginx['reload'] ?? null) : null;
+    $nginxReloadBad = !empty($nginx['ok']) && is_array($rel) && empty($rel['skipped']) && empty($rel['ok']);
+    $nginxWriteBad = empty($nginx['ok']);
+    if (!empty($r['compose_all_failed'])) {
+        station_flash_set('error', $msg);
+    } elseif (!empty($r['compose_partial_failed']) || $nginxWriteBad || $nginxReloadBad) {
+        station_flash_set('warning', $msg);
+    } else {
+        station_flash_set('ok', $msg);
+    }
     header('Location: admin-settings.php?tab=docker');
     exit;
 }
@@ -205,9 +226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 
         <!-- Right Content Area -->
         <div class="settings-content">
-      <?php if ($ok !== ''): ?>
-        <div class="alert ok"><?= station_h($ok) ?></div>
-      <?php endif; ?>
+      <?= station_flash_banners_html() ?>
       <?php if ($error !== ''): ?>
         <div class="alert error"><?= station_h($error) ?></div>
       <?php endif; ?>
@@ -741,6 +760,20 @@ sudo systemctl restart php*-fpm
                 </div>
               </label>
             </div>
+
+            <h3 style="font-size: 15px; margin: 24px 0 10px;">OAuth login (optional)</h3>
+            <p class="setting-description">Create a <a href="https://github.com/settings/developers" target="_blank" rel="noreferrer">GitHub OAuth App</a> (type: Web). Set the authorization callback URL to exactly:</p>
+            <?php $oauthCb = station_github_oauth_redirect_uri(); ?>
+            <?php if ($oauthCb !== ''): ?>
+            <pre style="background:var(--panel-soft,#f1f5f9);padding:10px 12px;border-radius:8px;font-size:12px;overflow:auto;"><?= station_h($oauthCb) ?></pre>
+            <?php else: ?>
+            <p class="setting-description" style="color:#b45309;">Open this page in the browser over HTTP(S) so the callback URL can be shown (host was not detected).</p>
+            <?php endif; ?>
+            <p class="setting-description" style="margin-top:8px;">Scopes for the OAuth App are not configured in GitHub’s UI for classic OAuth apps; Station requests <code>repo</code> and <code>read:user</code> at authorize time. Users can still paste a personal token instead.</p>
+            <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client ID</label>
+            <input type="text" name="githubOAuthClientId" value="<?= station_h((string) ($settings['githubOAuthClientId'] ?? '')) ?>" placeholder="Iv1.…" autocomplete="off" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
+            <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client Secret</label>
+            <input type="password" name="githubOAuthClientSecret" value="" placeholder="<?= trim((string) ($settings['githubOAuthClientSecret'] ?? '')) !== '' ? 'Leave blank to keep existing secret' : 'Paste client secret' ?>" autocomplete="new-password" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
 
             <p class="setting-description" style="margin-top: 16px;">Per-user tokens and default repository live under <a href="user-settings.php">User Settings</a> for each builder account.</p>
 

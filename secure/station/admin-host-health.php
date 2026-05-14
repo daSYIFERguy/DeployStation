@@ -7,7 +7,6 @@ require_once __DIR__ . '/lib/host-health.php';
 
 station_require_owner();
 
-$ok = station_flash_get('ok');
 $error = '';
 $runResult = null;
 
@@ -146,21 +145,6 @@ TXT;
 <html lang="en">
 <head>
   <?= station_pwa_head_html('Host health', 'Live host diagnostics, routing map, and optional restart commands.') ?>
-  <style>
-    .host-health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
-    .host-health-card { background: var(--panel-bg, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 14px 16px; }
-    .host-health-card h3 { margin: 0 0 8px; font-size: 15px; }
-    .host-health-card pre { margin: 0; font-size: 12px; line-height: 1.35; max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--code-bg, #f8fafc); padding: 10px; border-radius: 6px; }
-    .host-health-meta { font-size: 13px; color: var(--muted, #64748b); margin-bottom: 6px; }
-    .host-routing-pre { font-size: 12px; line-height: 1.4; white-space: pre-wrap; background: var(--code-bg, #f8fafc); padding: 12px; border-radius: 8px; overflow: auto; }
-    .host-health-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
-    .host-health-table th, .host-health-table td { border: 1px solid var(--border, #e5e7eb); padding: 8px 10px; text-align: left; vertical-align: top; }
-    .host-health-table th { background: var(--code-bg, #f8fafc); }
-    .host-health-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-    .host-health-actions form { display: inline; }
-    .host-health-commands label { display: block; margin-top: 12px; font-weight: 600; font-size: 13px; }
-    .host-health-commands textarea { width: 100%; min-height: 52px; font-family: ui-monospace, monospace; font-size: 12px; margin-top: 4px; padding: 8px; border-radius: 6px; border: 1px solid var(--border, #e5e7eb); }
-  </style>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -170,15 +154,14 @@ TXT;
         <div>
           <p class="dashboard-kicker">Owner · Mission control</p>
           <h1 class="dashboard-heading">Host health &amp; routing</h1>
-          <p class="dashboard-subheading">Live container load, routing map, and host diagnostics from the same shell user as Station (often <code>www-data</code>), plus optional maintenance commands.</p>
+          <p class="dashboard-subheading">At-a-glance rings for containers, compose health, memory, and disk; live fleet bars; routing; and raw diagnostics from the same shell user as Station (often <code>www-data</code>).</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
         </nav>
       </header>
 
-      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
-      <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+      <?= station_flash_banners_html() ?>
 
       <?php if (is_array($runResult)): ?>
         <div class="alert <?= !empty($runResult['ok']) ? 'ok' : 'error' ?>" style="margin-top:12px;">
@@ -188,6 +171,16 @@ TXT;
         </div>
         <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
       <?php endif; ?>
+
+      <div class="settings-panel mc-cockpit-wrap" style="margin-top: 16px; border: none; padding: 0; background: transparent; box-shadow: none;">
+        <?= station_host_health_mission_cockpit_html(
+            $snapshot,
+            $missionPayload,
+            $routing,
+            $upstreamMatrix,
+            $missionSlugs
+        ) ?>
+      </div>
 
       <p class="setting-description" style="margin-top:8px;">
         <label class="feature-toggle" style="display:inline-flex;align-items:center;gap:8px;">
@@ -200,8 +193,8 @@ TXT;
         <?= station_mission_fleet_markup(
             $missionPayload,
             $missionSlugs,
-            'Container fleet (live)',
-            'Bars compare each container to the current peak on this host. Stacks managed by Station are tagged when the container name includes the project slug.'
+            'Container fleet — relative load',
+            'Each bar is scaled to the busiest container on this host so you can compare CPU and RAM at a glance. Station-managed stacks are highlighted when the container name includes the project slug.'
         ) ?>
       </div>
 
@@ -255,46 +248,32 @@ TXT;
         </table>
       </div>
 
-      <div class="settings-panel" style="margin-top: 24px;">
-        <h2 class="settings-panel-heading" style="font-size:18px;">Docker upstream checks</h2>
-        <p class="setting-description" style="margin:0;">Each block is a loopback probe from this PHP process. Copy commands into SSH on the server if you need deeper inspection.</p>
-        <?php if ($upstreamMatrix === []): ?>
-          <p class="setting-description" style="margin-top:14px;">No dockerized projects yet.</p>
-        <?php else: ?>
-          <?php foreach ($upstreamMatrix as $um): ?>
-            <?php
-              $slug = (string) ($um['slug'] ?? '');
-              $hp = (int) ($um['hostPort'] ?? 0);
-              $pr = $um['probe'] ?? [];
-              $tcpOk = !empty($pr['tcp']);
-              $httpC = (int) ($pr['httpCode'] ?? 0);
-              $sum = $tcpOk ? ('TCP ok' . ($httpC > 0 ? ' · HTTP ' . $httpC : '')) : ('TCP failed: ' . (string) ($pr['tcpError'] ?? ''));
+      <?php if ($upstreamMatrix !== []): ?>
+      <details class="settings-panel mc-advanced-upstream" style="margin-top: 20px;">
+        <summary class="settings-panel-heading" style="font-size:18px;cursor:pointer;">Advanced: full upstream matrix (verbose)</summary>
+        <p class="setting-description" style="margin-top:8px;">Same probes as the mission-control strip; open when you need every curl line on one page.</p>
+        <?php foreach ($upstreamMatrix as $um): ?>
+          <?php
+            $slug = (string) ($um['slug'] ?? '');
+            $pr = $um['probe'] ?? [];
+            $tcpOk = !empty($pr['tcp']);
+            $httpC = (int) ($pr['httpCode'] ?? 0);
+            $sum = $tcpOk ? ('TCP ok' . ($httpC > 0 ? ' · HTTP ' . $httpC : '')) : ('TCP failed: ' . (string) ($pr['tcpError'] ?? ''));
             ?>
-            <div style="margin-top:18px;padding:14px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--panel-soft,#f8fafc);">
-              <h3 style="margin:0 0 8px;font-size:15px;"><code><?= station_h($slug) ?></code> — <?= station_h($sum) ?></h3>
-              <?php if ((string) ($pr['httpError'] ?? '') !== ''): ?>
-                <p class="setting-description" style="margin:0 0 8px;"><strong>HTTP layer:</strong> <?= station_h((string) $pr['httpError']) ?></p>
-              <?php endif; ?>
-              <?php if ((string) ($pr['bodySnippet'] ?? '') !== ''): ?>
-                <p class="setting-description" style="margin:0 0 6px;"><strong>Body snippet:</strong></p>
-                <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) $pr['bodySnippet']) ?></pre>
-              <?php endif; ?>
-              <p class="setting-description" style="margin:0 0 6px;">Quick status (HTTP code only):</p>
-              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellCurlLoop'] ?? '')) ?></pre>
-              <p class="setting-description" style="margin:0 0 6px;">Verbose loopback (headers + tail of body):</p>
-              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellCurlLoopVerbose'] ?? '')) ?></pre>
-              <?php if ((string) ($um['shellCurlPublic'] ?? '') !== ''): ?>
-                <p class="setting-description" style="margin:0 0 6px;">Public URL (through nginx):</p>
-                <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) $um['shellCurlPublic']) ?></pre>
-              <?php endif; ?>
-              <p class="setting-description" style="margin:0 0 6px;">Who is listening on this port:</p>
-              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellSs'] ?? '')) ?></pre>
-              <p class="setting-description" style="margin:0 0 6px;">Recent container logs:</p>
-              <pre class="host-routing-pre" style="margin:0;"><?= station_h((string) ($um['shellComposeLogs'] ?? '')) ?></pre>
-            </div>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </div>
+          <div class="mc-advanced-upstream-block">
+            <h3 class="mc-advanced-upstream-title"><code><?= station_h($slug) ?></code> — <?= station_h($sum) ?></h3>
+            <?php if ((string) ($pr['httpError'] ?? '') !== ''): ?>
+              <p class="setting-description"><strong>HTTP layer:</strong> <?= station_h((string) $pr['httpError']) ?></p>
+            <?php endif; ?>
+            <?php if ((string) ($pr['bodySnippet'] ?? '') !== ''): ?>
+              <pre class="host-routing-pre"><?= station_h((string) $pr['bodySnippet']) ?></pre>
+            <?php endif; ?>
+            <pre class="host-routing-pre"><?= station_h((string) ($um['shellCurlLoopVerbose'] ?? '')) ?></pre>
+            <pre class="host-routing-pre"><?= station_h((string) ($um['shellSs'] ?? '')) ?></pre>
+          </div>
+        <?php endforeach; ?>
+      </details>
+      <?php endif; ?>
 
       <div class="settings-panel" style="margin-top: 24px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Quick actions</h2>

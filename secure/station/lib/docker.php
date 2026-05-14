@@ -2622,6 +2622,10 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
         $summary .= 'All compose commands succeeded.';
     }
     $summary .= station_nginx_include_reload_hint_for_flash($nginxInclude);
+    $reload = $nginxInclude['reload'] ?? null;
+    if (!empty($nginxInclude['ok']) && is_array($reload) && empty($reload['skipped']) && empty($reload['ok'])) {
+        $summary .= ' ' . station_nginx_include_reload_warning_detail($reload);
+    }
 
     $failed = [];
     foreach ($results as $slug => $row) {
@@ -2638,6 +2642,8 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
         'message' => $summary,
         'results' => $results,
         'nginx_include' => $nginxInclude,
+        'compose_all_failed' => $n > 0 && !$anyOk,
+        'compose_partial_failed' => $anyFail && $anyOk,
     ];
 }
 
@@ -2732,6 +2738,28 @@ function station_render_nginx_projects_conf(array $projects): string
     }
 
     return implode("\n", $lines);
+}
+
+/**
+ * Strip directives that older Station builds incorrectly placed inside location{}
+ * (nginx only allows these in http{} or server{}).
+ */
+function station_sanitize_legacy_projects_conf_directives(string $body): string
+{
+    $lines = preg_split('/\r\n|\r|\n/', $body) ?: [];
+    $out = [];
+    foreach ($lines as $line) {
+        $trim = ltrim($line);
+        if (preg_match('/^(client_header_buffer_size|large_client_header_buffers)\s+/i', $trim)) {
+            continue;
+        }
+        if (preg_match('/^#\s*Allow large browser Cookie headers/i', $trim)) {
+            continue;
+        }
+        $out[] = $line;
+    }
+
+    return implode("\n", $out);
 }
 
 /**
@@ -2839,7 +2867,21 @@ function station_nginx_maybe_reload_main(): array
 }
 
 /**
- * Short sentence for flash messages after a successful include write.
+ * Human-readable reload failure for warning-tier flash (routes file already written).
+ *
+ * @param array{ok?:bool,skipped?:bool,output?:string,message?:string} $reload
+ */
+function station_nginx_include_reload_warning_detail(array $reload): string
+{
+    $detail = trim(mb_substr((string) ($reload['output'] ?? ''), 0, 600));
+    $tail = $detail !== '' ? (' Output: ' . $detail) : (' ' . trim((string) ($reload['message'] ?? '')));
+
+    return 'Nginx configuration test or reload failed after updating routes. Fix the reload command under Admin → Projects, or run nginx -t and reload manually.' . $tail;
+}
+
+/**
+ * Short success / skip suffix for flash messages (never includes reload failure text;
+ * use station_nginx_include_reload_warning_detail + a warning-tier flash for that).
  */
 function station_nginx_include_reload_hint_for_flash(array $includeResult): string
 {
@@ -2865,10 +2907,39 @@ function station_nginx_include_reload_hint_for_flash(array $includeResult): stri
         return $hint . ' Nginx configuration test and reload succeeded.';
     }
 
-    $detail = trim(mb_substr((string) ($r['output'] ?? ''), 0, 320));
-    $tail = $detail !== '' ? (' Output: ' . $detail) : (' ' . (string) ($r['message'] ?? ''));
+    return $hint;
+}
 
-    return $hint . ' Nginx reload failed — fix the command in Admin → Projects or reload manually.' . $tail;
+/**
+ * Set ok / warning / error flashes after projects.conf write + optional nginx reload.
+ *
+ * @param bool $treatNginxWriteFailureAsError When true, a failed include write is an error flash. When false, keep $contextLine as ok and add a warning (e.g. deploy succeeded but routes were not written).
+ */
+function station_flash_nginx_include_outcome(string $contextLine, array $includeResult, bool $treatNginxWriteFailureAsError = true): void
+{
+    if (empty($includeResult['ok'])) {
+        $detail = trim((string) ($includeResult['message'] ?? 'Unknown error'));
+        if ($treatNginxWriteFailureAsError) {
+            station_flash_set('error', $contextLine . ' ' . $detail);
+        } else {
+            station_flash_set('ok', $contextLine);
+            station_flash_set('warning', 'Nginx routes file was not updated: ' . $detail);
+        }
+
+        return;
+    }
+
+    $reload = $includeResult['reload'] ?? null;
+    $suffix = station_nginx_include_reload_hint_for_flash($includeResult);
+    if (!is_array($reload) || !empty($reload['skipped']) || !empty($reload['ok'])
+        || (array_key_exists('changed', $includeResult) && $includeResult['changed'] === false)) {
+        station_flash_set('ok', $contextLine . $suffix);
+
+        return;
+    }
+
+    station_flash_set('ok', $contextLine . $suffix);
+    station_flash_set('warning', station_nginx_include_reload_warning_detail($reload));
 }
 
 /**
@@ -2917,7 +2988,7 @@ function station_write_nginx_projects_conf(): array
         ];
     }
 
-    $contents = station_render_nginx_projects_conf($projects);
+    $contents = station_sanitize_legacy_projects_conf_directives(station_render_nginx_projects_conf($projects));
     $previous = '';
     if (is_file($path) && is_readable($path)) {
         $previous = (string) (@file_get_contents($path) ?: '');

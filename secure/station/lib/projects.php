@@ -741,3 +741,27 @@ function station_generate_github_bootstrap_files(string $slug, array $settings):
 
     return ['ok' => $ok1 && $ok2 && $ok3, 'message' => $ok1 && $ok2 && $ok3 ? 'GitHub bootstrap generated.' : 'Could not write bootstrap files.'];
 }
+
+/**
+ * Deep links when project GitHub owner/name are configured.
+ *
+ * @return array{repo_full: string, html: string, github_dev: string, cursor_vfs: string, vscode_vfs: string}|null
+ */
+function station_project_github_browser_links(string $slug): ?array
+{
+    $settings = station_project_settings($slug);
+    $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
+    $owner = trim((string) ($gh['repoOwner'] ?? ''));
+    $name = trim((string) ($gh['repoName'] ?? ''));
+    if ($owner === '' || $name === '') {
+        return null;
+    }
+
+    return [
+        'repo_full' => $owner . '/' . $name,
+        'html' => 'https://github.com/' . rawurlencode($owner) . '/' . rawurlencode($name),
+        'github_dev' => 'https://github.dev/' . rawurlencode($owner) . '/' . rawurlencode($name),
+        'cursor_vfs' => 'cursor://vscode-vfs/github/' . $owner . '/' . $name,
+        'vscode_vfs' => 'vscode://vscode-vfs/github/' . $owner . '/' . $name,
+    ];
+}

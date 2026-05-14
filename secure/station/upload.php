@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/git.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/github-sync.php';
 
 @set_time_limit(0);
 ignore_user_abort(true);
@@ -162,7 +164,9 @@ if (!isset($templateBootstrap) || !is_array($templateBootstrap)) {
 
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
-$nginxPostHint = '';
+$redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
+    ? 'docker-config.php?project=' . urlencode($slug)
+    : 'viewer.php?project=' . urlencode($slug);
 if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfrastructure'] ?? 'apache')) === 'nginx') {
     $nr = station_write_nginx_projects_conf();
     if (empty($nr['ok'])) {
@@ -171,15 +175,12 @@ if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfr
             'slug' => $slug,
             'message' => (string) ($nr['message'] ?? ''),
         ]);
-    } else {
-        $nginxPostHint = station_nginx_include_reload_hint_for_flash($nr);
     }
+    station_flash_nginx_include_outcome('Project deployed: ' . $slug, $nr, false);
+    station_upload_finish(true, '', $redirectUrl, $expectsJson);
+} else {
+    station_upload_finish(true, 'Project deployed: ' . $slug, $redirectUrl, $expectsJson);
 }
-
-$redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
-    ? 'docker-config.php?project=' . urlencode($slug)
-    : 'viewer.php?project=' . urlencode($slug);
-station_upload_finish(true, 'Project deployed: ' . $slug . $nginxPostHint, $redirectUrl, $expectsJson);
 exit;
 
 function station_handle_zip_upload(string $projectPath): array
@@ -510,14 +511,11 @@ function station_handle_template_create(string $projectPath, string $templateTyp
 
 function station_handle_github_import(string $projectPath, string $projectName, string $username): array
 {
+    $mode = trim((string) ($_POST['github_import_mode'] ?? 'existing'));
     $repoInput = trim((string) ($_POST['github_repo_url'] ?? ''));
     $branch = trim((string) ($_POST['github_branch'] ?? ''));
     $oneTimeToken = trim((string) ($_POST['github_token'] ?? ''));
-    $repo = station_parse_github_repo($repoInput);
 
-    if ($repo === null) {
-        return ['ok' => false, 'message' => 'Enter a GitHub repository URL like https://github.com/owner/repo.'];
-    }
     if ($branch !== '' && !station_is_safe_git_ref($branch)) {
         return ['ok' => false, 'message' => 'Branch names can only contain letters, numbers, dots, slashes, underscores, and dashes.'];
     }
@@ -528,6 +526,45 @@ function station_handle_github_import(string $projectPath, string $projectName, 
     $profile = station_user_profile($username);
     $savedToken = trim((string) ($profile['integrations']['github']['token'] ?? ''));
     $token = $oneTimeToken !== '' ? $oneTimeToken : $savedToken;
+    if ($token === '') {
+        return ['ok' => false, 'message' => 'Connect GitHub with OAuth or paste a token under User Settings, or provide a one-time token.'];
+    }
+
+    $repo = null;
+    if ($mode === 'create_new') {
+        $slugHint = station_safe_name(basename(str_replace('\\', '/', $projectPath)));
+        $newOwner = trim((string) ($_POST['github_new_repo_owner'] ?? ''));
+        $newName = trim((string) ($_POST['github_new_repo_name'] ?? ''));
+        if ($newName === '') {
+            $newName = $slugHint;
+        }
+        if ($newOwner === '') {
+            $me = station_github_api('GET', '/user', $token);
+            if (empty($me['ok'])) {
+                return ['ok' => false, 'message' => 'Could not read your GitHub login from the token. Enter “Repo owner” on the form or reconnect GitHub.'];
+            }
+            $data = json_decode((string) ($me['body'] ?? ''), true);
+            $newOwner = is_array($data) ? trim((string) ($data['login'] ?? '')) : '';
+        }
+        if ($newOwner === '' || $newName === '') {
+            return ['ok' => false, 'message' => 'Missing GitHub owner or repository name for the new repository.'];
+        }
+        if (!preg_match('/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/', $newOwner)
+            || !preg_match('/^[A-Za-z0-9._-]{1,100}$/', $newName)) {
+            return ['ok' => false, 'message' => 'GitHub owner or repository name uses invalid characters.'];
+        }
+        $cr = station_github_create_private_repo($token, $newOwner, $newName, 'Created from Deployment Station: ' . $projectName);
+        if (empty($cr['ok'])) {
+            return ['ok' => false, 'message' => (string) ($cr['message'] ?? 'Could not create the repository on GitHub.')];
+        }
+        $repo = ['owner' => $newOwner, 'name' => $newName];
+    } else {
+        $repo = station_parse_github_repo($repoInput);
+        if ($repo === null) {
+            return ['ok' => false, 'message' => 'Enter a GitHub repository URL, pick a repo from the list, or choose “Create new private repository”.'];
+        }
+    }
+
     $cloneUrl = 'https://github.com/' . $repo['owner'] . '/' . $repo['name'] . '.git';
     $command = ['git', 'clone', '--depth', '1'];
     if ($branch !== '') {
@@ -542,10 +579,11 @@ function station_handle_github_import(string $projectPath, string $projectName, 
     if (empty($clone['ok'])) {
         $output = trim((string) ($clone['output'] ?? ''));
         $message = $output !== '' ? $output : 'Git could not clone that repository.';
+
         return ['ok' => false, 'message' => 'GitHub import failed: ' . mb_substr($message, 0, 500)];
     }
 
-    station_run_git_command(['git', '-C', $projectPath, 'remote', 'set-url', 'origin', $cloneUrl]);
+    station_run_git_command(['git', '-C', $projectPath, 'remote', 'set-url', 'origin', $cloneUrl], $token);
     $defaultBranch = $branch !== '' ? $branch : station_detect_current_git_branch($projectPath);
 
     return [
@@ -591,68 +629,6 @@ function station_is_safe_git_ref(string $ref): bool
         return false;
     }
     return preg_match('#^[A-Za-z0-9._/-]+$#', $ref) === 1;
-}
-
-function station_git_available(): bool
-{
-    $result = station_run_git_command(['git', '--version']);
-    return !empty($result['ok']);
-}
-
-function station_detect_current_git_branch(string $projectPath): string
-{
-    $result = station_run_git_command(['git', '-C', $projectPath, 'branch', '--show-current']);
-    return !empty($result['ok']) ? trim((string) ($result['output'] ?? '')) : '';
-}
-
-function station_run_git_command(array $command, string $token = ''): array
-{
-    $askPassPath = '';
-    $env = getenv();
-    $env = is_array($env) ? $env : [];
-    $env['PATH'] = (string) ($env['PATH'] ?? '/usr/local/bin:/usr/bin:/bin');
-    $env['GIT_TERMINAL_PROMPT'] = '0';
-
-    if ($token !== '') {
-        $askPassPath = station_data_dir() . '/github-askpass-' . bin2hex(random_bytes(6)) . '.sh';
-        $askPassScript = "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' 'x-access-token' ;;\n*Password*) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n*) printf '\\n' ;;\nesac\n";
-        if (@file_put_contents($askPassPath, $askPassScript, LOCK_EX) === false || !@chmod($askPassPath, 0700)) {
-            return ['ok' => false, 'output' => 'Could not prepare GitHub credentials.'];
-        }
-        $env['GIT_ASKPASS'] = $askPassPath;
-        $env['GITHUB_TOKEN'] = $token;
-    }
-
-    $commandString = implode(' ', array_map('escapeshellarg', $command));
-    $descriptors = [
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-    $process = @proc_open($commandString, $descriptors, $pipes, null, $env);
-    if (!is_resource($process)) {
-        if ($askPassPath !== '') {
-            @unlink($askPassPath);
-        }
-        return ['ok' => false, 'output' => 'Could not start git.'];
-    }
-
-    $stdout = isset($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
-    $stderr = isset($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
-    foreach ($pipes as $pipe) {
-        if (is_resource($pipe)) {
-            fclose($pipe);
-        }
-    }
-    $code = proc_close($process);
-    if ($askPassPath !== '') {
-        @unlink($askPassPath);
-    }
-
-    return [
-        'ok' => $code === 0,
-        'code' => $code,
-        'output' => trim($stdout . "\n" . $stderr),
-    ];
 }
 
 function station_normalize_archive_path(string $path): ?string
@@ -748,7 +724,9 @@ function station_upload_finish(bool $ok, string $message, string $redirectUrl, b
         return;
     }
 
-    station_flash_set($ok ? 'ok' : 'error', $message);
+    if ($message !== '') {
+        station_flash_set($ok ? 'ok' : 'error', $message);
+    }
     header('Location: ' . $redirectUrl);
 }
 

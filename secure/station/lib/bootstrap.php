@@ -24,6 +24,37 @@ function station_request_is_https(): bool
 }
 
 /**
+ * Public origin for the current request (scheme + host), or empty if unknown.
+ * Used for OAuth redirect URIs and absolute links.
+ */
+function station_request_origin_url(): string
+{
+    $https = station_request_is_https();
+    $scheme = $https ? 'https' : 'http';
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+
+    return $scheme . '://' . $host;
+}
+
+/**
+ * Directory URL of the current PHP script (no trailing slash), e.g. https://host/secure/station
+ */
+function station_request_script_dir_url(): string
+{
+    $origin = station_request_origin_url();
+    if ($origin === '') {
+        return '';
+    }
+    $script = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
+
+    return $origin . $dir;
+}
+
+/**
  * Session cookie options. Env overrides:
  * - STATION_SESSION_SAMESITE=Lax|Strict|None (None forces Secure=true)
  * - STATION_SESSION_COOKIE_DOMAIN= e.g. .example.com when needed for subdomains
@@ -469,6 +500,8 @@ function station_admin_settings(): array
         'customTemplates' => [],
         'dockerSettings' => [],
         'nginxDockerUpstreamHostMode' => 'preserve',
+        'githubOAuthClientId' => '',
+        'githubOAuthClientSecret' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
@@ -552,6 +585,16 @@ function station_admin_merge_mega_form_post_into_settings(
     }
 
     $settings['githubEnabled'] = isset($post['githubEnabled']);
+
+    if (isset($post['githubOAuthClientId'])) {
+        $settings['githubOAuthClientId'] = trim((string) $post['githubOAuthClientId']);
+    }
+    if (isset($post['githubOAuthClientSecret'])) {
+        $sec = trim((string) $post['githubOAuthClientSecret']);
+        if ($sec !== '') {
+            $settings['githubOAuthClientSecret'] = $sec;
+        }
+    }
 
     $settings['onboardingRequired'] = isset($post['onboardingRequired']);
 
@@ -909,6 +952,13 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     if ($isOwner) {
         $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', '◫', 'Settings');
         $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', '📡', 'Host health');
+    }
+
+    if (function_exists('station_can_build') && station_can_build($user)) {
+        $adminGh = station_admin_settings();
+        if (!empty($adminGh['githubEnabled'])) {
+            $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', '⚡', 'GitHub sync');
+        }
     }
 
     $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', '◌', 'User Settings');
@@ -1564,6 +1614,28 @@ function station_flash_get(string $key): string
     return $message;
 }
 
+/**
+ * Consume standard flash tiers (ok / warning / error) in display order.
+ */
+function station_flash_banners_html(): string
+{
+    $ok = station_flash_get('ok');
+    $warning = station_flash_get('warning');
+    $error = station_flash_get('error');
+    $html = '';
+    if ($ok !== '') {
+        $html .= '<div class="alert ok">' . station_h($ok) . '</div>';
+    }
+    if ($warning !== '') {
+        $html .= '<div class="alert warning">' . station_h($warning) . '</div>';
+    }
+    if ($error !== '') {
+        $html .= '<div class="alert error">' . station_h($error) . '</div>';
+    }
+
+    return $html;
+}
+
 function station_safe_name(string $name): string
 {
     $value = strtolower(trim($name));
@@ -1596,7 +1668,7 @@ function station_user_profile(string $username): array
         'themeColor' => '',
         'onboardingCompleted' => false,
         'integrations' => [
-            'github' => ['enabled' => false, 'username' => '', 'token' => '', 'repo' => ''],
+            'github' => ['enabled' => false, 'username' => '', 'token' => '', 'repo' => '', 'authMode' => 'pat', 'oauthConnectedAt' => ''],
         ]
     ]);
 }
