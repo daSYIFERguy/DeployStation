@@ -7,11 +7,6 @@ require_once __DIR__ . '/lib/docker.php';
 
 station_require_owner();
 $settings = station_admin_settings();
-$settings += [
-    'nginxAutoReload' => false,
-    'nginxReloadCommand' => '',
-    'nginxDockerUpstreamHostMode' => 'preserve',
-];
 $currentAppName = (string) (station_config()['appName'] ?? 'Deployment Station');
 $currentStationDirName = basename(station_base_dir());
 $uiConfig = station_ui_config();
@@ -120,69 +115,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Process form inputs based on active tab
-    switch ($activeTab) {
-        case 'general':
-            $settings['stationHeading'] = trim((string) ($_POST['stationHeading'] ?? 'Deployment Station')) ?: 'Deployment Station';
-            $settings['stationSubheading'] = trim((string) ($_POST['stationSubheading'] ?? ''));
-            $settings['themeColor'] = station_normalize_theme_color((string) ($_POST['themeColor'] ?? '#2f7de2'));
-
-            $iconResult = station_apply_brand_icon_inputs($settings, $_POST, $_FILES);
-            $settings = (array) ($iconResult['settings'] ?? $settings);
-            // Save the successful icon changes regardless of partial failures.
-            // Bubble per-file errors so the user can see exactly which icon failed.
-            if (empty($iconResult['ok'])) {
-                $error = (string) ($iconResult['message'] ?? 'Could not save some icon uploads.');
-            }
-            break;
-
-        case 'project-defaults':
-            $settings['serverInfrastructure'] = station_normalize_server_infrastructure((string) ($_POST['serverInfrastructure'] ?? ($settings['serverInfrastructure'] ?? 'apache')));
-            $settings['defaultProjectVisibility'] = ((string) ($_POST['defaultProjectVisibility'] ?? 'private')) === 'public' ? 'public' : 'private';
-            $defaultMode = (string) ($_POST['defaultProjectAccessMode'] ?? 'admin');
-            $settings['defaultProjectAccessMode'] = isset($accessModes[$defaultMode]) ? $defaultMode : 'admin';
-            $settings['auditLogLimit'] = station_normalize_audit_log_limit($_POST['auditLogLimit'] ?? ($settings['auditLogLimit'] ?? 50));
-            $settings['allowPublicProjects'] = isset($_POST['allowPublicProjects']);
-            $settings['nginxAutoReload'] = isset($_POST['nginxAutoReload']);
-            $settings['nginxReloadCommand'] = trim((string) ($_POST['nginxReloadCommand'] ?? ''));
-            $hostMode = strtolower(trim((string) ($_POST['nginxDockerUpstreamHostMode'] ?? 'preserve')));
-            $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
-            $settings['nginxAuthRequestBasePath'] = trim((string) ($_POST['nginxAuthRequestBasePath'] ?? ''));
-            break;
-
-        case 'integrations':
-            $settings['githubEnabled'] = isset($_POST['githubEnabled']);
-            $settings['vscodeEnabled'] = isset($_POST['vscodeEnabled']);
-            $settings['chatgptEnabled'] = isset($_POST['chatgptEnabled']);
-            $settings['codexEnabled'] = isset($_POST['codexEnabled']);
-            break;
-
-        case 'docker':
-            $dockerSettings['enabled'] = isset($_POST['dockerEnabled']);
-            $dockerSettings['composeVersion'] = (string) ($_POST['composeVersion'] ?? '3.9');
-            $dockerSettings['defaultDatabase'] = (string) ($_POST['defaultDatabase'] ?? 'mysql');
-            $dockerSettings['dockerBinaryPath'] = trim((string) ($_POST['dockerBinaryPath'] ?? ''));
-            $dockerSettings['composeBinaryPath'] = trim((string) ($_POST['composeBinaryPath'] ?? ''));
-
-            // Enable/disable services
-            foreach ($dockerServices as $serviceKey => $serviceConfig) {
-                $dockerSettings['services'][$serviceKey] = isset($_POST['service_' . $serviceKey]);
-            }
-
-            $settings['dockerSettings'] = $dockerSettings;
-            break;
-
-        case 'onboarding':
-            $settings['onboardingRequired'] = isset($_POST['onboardingRequired']);
-            break;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])) {
+    $settings = station_admin_merge_mega_form_post_into_settings($settings, $_POST, $accessModes, $dockerServices);
+    $iconResult = station_apply_brand_icon_inputs($settings, $_POST, $_FILES);
+    $settings = (array) ($iconResult['settings'] ?? $settings);
+    if (empty($iconResult['ok'])) {
+        $error = (string) ($iconResult['message'] ?? 'Could not save some icon uploads.');
     }
 
-    // Persist whatever changed, even when icon uploads partially failed.
     $saved = station_save_admin_settings($settings);
     if ($saved && $error === '') {
-        if ($activeTab === 'project-defaults'
-            && station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? '')) === 'nginx'
+        if (station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? '')) === 'nginx'
             && function_exists('station_write_nginx_projects_conf')) {
             station_write_nginx_projects_conf();
         }
@@ -198,7 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     if ($error === '') {
-        $error = 'Could not save settings.';
+        $path = station_admin_settings_path();
+        $error = 'Could not save settings to ' . $path . ' (check permissions on the data directory).';
     }
 }
 ?>

@@ -233,7 +233,22 @@ function station_write_json(string $path, array $data): bool
     if (!is_string($json)) {
         return false;
     }
-    return @file_put_contents($path, $json . "\n", LOCK_EX) !== false;
+    $payload = $json . "\n";
+    $dir = dirname($path);
+    if ($dir !== '' && $dir !== '.' && !is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = $path . '.tmp.' . bin2hex(random_bytes(4));
+    if (@file_put_contents($tmp, $payload, LOCK_EX) === false) {
+        return @file_put_contents($path, $payload, LOCK_EX) !== false;
+    }
+    @chmod($tmp, 0600);
+    if (@rename($tmp, $path)) {
+        return true;
+    }
+    @unlink($tmp);
+
+    return @file_put_contents($path, $payload, LOCK_EX) !== false;
 }
 
 function station_is_safe_relative_path(string $path): bool
@@ -294,7 +309,7 @@ function station_save_projects_meta(array $meta): bool
 
 function station_admin_settings(): array
 {
-    return station_read_json(station_admin_settings_path(), [
+    $defaults = [
         'serverInfrastructure' => 'apache',
         'defaultProjectVisibility' => 'private',
         'defaultProjectAccessMode' => 'admin',
@@ -314,6 +329,7 @@ function station_admin_settings(): array
         'appMaskableIconUrl' => '',
         'themeColor' => '#2f7de2',
         'customTemplates' => [],
+        'dockerSettings' => [],
         'nginxAutoReload' => false,
         'nginxReloadCommand' => '',
         'nginxDockerUpstreamHostMode' => 'preserve',
@@ -323,7 +339,97 @@ function station_admin_settings(): array
         'hostRestartDockerCommand' => '',
         'hostDiagExtraCommand' => '',
         'hostNginxTestCommand' => '',
-    ]);
+    ];
+    $stored = station_read_json(station_admin_settings_path(), []);
+    if ($stored === []) {
+        return $defaults;
+    }
+
+    return array_merge($defaults, $stored);
+}
+
+/**
+ * Merge the admin-settings mega-form POST/FILES into $settings (all tabs
+ * share one form, so every save must apply every posted field).
+ */
+function station_admin_merge_mega_form_post_into_settings(
+    array $settings,
+    array $post,
+    array $accessModes,
+    array $dockerServices
+): array {
+    if (isset($post['stationHeading'])) {
+        $settings['stationHeading'] = trim((string) $post['stationHeading']) ?: 'Deployment Station';
+    }
+    if (isset($post['stationSubheading'])) {
+        $settings['stationSubheading'] = trim((string) $post['stationSubheading']);
+    }
+    if (isset($post['themeColor'])) {
+        $settings['themeColor'] = station_normalize_theme_color((string) ($post['themeColor'] ?? '#2f7de2'));
+    }
+
+    if (isset($post['serverInfrastructure'])) {
+        $settings['serverInfrastructure'] = station_normalize_server_infrastructure((string) $post['serverInfrastructure']);
+    }
+    if (isset($post['defaultProjectVisibility'])) {
+        $settings['defaultProjectVisibility'] = ((string) $post['defaultProjectVisibility'] === 'public') ? 'public' : 'private';
+    }
+    if (isset($post['defaultProjectAccessMode'])) {
+        $defaultMode = (string) $post['defaultProjectAccessMode'];
+        $settings['defaultProjectAccessMode'] = isset($accessModes[$defaultMode]) ? $defaultMode : 'admin';
+    }
+    if (isset($post['auditLogLimit'])) {
+        $settings['auditLogLimit'] = station_normalize_audit_log_limit($post['auditLogLimit']);
+    }
+    $settings['allowPublicProjects'] = isset($post['allowPublicProjects']);
+
+    $infra = station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache'));
+    if ($infra === 'nginx') {
+        $settings['nginxAutoReload'] = isset($post['nginxAutoReload']);
+        $settings['nginxReloadCommand'] = trim((string) ($post['nginxReloadCommand'] ?? ''));
+        if (isset($post['nginxDockerUpstreamHostMode'])) {
+            $hostMode = strtolower(trim((string) $post['nginxDockerUpstreamHostMode']));
+            $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
+        }
+        if (array_key_exists('nginxAuthRequestBasePath', $post)) {
+            $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
+        }
+    }
+
+    $settings['githubEnabled'] = isset($post['githubEnabled']);
+    $settings['vscodeEnabled'] = isset($post['vscodeEnabled']);
+    $settings['chatgptEnabled'] = isset($post['chatgptEnabled']);
+    $settings['codexEnabled'] = isset($post['codexEnabled']);
+
+    $settings['onboardingRequired'] = isset($post['onboardingRequired']);
+
+    $dockerStored = isset($settings['dockerSettings']) && is_array($settings['dockerSettings'])
+        ? $settings['dockerSettings']
+        : [];
+    $dockerSettings = $dockerStored;
+    $dockerSettings['enabled'] = isset($post['dockerEnabled']);
+    $dockerSettings['composeVersion'] = (string) ($post['composeVersion'] ?? ($dockerSettings['composeVersion'] ?? '3.9'));
+    if (!in_array($dockerSettings['composeVersion'], ['3.8', '3.9'], true)) {
+        $dockerSettings['composeVersion'] = '3.9';
+    }
+    $dockerSettings['defaultDatabase'] = (string) ($post['defaultDatabase'] ?? ($dockerSettings['defaultDatabase'] ?? 'mysql'));
+    $allowedDb = ['mysql', 'postgres', 'mongodb', 'none'];
+    if (!in_array($dockerSettings['defaultDatabase'], $allowedDb, true)) {
+        $dockerSettings['defaultDatabase'] = 'mysql';
+    }
+    $dockerSettings['dockerBinaryPath'] = trim((string) ($post['dockerBinaryPath'] ?? ($dockerSettings['dockerBinaryPath'] ?? '')));
+    $dockerSettings['composeBinaryPath'] = trim((string) ($post['composeBinaryPath'] ?? ($dockerSettings['composeBinaryPath'] ?? '')));
+
+    if (!isset($dockerSettings['services']) || !is_array($dockerSettings['services'])) {
+        $dockerSettings['services'] = [];
+    }
+    foreach ($dockerServices as $serviceKey => $serviceConfig) {
+        $dockerSettings['services'][$serviceKey] = isset($post['service_' . $serviceKey]);
+    }
+
+    $settings['dockerSettings'] = $dockerSettings;
+
+    return $settings;
 }
 
 function station_normalize_server_infrastructure(string $value): string
