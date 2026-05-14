@@ -32,6 +32,10 @@ if ($slug === '' || !station_project_exists($slug)) {
 }
 
 $user = station_current_user();
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $accessMode = station_project_access_mode($slug);
 
 if (!station_can_access_project($user, $accessMode)) {

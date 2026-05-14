@@ -2239,6 +2239,24 @@ function station_collect_dockerized_projects(): array
 }
 
 /**
+ * URI prefix for `auth_request` inside generated nginx snippets. Must match
+ * how Station is exposed on the public host (not a filesystem path). When
+ * `SCRIPT_NAME` is missing or is a CLI path, fall back to the usual deploy path.
+ */
+function station_nginx_auth_request_base_path(): string
+{
+    $base = rtrim(station_web_base_path(), '/');
+    if ($base === '' || $base === '.') {
+        return '/secure/station';
+    }
+    if (str_starts_with($base, '/var/') || str_starts_with($base, '/srv/') || str_starts_with($base, '/home/')) {
+        return '/secure/station';
+    }
+
+    return $base;
+}
+
+/**
  * Render the body of `projects.conf` (one nginx `location` block per
  * dockerized project) from the collected project list.
  */
@@ -2269,10 +2287,10 @@ function station_render_nginx_projects_conf(array $projects): string
         $hostPort = max(1, min(65535, (int) ($project['hostPort'] ?? 0)));
         $appPort = max(1, min(65535, (int) ($project['appPort'] ?? 80)));
 
-        $lines[] = '# ' . $slug . ' → host 127.0.0.1:' . $hostPort . ' (container :' . $appPort . ')';
+        $lines[] = '# ' . $slug . ' -> host 127.0.0.1:' . $hostPort . ' (container :' . $appPort . ')';
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
-        $authBase = rtrim(station_web_base_path(), '/');
-        $authUri = ($authBase !== '' ? $authBase : '') . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
+        $authBase = station_nginx_auth_request_base_path();
+        $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
         $lines[] = '    auth_request ' . $authUri . ';';
         $lines[] = '    proxy_http_version 1.1;';
         $lines[] = '    proxy_set_header Host $host;';
