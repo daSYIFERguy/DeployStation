@@ -158,6 +158,7 @@ if (is_array($templateBootstrap)) {
 
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
+$nginxPostHint = '';
 if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfrastructure'] ?? 'apache')) === 'nginx') {
     $nr = station_write_nginx_projects_conf();
     if (empty($nr['ok'])) {
@@ -166,13 +167,15 @@ if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfr
             'slug' => $slug,
             'message' => (string) ($nr['message'] ?? ''),
         ]);
+    } else {
+        $nginxPostHint = station_nginx_include_reload_hint_for_flash($nr);
     }
 }
 
 $redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
     ? 'docker-config.php?project=' . urlencode($slug)
     : 'viewer.php?project=' . urlencode($slug);
-station_upload_finish(true, 'Project deployed: ' . $slug, $redirectUrl, $expectsJson);
+station_upload_finish(true, 'Project deployed: ' . $slug . $nginxPostHint, $redirectUrl, $expectsJson);
 exit;
 
 function station_handle_zip_upload(string $projectPath): array
