@@ -2291,15 +2291,17 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
         $authBase = station_nginx_auth_request_base_path();
         $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
-        $lines[] = '    auth_request ' . $authUri . ';';
+        // Quoted set value keeps `?project=` parse-safe; do not force Connection: upgrade
+        // here — many HTTP apps return 500 when Upgrade is absent but Connection is "upgrade".
+        $authQuoted = str_replace(['\\', '"'], ['\\\\', '\\"'], $authUri);
+        $lines[] = '    set $station_docker_auth_uri "' . $authQuoted . '";';
+        $lines[] = '    auth_request $station_docker_auth_uri;';
         $lines[] = '    proxy_http_version 1.1;';
         $lines[] = '    proxy_set_header Host $host;';
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';
         $lines[] = '    proxy_set_header X-Forwarded-Prefix /p/' . $slug . ';';
-        $lines[] = '    proxy_set_header Upgrade $http_upgrade;';
-        $lines[] = '    proxy_set_header Connection "upgrade";';
         $lines[] = '    proxy_read_timeout 300s;';
         $lines[] = '    add_header X-Station-Docker-Project "' . $slug . '" always;';
         $lines[] = '    proxy_pass http://127.0.0.1:' . $hostPort . '/;';
