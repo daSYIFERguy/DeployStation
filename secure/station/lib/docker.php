@@ -2554,6 +2554,11 @@ function station_render_nginx_projects_conf(array $projects): string
         foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
             $lines[] = $hostLine;
         }
+        $adminGen = station_admin_settings();
+        if (!empty($adminGen['nginxDockerProxyStripCookies'])) {
+            $lines[] = '    # Admin: strip browser Cookie so Station PHPSESSID is not forwarded to the container.';
+            $lines[] = '    proxy_set_header Cookie "";';
+        }
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';

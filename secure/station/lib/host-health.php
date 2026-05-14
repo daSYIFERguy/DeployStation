@@ -164,6 +164,7 @@ function station_host_health_routing_map(): array
         'infrastructure' => station_normalize_server_infrastructure((string) ($admin['serverInfrastructure'] ?? 'apache')),
         'nginxInclude' => station_nginx_include_path(),
         'nginxUpstreamHostMode' => (string) ($admin['nginxDockerUpstreamHostMode'] ?? 'preserve'),
+        'nginxDockerProxyStripCookies' => !empty($admin['nginxDockerProxyStripCookies']),
         'nginxAutoReload' => !empty($admin['nginxAutoReload']),
         'nginxAuthRequestBase' => station_nginx_auth_request_base_path(),
         'webBasePath' => station_web_base_path(),

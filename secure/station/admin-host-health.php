@@ -99,6 +99,7 @@ $labels = [
 $infra = (string) ($routing['infrastructure'] ?? 'apache');
 $includePath = (string) ($routing['nginxInclude'] ?? '');
 $hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
+$stripDockerCookies = !empty($routing['nginxDockerProxyStripCookies']);
 $autoReload = !empty($routing['nginxAutoReload']);
 $webBase = (string) ($routing['webBasePath'] ?? '');
 $secureBase = station_secure_base_path();
@@ -202,6 +203,7 @@ TXT;
         <p class="setting-description">Infrastructure mode: <strong><?= station_h($infra) ?></strong>.
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
+          Strip <code>Cookie</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
           Auto nginx reload after regen: <strong><?= $autoReload ? 'on' : 'off' ?></strong>.
         </p>
         <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
@@ -254,7 +256,8 @@ TXT;
           <li><strong>Loopback fails TCP</strong> — container not listening, wrong host port, or compose not up (<code>docker compose ps</code>).</li>
           <li><strong>Loopback HTTP 5xx</strong> — fix the app or its env inside the stack; nginx is not the root cause.</li>
           <li><strong>Loopback 200 but browser 403 on /p/</strong> — Station session / project access (auth subrequest returns 403), not 500.</li>
-          <li><strong>Loopback 200 but browser 500 on /p/</strong> — often <code>auth_request</code>: nginx turns a <strong>404/502/500 from the auth subrequest</strong> (wrong path, wrong <code>server_name</code> for Cloudflare Tunnel host, PHP fatal) into <strong>HTTP 500</strong> on the public URL. The loopback container test <strong>never runs auth</strong> — use the auth <code>curl</code> block below.</li>
+          <li><strong>Loopback 200 but browser 500 on /p/</strong> — often <code>auth_request</code>: nginx turns a <strong>404/502/500 from the auth subrequest</strong> (wrong path, wrong <code>server_name</code> for Cloudflare Tunnel host, PHP fatal) into <strong>HTTP 500</strong> on the public URL. The loopback container test <strong>never runs auth</strong> — use the auth <code>curl</code> block below. Note: nginx maps <strong>403</strong> from the auth script to a client <strong>403</strong>, not 500 — so “500 only when logged in” is often the <strong>container</strong> after auth passes, or an auth subrequest that is <strong>not</strong> 2xx/401/403.</li>
+          <li><strong>500 in the browser when signed into Station, but fine in a private window</strong> — the app may be choking on Station’s <code>PHPSESSID</code> forwarded on <code>Cookie</code>. Try Admin → Projects → <strong>Strip browser Cookie header to Docker upstream</strong>, save, reload nginx.</li>
         </ol>
         <?php
           $authProbeHost = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
@@ -273,13 +276,13 @@ TXT;
         <?php if ($authQuery !== '' && $authProbeHost !== ''): ?>
         <div style="margin-top:16px;padding:12px 14px;border-left:4px solid #b45309;background:var(--panel-soft,#fffbeb);border-radius:0 8px 8px 0;">
           <h3 style="margin:0 0 8px;font-size:15px;">Auth subrequest (Cloudflare / reverse proxy)</h3>
-          <p class="setting-description" style="margin:0;">Nginx calls <code><?= station_h($authQuery) ?></code> as an internal GET. A bare <code>curl</code> <strong>without</strong> your browser <code>Cookie</code> almost always gets <strong>403</strong> for a <strong>private</strong> project — that is correct, not a misconfiguration. Use <strong>204</strong> only after pasting a real <code>PHPSESSID=…</code> from your browser, or set the project to <strong>Public</strong> in Station (then auth returns <strong>204</strong> without login).</p>
+          <p class="setting-description" style="margin:0;">Nginx calls <code><?= station_h($authQuery) ?></code> as an internal GET. A bare <code>curl</code> <strong>without</strong> your browser <code>Cookie</code> almost always gets <strong>403</strong> for a <strong>private</strong> project — that is correct, not a misconfiguration. Expect <strong>HTTP 200</strong> (empty body) after pasting a real <code>PHPSESSID=…</code> from your browser, or set the project to <strong>Public</strong> in Station (then auth returns <strong>200</strong> without login).</p>
           <p class="setting-description" style="margin:8px 0 0;">If you <strong>are</strong> signed in in the browser but <code>/p/…</code> still fails: behind Cloudflare, PHP often must trust <code>X-Forwarded-Proto: https</code> so the session cookie is marked <strong>Secure</strong>. Station now does that automatically. If your login hostname differs from the URL bar (tunnel hostname), set env <code>STATION_SESSION_COOKIE_DOMAIN</code> and optionally <code>STATION_SESSION_SAMESITE=None</code> (requires HTTPS) in PHP-FPM — see <code>station_session_cookie_params_from_env()</code> in <code>lib/bootstrap.php</code>.</p>
           <p class="setting-description" style="margin:8px 0 6px;">Probe from SSH (add <code>-H &quot;Cookie: PHPSESSID=…&quot;</code> to mimic a logged-in browser):</p>
           <pre class="host-routing-pre" style="margin:0 0 10px;">curl -sSI -H "Host: <?= station_h($authProbeHost) ?>" "http://127.0.0.1<?= station_h($authQuery) ?>"</pre>
           <p class="setting-description" style="margin:0 0 6px;">If nginx only listens on TLS locally:</p>
           <pre class="host-routing-pre" style="margin:0;">curl -sSI -k -H "Host: <?= station_h($authProbeHost) ?>" "https://127.0.0.1<?= station_h($authQuery) ?>"</pre>
-          <p class="setting-description" style="margin:10px 0 0;font-size:12px;opacity:0.9;"><strong>404</strong> on these curls → wrong <code>server_name</code> / tunnel mapping or wrong auth path (Admin → Projects). <strong>403</strong> without cookie → expected for private projects. <strong>204</strong> in curl but browser still broken → compare <code>Host</code> / cookie domain / SameSite.</p>
+          <p class="setting-description" style="margin:10px 0 0;font-size:12px;opacity:0.9;"><strong>404</strong> on these curls → wrong <code>server_name</code> / tunnel mapping or wrong auth path (Admin → Projects). <strong>403</strong> without cookie → expected for private projects. <strong>200</strong> in curl but browser still broken → compare <code>Host</code> / cookie domain / SameSite.</p>
         </div>
         <?php endif; ?>
         <?php if ($upstreamMatrix === []): ?>

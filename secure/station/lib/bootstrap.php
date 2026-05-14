@@ -456,6 +456,7 @@ function station_admin_settings(): array
         'dockerSettings' => [],
         'nginxAutoReload' => false,
         'nginxDockerUpstreamHostMode' => 'preserve',
+        'nginxDockerProxyStripCookies' => false,
         'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
@@ -538,6 +539,7 @@ function station_admin_merge_mega_form_post_into_settings(
             $hostMode = strtolower(trim((string) $post['nginxDockerUpstreamHostMode']));
             $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
         }
+        $settings['nginxDockerProxyStripCookies'] = isset($post['nginxDockerProxyStripCookies']);
         if (array_key_exists('nginxAuthRequestBasePath', $post)) {
             $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
         }

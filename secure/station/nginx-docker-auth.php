@@ -5,8 +5,9 @@ declare(strict_types=1);
 /**
  * Nginx `auth_request` subrequest handler for `/p/<slug>/` reverse-proxy routes.
  *
- * Returns 204 when the browser's session is allowed to reach this dockerized
- * project (same rules as project-serve.php). Returns 403 otherwise.
+ * Returns HTTP 200 (empty body) when the browser's session is allowed to reach
+ * this dockerized project (same rules as project-serve.php). Returns 403 otherwise.
+ * We use 200 instead of 204 for maximum compatibility with nginx auth_request.
  *
  * @see station_render_nginx_projects_conf() in lib/docker.php
  */
@@ -45,5 +46,6 @@ if (!station_can_access_project($user, $accessMode)) {
     exit;
 }
 
-http_response_code(204);
+http_response_code(200);
+header('Content-Length: 0');
 exit;

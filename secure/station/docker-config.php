@@ -192,6 +192,7 @@ $stateMeta = $stateLabels[$stateKey] ?? $stateLabels['unknown'];
 
 $adminSettingsForRoute = station_admin_settings();
 $isNginxInfrastructure = station_normalize_server_infrastructure((string) ($adminSettingsForRoute['serverInfrastructure'] ?? 'apache')) === 'nginx';
+$stripUpstreamCookies = $isNginxInfrastructure && !empty($adminSettingsForRoute['nginxDockerProxyStripCookies']);
 $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
@@ -265,6 +266,11 @@ $nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlenc
             <?php if ($isNginxInfrastructure): ?>
               Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Each route uses <code>auth_request</code> against Station so <strong>the same access mode as the file viewer</strong> applies (private projects need a signed-in session cookie). The container port is published on <strong>127.0.0.1</strong> only, so remote clients cannot skip auth by opening <code>:<?= (int) $projectConfig['hostPort'] ?></code> from another machine. Include that file <strong>before</strong> <code>location /</code> in this <code>server_name</code> block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>), then reload nginx. Verify with <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> — you should see <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>. If that header is missing, the request never hit the proxy <code>location</code> (wrong server block, wrong include path, or stale nginx config).
               <br><br><strong>auth_request</strong> uses <code><?= station_h($nginxAuthProbe) ?></code>. If <code>/p/…</code> returns <strong>500</strong> but <code>curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:<?= (int) $projectConfig['hostPort'] ?>/</code> returns <code>200</code>, nginx is probably failing the auth subrequest (wrong URL prefix). Set <em>Nginx auth_request URL prefix</em> in Admin → Projects, save, reload nginx.
+              <?php if ($stripUpstreamCookies): ?>
+                <br><br><strong>Cookie stripping</strong> is enabled globally: the <code>Cookie</code> header is not forwarded to this container (see Admin → Projects).
+              <?php else: ?>
+                <br><br>If <code>/p/…</code> fails <strong>only while you are logged into Station</strong>, try Admin → Projects → <strong>Strip browser Cookie header to Docker upstream</strong> (some apps error on Station’s <code>PHPSESSID</code>).
+              <?php endif; ?>
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>
