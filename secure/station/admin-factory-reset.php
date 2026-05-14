@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['factory_step'] ??
             'opts' => [
                 'docker_remove_volumes' => !empty($_POST['opt_docker_volumes']),
                 'docker_prune_all_images' => !empty($_POST['opt_prune_images']),
+                'docker_prune_stopped_containers' => !empty($_POST['opt_prune_stopped']),
             ],
         ];
         header('Location: admin-factory-reset.php?step=2');
@@ -62,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['factory_step'] ??
         $result = station_factory_reset_run([
             'docker_remove_volumes' => !empty($opts['docker_remove_volumes']),
             'docker_prune_all_images' => !empty($opts['docker_prune_all_images']),
+            'docker_prune_stopped_containers' => !empty($opts['docker_prune_stopped_containers']),
         ]);
         $_SESSION = [];
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -89,7 +91,7 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
         <div>
           <p class="dashboard-kicker">Owner only</p>
           <h1 class="dashboard-heading">Factory reset</h1>
-          <p class="dashboard-subheading">This removes Station configuration, activity logs, credentials, nginx includes, and every project directory under <code><?= station_h(station_projects_dir()) ?></code>. Docker compose stacks are stopped first; optional flags remove volumes or prune images on the whole host.</p>
+          <p class="dashboard-subheading">This removes Station configuration, activity logs, credentials, nginx includes, and every project directory under <code><?= station_h(station_projects_dir()) ?></code>. Docker compose stacks are stopped first; optional flags remove volumes, prune stopped containers, or prune images on the whole host. All files under the active Station data directory are deleted but the directory path is kept and recreated empty; alternate paths (<code>.secure-station-data</code>, other <code>/var/lib/deployment-station*</code> trees used by Station) are cleared or removed so a reinstall matches a first-time deploy.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -104,10 +106,11 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
           <h2 class="settings-panel-heading" style="font-size:18px;">Step 1 — Review and arm</h2>
           <ul class="setting-description" style="line-height:1.5;">
             <li>Runs <code>docker compose down --remove-orphans</code> for each project folder that has a compose file (Docker must be reachable).</li>
+            <li>Optional: <strong>Remove named volumes</strong> (<code>down -v</code>) when ticked below — database data inside compose volumes is deleted.</li>
             <li>Deletes every child directory under the projects root (except the reserved <code>station</code> name).</li>
-            <li>Deletes everything under the Station data directory, then recreates an empty skeleton.</li>
-            <li>Optional: <strong>Remove named volumes</strong> (<code>down -v</code>) — database data inside compose volumes is deleted.</li>
-            <li>Optional: <strong>Prune all unused images</strong> on this host (<code>docker image prune -af</code>) — affects non-Station images too.</li>
+            <li>Deletes everything inside the active Station data directory (see <code>STATION_DATA_DIR</code> / bootstrap resolution), then recreates an empty skeleton with correct subdirs and permissions.</li>
+            <li>Removes a sibling <code>.secure-station-data</code> tree if it exists and is not the same path as the active data dir; clears other known <code>/var/lib/deployment-station*</code> Station directories if they differ from the active data dir (directory path kept, contents removed — not all of <code>/var/lib</code>).</li>
+            <li>Optional: <strong>Prune stopped containers</strong> (<code>docker container prune -f</code>) — removes <em>all</em> stopped containers on this host, not only Station.</li>
           </ul>
           <form method="post" class="settings-form-group" style="margin-top:20px;">
             <input type="hidden" name="factory_step" value="1">
@@ -128,6 +131,10 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
               <span>Also run <code>docker compose down -v</code> (delete compose-managed volumes — destructive for databases).</span>
             </label>
             <label class="feature-toggle" style="margin-bottom:16px;">
+              <input type="checkbox" name="opt_prune_stopped" value="1">
+              <span>Also run <code>docker container prune -f</code> (delete <strong>all stopped</strong> containers on this host — not only Station).</span>
+            </label>
+            <label class="feature-toggle" style="margin-bottom:16px;">
               <input type="checkbox" name="opt_prune_images" value="1">
               <span>Also run <code>docker image prune -af</code> on this host (removes unused images system-wide).</span>
             </label>
@@ -144,6 +151,7 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
           <p class="setting-description">You are about to run the reset with these options:</p>
           <ul>
             <li>Compose volumes removed: <strong><?= !empty($optsPreview['docker_remove_volumes']) ? 'yes' : 'no' ?></strong></li>
+            <li>Stopped container prune (<code>docker container prune -f</code>): <strong><?= !empty($optsPreview['docker_prune_stopped_containers']) ? 'yes' : 'no' ?></strong></li>
             <li>Docker image prune (-af): <strong><?= !empty($optsPreview['docker_prune_all_images']) ? 'yes' : 'no' ?></strong></li>
           </ul>
           <form method="post" style="margin-top:20px;">
