@@ -2,15 +2,66 @@
 
 declare(strict_types=1);
 
+/**
+ * True when the client connection is HTTPS (direct or via reverse proxy / Cloudflare).
+ * Used for session cookie Secure flag so PHP-FPM behind TLS termination still gets Secure cookies.
+ */
+function station_request_is_https(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && (string) $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    $xfProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    if ($xfProto !== '') {
+        $first = trim(explode(',', $xfProto)[0]);
+        if ($first === 'https') {
+            return true;
+        }
+    }
+    $fe = strtolower((string) ($_SERVER['HTTP_FRONT_END_HTTPS'] ?? ''));
+
+    return $fe === 'on';
+}
+
+/**
+ * Session cookie options. Env overrides:
+ * - STATION_SESSION_SAMESITE=Lax|Strict|None (None forces Secure=true)
+ * - STATION_SESSION_COOKIE_DOMAIN= e.g. .example.com when needed for subdomains
+ */
+function station_session_cookie_params_from_env(): array
+{
+    $isHttps = station_request_is_https();
+    $raw = getenv('STATION_SESSION_SAMESITE');
+    $v = is_string($raw) ? strtolower(trim($raw)) : '';
+    $sameSite = 'Lax';
+    if ($v === 'none') {
+        $sameSite = 'None';
+    } elseif ($v === 'strict') {
+        $sameSite = 'Strict';
+    }
+    $secure = $isHttps || $sameSite === 'None';
+
+    $params = [
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => $sameSite,
+    ];
+    $dom = getenv('STATION_SESSION_COOKIE_DOMAIN');
+    if (is_string($dom)) {
+        $dom = trim($dom);
+        if ($dom !== '') {
+            $params['domain'] = $dom;
+        }
+    }
+
+    return $params;
+}
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     if (headers_sent() === false) {
-        session_set_cookie_params([
-            'lifetime' => 0,
-            'path' => '/',
-            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-            'httponly' => true,
-            'samesite' => 'Lax'
-        ]);
+        session_set_cookie_params(station_session_cookie_params_from_env());
     }
     session_start();
 }
