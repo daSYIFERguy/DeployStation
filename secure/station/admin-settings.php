@@ -410,6 +410,14 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                 <p class="setting-description" style="margin-top: 14px;">Every generated <code>/p/&lt;slug&gt;/</code> route clears <code>Cookie</code> and <code>Authorization</code> before <code>proxy_pass</code> to the container. If those headers were forwarded, your Station session cookie often makes the app return <strong>500 when you are signed in</strong> while a logged-out browser (fewer cookies) still loads the page. Regenerate routes after deploy so nginx picks up the snippet.</p>
 
                 <label class="feature-toggle" style="margin-top: 14px;">
+                  <input type="checkbox" name="nginxDockerProxySignedQueryToken" <?= !empty($settings['nginxDockerProxySignedQueryToken'] ?? true) ? 'checked' : '' ?>>
+                  <div class="feature-toggle-content">
+                    <span class="feature-toggle-title">Allow signed <code>?dp_t=</code> token for docker proxy auth</span>
+                    <span class="feature-toggle-desc">When enabled, <code>nginx-docker-auth.php</code> can return allow for a <strong>short-lived HMAC</strong> in the query string (same slug), so <code>/p/&lt;slug&gt;/</code> works <strong>without</strong> relying on the Station session cookie on the auth subrequest — helpful if Cloudflare or another layer strips or alters cookies only on that path. Generated nginx config appends <code>&amp;dp_t=$arg_dp_t</code> on the internal auth URI so only that parameter is forwarded (not the full browser query string). Project owners can mint a link from <strong>Docker config</strong>. Anyone with the URL can use it until expiry; disable here if you do not want link-based access at all.</span>
+                  </div>
+                </label>
+
+                <label class="feature-toggle" style="margin-top: 14px;">
                   <input type="checkbox" name="nginxDockerAuthBypass" <?= !empty($settings['nginxDockerAuthBypass']) ? 'checked' : '' ?>>
                   <div class="feature-toggle-content">
                     <span class="feature-toggle-title">Bypass docker <code>auth_request</code> (emergency only)</span>

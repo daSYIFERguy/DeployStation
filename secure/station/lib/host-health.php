@@ -165,6 +165,7 @@ function station_host_health_routing_map(): array
         'nginxInclude' => station_nginx_include_path(),
         'nginxUpstreamHostMode' => (string) ($admin['nginxDockerUpstreamHostMode'] ?? 'preserve'),
         'nginxDockerProxyStripCookies' => true,
+        'nginxDockerProxySignedQueryToken' => !empty($admin['nginxDockerProxySignedQueryToken']),
         'nginxDockerAuthBypassAdmin' => !empty($admin['nginxDockerAuthBypass']),
         'nginxDockerAuthBypassEffective' => station_nginx_docker_auth_bypass_active(),
         'nginxReloadAfterRouteWrites' => station_normalize_server_infrastructure((string) ($admin['serverInfrastructure'] ?? 'apache')) === 'nginx',

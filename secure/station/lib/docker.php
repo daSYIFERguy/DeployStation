@@ -2569,7 +2569,9 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = '# ' . $slug . ' -> host 127.0.0.1:' . $hostPort . ' (container :' . $appPort . ')';
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
         $authBase = station_nginx_auth_request_base_path();
-        $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
+        // Forward only dp_t from the browser query (not full $args) so a client cannot
+        // append a second project= and override the slug bound in this location block.
+        $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug) . '&dp_t=$arg_dp_t';
         // Literal auth_request URI; Host / X-Forwarded-Host lines come from
         // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
         $lines[] = '    auth_request ' . $authUri . ';';

@@ -495,6 +495,7 @@ function station_admin_settings(): array
         'dockerSettings' => [],
         'nginxDockerUpstreamHostMode' => 'preserve',
         'nginxDockerAuthBypass' => false,
+        'nginxDockerProxySignedQueryToken' => true,
         'nginxAuthRequestBasePath' => '',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
@@ -598,6 +599,7 @@ function station_admin_merge_mega_form_post_into_settings(
             $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
         }
         $settings['nginxDockerAuthBypass'] = isset($post['nginxDockerAuthBypass']);
+        $settings['nginxDockerProxySignedQueryToken'] = isset($post['nginxDockerProxySignedQueryToken']);
         if (array_key_exists('nginxAuthRequestBasePath', $post)) {
             $settings['nginxAuthRequestBasePath'] = trim((string) $post['nginxAuthRequestBasePath']);
         }

@@ -47,6 +47,29 @@ if (!station_docker_enabled()) {
     exit;
 }
 
+if (isset($_GET['issue_signed_proxy_url']) && (string) ($_GET['issue_signed_proxy_url'] ?? '') === '1') {
+    require_once __DIR__ . '/lib/docker-proxy-token.php';
+    $adminForMint = station_admin_settings();
+    if (empty($adminForMint['nginxDockerProxySignedQueryToken'])) {
+        station_flash_set('error', 'Signed proxy URLs are disabled in Admin → Projects (nginx section).');
+    } elseif (station_normalize_server_infrastructure((string) ($adminForMint['serverInfrastructure'] ?? 'apache')) !== 'nginx') {
+        station_flash_set('error', 'Signed proxy URLs apply only when Admin → Projects is set to nginx.');
+    } else {
+        $tok = station_docker_proxy_token_issue($projectSlug, 600);
+        $xfProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+        $scheme = in_array($xfProto, ['https', 'http'], true)
+            ? $xfProto
+            : (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
+        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        $origin = $host !== '' ? $scheme . '://' . $host : '';
+        $path = '/p/' . rawurlencode($projectSlug) . '/';
+        $url = ($origin !== '' ? rtrim($origin, '/') . $path : $path) . '?dp_t=' . rawurlencode($tok);
+        station_flash_set('ok', 'Signed URL (~10 min; treat like a secret — anyone with it can open this /p/ path until it expires): ' . $url);
+    }
+    header('Location: docker-config.php?project=' . rawurlencode($projectSlug));
+    exit;
+}
+
 $error = '';
 $ok = station_flash_get('ok');
 $existing = station_project_settings($projectSlug);
@@ -196,7 +219,7 @@ $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
 $nginxAuthBase = station_nginx_auth_request_base_path();
-$nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlencode($projectSlug);
+$nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlencode($projectSlug) . '&dp_t=$arg_dp_t';
 ?>
 <!doctype html>
 <html lang="en">
@@ -265,7 +288,10 @@ $nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlenc
             <?php if ($isNginxInfrastructure): ?>
               Proxies to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> using the managed include at <code><?= station_h($nginxIncludePathDisplay) ?></code>. Access follows the same project rules as the file viewer (set visibility and access mode under Project Settings). The published port is bound to <code>127.0.0.1</code> on this host only. Add the include <strong>before</strong> a catch-all <code>location /</code> in your vhost, then save project defaults in Admin so <code>projects.conf</code> and nginx reload stay in sync. Optional check: <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> should show <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>.
               <br><br>Internal auth URL prefix: <code><?= station_h($nginxAuthProbe) ?></code> — if this path does not match where your server runs Station PHP, set <em>Nginx auth_request URL prefix</em> under Admin → Projects.
-              <br><br>Generated <code>projects.conf</code> routes clear <strong>Cookie</strong> and <strong>Authorization</strong> before <code>proxy_pass</code> to the container (forwarding your Station session cookie often breaks the app when you are signed in).
+              <br><br>Generated <code>projects.conf</code> routes clear <strong>Cookie</strong> and <strong>Authorization</strong> before <code>proxy_pass</code> to the container (forwarding your Station session cookie often breaks the app when you are signed in). The auth subrequest forwards only <code>dp_t</code> from the browser query (<code>&amp;dp_t=$arg_dp_t</code>) so a short-lived signed token can authorize without a session cookie — useful if a CDN mishandles cookies on <code>/p/…</code> only. After upgrading Station, save Docker settings or use Admin → Projects → <strong>Regenerate now</strong> so nginx picks up that snippet.
+              <?php if (!empty($adminSettingsForRoute['nginxDockerProxySignedQueryToken'])): ?>
+                <br><br><a href="docker-config.php?project=<?= urlencode($projectSlug) ?>&amp;issue_signed_proxy_url=1">Mint signed URL (~10 min)</a> for this project (copy from the green banner after redirect).
+              <?php endif; ?>
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>

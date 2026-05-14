@@ -100,6 +100,7 @@ $infra = (string) ($routing['infrastructure'] ?? 'apache');
 $includePath = (string) ($routing['nginxInclude'] ?? '');
 $hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
 $stripDockerCookies = !empty($routing['nginxDockerProxyStripCookies']);
+$signedQueryToken = !empty($routing['nginxDockerProxySignedQueryToken']);
 $dockerAuthBypassEffective = !empty($routing['nginxDockerAuthBypassEffective']);
 $dockerAuthBypassAdmin = !empty($routing['nginxDockerAuthBypassAdmin']);
 $nginxReloadAfterWrites = !empty($routing['nginxReloadAfterRouteWrites']);
@@ -196,11 +197,12 @@ TXT;
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
           Strip <code>Cookie</code> + <code>Authorization</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
+          Signed <code>?dp_t=</code> proxy token (admin): <strong><?= $signedQueryToken ? 'on' : 'off' ?></strong>.
           Docker <code>auth_request</code> bypass: <strong><?= $dockerAuthBypassEffective ? 'on' : 'off' ?></strong><?= $dockerAuthBypassEffective && !$dockerAuthBypassAdmin ? ' <span style="opacity:0.85;">(env <code>STATION_DOCKER_AUTH_BYPASS</code> — not the admin checkbox)</span>' : '' ?>.
-          <code>/p/…</code> proxy: always requires Station login unless bypass is on.
+          <code>/p/…</code> proxy: requires Station login<?= $signedQueryToken ? ' or a valid short-lived <code>?dp_t=</code> URL' : '' ?>, unless bypass is on.
           Nginx reload after route file writes: <strong><?= $nginxReloadAfterWrites ? 'yes' : 'no' ?></strong> (yes when production web server is Nginx).
         </p>
-        <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
+        <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — generated subrequest appends <code>&amp;dp_t=$arg_dp_t</code> so a signed <code>dp_t</code> from the browser reaches PHP without forwarding the full query string. Probe pattern: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;&amp;dp_t=$arg_dp_t</code></p>
         <p class="setting-description">Web base path: <code><?= station_h($webBase !== '' ? $webBase : '(empty — site root)') ?></code>.
           Secure path prefix: <code><?= station_h($secureBase !== '' ? $secureBase : '(empty)') ?></code>.
         </p>

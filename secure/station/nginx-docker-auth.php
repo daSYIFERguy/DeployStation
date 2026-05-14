@@ -19,6 +19,11 @@ declare(strict_types=1);
  * auth_request** or set `STATION_DOCKER_AUTH_BYPASS=1` in php-fpm / nginx `fastcgi_param`
  * on Station PHP — then any existing project slug returns 200 without session checks.
  *
+ * Optional **signed query token** `?dp_t=` (Admin → Projects, on by default): when the
+ * generated `auth_request` URI forwards `dp_t=$arg_dp_t` from the browser request,
+ * a short-lived HMAC token allows 200 **without** a Station session cookie — useful when a CDN
+ * or proxy mishandles cookies on `/p/…` while the main app still works. Treat issued URLs like secrets.
+ *
  * @see station_render_nginx_projects_conf() in lib/docker.php
  */
 
@@ -28,6 +33,7 @@ if (!defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE')) {
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/docker-proxy-token.php';
 
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
@@ -48,6 +54,14 @@ try {
     }
 
     if (station_nginx_docker_auth_bypass_active()) {
+        http_response_code(200);
+        header('Content-Length: 0');
+        exit;
+    }
+
+    $dpT = isset($_GET['dp_t']) ? (string) $_GET['dp_t'] : '';
+    if ($dpT !== '' && !empty(station_admin_settings()['nginxDockerProxySignedQueryToken'])
+        && station_docker_proxy_token_valid_for_slug($slug, $dpT)) {
         http_response_code(200);
         header('Content-Length: 0');
         exit;
