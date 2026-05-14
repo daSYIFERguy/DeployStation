@@ -61,8 +61,8 @@ function station_session_cookie_params_from_env(): array
 
 /**
  * True when this request is nginx auth_request hitting nginx-docker-auth.php.
- * Used so we always use read_and_close (or reopen after a normal session_start) and avoid
- * blocking other Station tabs on the same session file — otherwise /p/… can 500 for
+ * Used to release the session file lock early (see bootstrap session block below) so
+ * auth_request does not block behind another Station tab — otherwise /p/… can 500 for
  * signed-in users while anonymous still works.
  */
 function station_script_is_nginx_docker_auth(): bool
@@ -72,8 +72,16 @@ function station_script_is_nginx_docker_auth(): bool
         return true;
     }
     $sn = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    if ($sn !== '' && str_ends_with($sn, 'nginx-docker-auth.php')) {
+        return true;
+    }
+    // Some FPM pools leave SCRIPT_FILENAME pointing at a router; URI still names this script.
+    $ru = (string) ($_SERVER['REQUEST_URI'] ?? '');
+    if ($ru !== '' && str_contains($ru, 'nginx-docker-auth.php')) {
+        return true;
+    }
 
-    return $sn !== '' && str_ends_with($sn, 'nginx-docker-auth.php');
+    return false;
 }
 
 $stationSessionReadAndClose = station_script_is_nginx_docker_auth()
@@ -81,11 +89,10 @@ $stationSessionReadAndClose = station_script_is_nginx_docker_auth()
 
 if (session_status() === PHP_SESSION_ACTIVE) {
     if ($stationSessionReadAndClose) {
+        // Session was already started (e.g. auto_prepend). Do NOT call session_start() again:
+        // that can break the session module and yield 500. write_close() releases the lock;
+        // $_SESSION stays readable for the rest of this request (PHP manual).
         session_write_close();
-        if (headers_sent() === false) {
-            session_set_cookie_params(station_session_cookie_params_from_env());
-        }
-        session_start(['read_and_close' => true]);
     }
 } elseif (session_status() === PHP_SESSION_NONE) {
     if (headers_sent() === false) {

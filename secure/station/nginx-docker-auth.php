@@ -11,9 +11,9 @@ declare(strict_types=1);
  * but not the docker reverse proxy at /p/&lt;slug&gt;/. Returns 403 otherwise.
  * We use 200 instead of 204 for maximum compatibility with nginx auth_request.
  *
- * Session: bootstrap detects this script (see `station_script_is_nginx_docker_auth`) and
- * uses `session_start(['read_and_close' => true])`, or reopens after `session_write_close()`
- * if another layer already started a normal session — avoids FPM blocking on /p/ auth.
+ * Session: bootstrap detects this script (`station_script_is_nginx_docker_auth`) and either
+ * starts with `read_and_close` or, if the session is already active, calls `session_write_close()`
+ * only (never a second `session_start()` — that can 500). `$_SESSION` stays readable for auth.
  *
  * Emergency bypass (not for production): enable **Admin → Projects → Bypass docker
  * auth_request** or set `STATION_DOCKER_AUTH_BYPASS=1` in php-fpm / nginx `fastcgi_param`
