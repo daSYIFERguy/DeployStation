@@ -606,22 +606,20 @@ sudo systemctl restart php*-fpm
               </div>
               <p class="setting-description" style="margin-bottom: 12px;"><strong>Restart all</strong> runs <code>docker compose restart</code> per project (containers only, no image rebuild). <strong>Force recreate all</strong> runs <code>docker compose up -d --force-recreate</code> — still no image rebuild unless you rebuild per project; named volumes (e.g. databases) are kept.</p>
               <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
-                <form method="post" style="margin:0;">
-                  <input type="hidden" name="action" value="admin_docker_restart_all">
-                  <button type="submit" class="secondary-btn" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Restart all container stacks</button>
-                </form>
-                <form method="post" style="margin:0;">
-                  <input type="hidden" name="action" value="admin_docker_recreate_all">
+                <?php /* Do not nest <form> inside the mega-form: browsers close the outer form and orphan Docker fields. */ ?>
+                <button type="submit" class="secondary-btn" form="admin-docker-restart-all-form" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Restart all container stacks</button>
+                <div>
                   <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:8px;">
-                    <input type="checkbox" name="confirm_recreate_all" value="1">
+                    <input type="checkbox" name="confirm_recreate_all" value="1" form="admin-docker-recreate-all-form">
                     I want to force-recreate every stack
                   </label>
-                  <button type="submit" class="secondary-btn" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Force recreate all</button>
-                </form>
+                  <button type="submit" class="secondary-btn" form="admin-docker-recreate-all-form" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Force recreate all</button>
+                </div>
               </div>
             </div>
 
             <h3 style="font-size: 15px; margin: 0 0 16px;">Docker Deployment</h3>
+            <p class="setting-description" style="margin-bottom: 14px;">Running stacks are exposed at <strong>site-root</strong> URLs like <code>/p/&lt;slug&gt;/</code> (e.g. <code>https://your.domain/p/myapp/</code>) — not under <code>/secure/station/</code>. That path is defined in the generated nginx include; a wrong <code>auth_request</code> base often yields <strong>500</strong> only on <code>/p/…</code>.</p>
             <label class="feature-toggle">
               <input type="checkbox" name="dockerEnabled" <?= !empty($dockerSettings['enabled']) ? 'checked' : '' ?>>
               <div class="feature-toggle-content">
@@ -757,6 +755,14 @@ sudo systemctl restart php*-fpm
           </div>
         </div>
 
+          </form>
+
+          <!-- Stand-alone POST targets for Docker bulk actions (must live outside the mega-form). -->
+          <form id="admin-docker-restart-all-form" method="post" action="admin-settings.php?tab=docker" style="display:none;" aria-hidden="true">
+            <input type="hidden" name="action" value="admin_docker_restart_all">
+          </form>
+          <form id="admin-docker-recreate-all-form" method="post" action="admin-settings.php?tab=docker" style="display:none;" aria-hidden="true">
+            <input type="hidden" name="action" value="admin_docker_recreate_all">
           </form>
 
           <!-- Tiny side-forms for station identity (kept out of the multipart
