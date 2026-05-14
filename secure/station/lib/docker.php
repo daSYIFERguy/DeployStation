@@ -2659,11 +2659,7 @@ function station_nginx_maybe_reload_main(): array
         return ['ok' => true, 'skipped' => true, 'message' => 'Skipped: automatic nginx reload is disabled in Admin → Projects.'];
     }
 
-    $cmd = trim((string) ($settings['nginxReloadCommand'] ?? ''));
-    if ($cmd === '') {
-        $cmd = 'sudo -n /usr/sbin/nginx -t && sudo -n /usr/sbin/nginx -s reload';
-    }
-
+    $cmd = station_admin_resolved_shell_command($settings, 'nginxReloadCommand');
     $result = station_run_shell_command($cmd, 90);
     if (!empty($result['ok'])) {
         station_log_event('nginx.reload.ok', [

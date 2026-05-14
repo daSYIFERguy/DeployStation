@@ -382,7 +382,7 @@ function station_save_projects_meta(array $meta): bool
 
 function station_admin_settings(): array
 {
-    $defaults = [
+    $defaults = array_merge([
         'serverInfrastructure' => 'apache',
         'defaultProjectVisibility' => 'private',
         'defaultProjectAccessMode' => 'admin',
@@ -404,18 +404,44 @@ function station_admin_settings(): array
         'customTemplates' => [],
         'dockerSettings' => [],
         'nginxAutoReload' => false,
-        'nginxReloadCommand' => '',
         'nginxDockerUpstreamHostMode' => 'preserve',
         'nginxAuthRequestBasePath' => '',
-        'hostRestartNginxCommand' => '',
-        'hostRestartPhpFpmCommand' => '',
-        'hostRestartDockerCommand' => '',
-        'hostDiagExtraCommand' => '',
-        'hostNginxTestCommand' => '',
-    ];
+    ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
     return array_merge($defaults, is_array($stored) ? $stored : []);
+}
+
+/**
+ * Default one-liners for nginx auto-reload and Host health quick actions (Debian/Ubuntu paths).
+ * Adjust `hostRestartPhpFpmCommand` for your PHP-FPM unit name (e.g. php8.4-fpm).
+ *
+ * @return array<string, string>
+ */
+function station_admin_default_shell_commands(): array
+{
+    return [
+        'nginxReloadCommand' => 'sudo -n /usr/sbin/nginx -t && sudo -n /usr/sbin/nginx -s reload',
+        'hostRestartNginxCommand' => 'sudo -n /usr/sbin/nginx -t && sudo -n /usr/sbin/nginx -s reload 2>&1',
+        'hostRestartPhpFpmCommand' => 'sudo -n /usr/bin/systemctl reload php8.3-fpm 2>&1',
+        'hostRestartDockerCommand' => 'sudo -n /usr/bin/systemctl restart docker 2>&1',
+        'hostDiagExtraCommand' => 'sudo -n /usr/bin/tail -n 80 /var/log/nginx/error.log 2>&1',
+        'hostNginxTestCommand' => 'sudo -n /usr/sbin/nginx -t 2>&1',
+    ];
+}
+
+/**
+ * Effective command for UI and saves: non-empty stored value, else default for this key.
+ */
+function station_admin_resolved_shell_command(array $settings, string $key): string
+{
+    $v = trim((string) ($settings[$key] ?? ''));
+    if ($v !== '') {
+        return $v;
+    }
+    $defaults = station_admin_default_shell_commands();
+
+    return (string) ($defaults[$key] ?? '');
 }
 
 /**
@@ -524,9 +550,11 @@ function station_nginx_project_route_snippet(): string
 
     $lines = [
         '# Add these locations inside your server {} block.',
-        '# IMPORTANT: put the `include …/projects.conf` line BEFORE `location / {`',
-        '# so per-project /p/<slug>/ routes win over the site root (otherwise /p/',
-        '# requests fall through to your main index).',
+        '# IMPORTANT: in your full server{}, this whole paste must appear BEFORE a',
+        '# catch-all `location / { ... }` (or other prefix that would steal `/p/…`).',
+        '# The `include …/projects.conf` line is last *in this snippet* only because',
+        '# the `/p/<slug>/` blocks live in that external file — not because order',
+        '# inside server{} is “include last everywhere”.',
         '# Do not use ^~ on the station PHP locations here, or Nginx will serve',
         '# station PHP files as downloads instead of passing them to PHP-FPM.',
         '',

@@ -21,12 +21,8 @@ require_once __DIR__ . '/docker.php';
 function station_host_health_nginx_syntax_test_command(): string
 {
     $admin = station_admin_settings();
-    $override = trim((string) ($admin['hostNginxTestCommand'] ?? ''));
-    if ($override !== '') {
-        return $override;
-    }
 
-    return 'nginx -t 2>&1';
+    return station_admin_resolved_shell_command($admin, 'hostNginxTestCommand');
 }
 
 /**

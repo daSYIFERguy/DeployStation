@@ -360,29 +360,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
                     </div>
                   </label>
                   <label class="setting-label" for="nginxReloadCommand" style="margin-top: 14px;">Reload shell command</label>
-                  <textarea id="nginxReloadCommand" name="nginxReloadCommand" rows="3" spellcheck="false" class="code-block" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;"><?= station_h((string) ($settings['nginxReloadCommand'] ?? '')) ?></textarea>
-                  <p class="setting-description">Leave empty to use <code>sudo -n /usr/sbin/nginx -t &amp;&amp; sudo -n /usr/sbin/nginx -s reload</code>.</p>
+                  <textarea id="nginxReloadCommand" name="nginxReloadCommand" rows="3" spellcheck="false" class="code-block" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;"><?= station_h(station_admin_resolved_shell_command($settings, 'nginxReloadCommand')) ?></textarea>
+                  <p class="setting-description">Default after a fresh install matches the line below (nginx test + <code>nginx -s reload</code>). Clear the field only if you use a custom wrapper script.</p>
 
                   <details style="margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; background: var(--panel-soft);">
-                    <summary style="cursor:pointer; font-weight:600;">How to grant passwordless nginx reload to the web server user</summary>
+                    <summary style="cursor:pointer; font-weight:600;">Passwordless sudo for the PHP user (nginx + optional Host health actions)</summary>
                     <div style="margin-top: 10px;">
                       <p>1. Identify the system user PHP runs as. Run on your server:</p>
                       <pre class="code-block">ps -eo user,comm | grep -E 'php-fpm|nginx|apache' | awk '{print $1}' | sort -u</pre>
                       <p>On Debian/Ubuntu it's usually <code>www-data</code>. On RHEL/Alpine/Docker images it's often <code>nginx</code>.</p>
 
-                      <p>2. Run <code>sudo visudo -f /etc/sudoers.d/deployment-station</code> and paste (replace <code>www-data</code> with the user from step 1):</p>
-                      <pre class="code-block"># Deployment Station — allow PHP user to test + reload nginx without a password.
+                      <p>2. Run <code>sudo visudo -f /etc/sudoers.d/deployment-station</code> and paste the block below (replace <code>www-data</code> with the user from step 1). Each command path must match what runs on <em>your</em> host (<code>which nginx</code>, <code>systemctl cat php8.3-fpm</code>, etc.). There must be <strong>no stray characters</strong> after a command (e.g. <code>nginx -s reload</code> — not <code>reload?</code>).</p>
+                      <pre class="code-block"># Deployment Station — passwordless for the PHP user (tune paths / unit names).
+# Required for automatic nginx reload after projects.conf regen:
 www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t
-www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
-                      <p>Save the file. Sudo refuses bad files, so a typo just rejects the change — you can't lock yourself out.</p>
+www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload
 
-                      <p>3. Verify, as the PHP user:</p>
+# Optional — same binaries Host health “Quick actions” uses by default:
+www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
+www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload php8.3-fpm
+www-data ALL=(root) NOPASSWD: /usr/bin/systemctl reload php8.4-fpm
+www-data ALL=(root) NOPASSWD: /usr/bin/systemctl restart docker
+www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
+                      <p>Add or remove <code>systemctl reload php…</code> lines for the PHP-FPM unit you actually use (only one needs to match). If your <code>nginx</code> or <code>systemctl</code> lives elsewhere, run <code>command -v nginx systemctl</code> and adjust the paths in <strong>both</strong> sudoers and Admin → Host health.</p>
+
+                      <p>3. Verify nginx test, as the PHP user:</p>
                       <pre class="code-block">sudo -u www-data sudo -n /usr/sbin/nginx -t</pre>
-                      <p>Expected output ends with <code>syntax is ok</code> and <code>test is successful</code>. If you see a password prompt, the sudoers line didn't match — recheck the user/binary path.</p>
+                      <p>Expected output ends with <code>syntax is ok</code> and <code>test is successful</code>. If you see a password prompt, the sudoers line didn't match — recheck the user and the exact binary path.</p>
 
-                      <p>4. Tick <strong>Automatic nginx test + reload</strong> above and click <strong>Save Project Defaults</strong>. The next time Station regenerates <code>projects.conf</code> (Docker save, project upload/delete/archive, etc.), it'll run the command and either succeed silently or surface the error in the activity log.</p>
+                      <p>4. Tick <strong>Automatic nginx test + reload</strong> above and click <strong>Save Project Defaults</strong>. The next time Station regenerates <code>projects.conf</code> (Docker save, project upload/delete/archive, etc.), it runs the reload command and either succeeds or logs the error.</p>
 
-                      <p>Alternative if you can't grant sudo: leave it disabled and run <code>sudo systemctl reload nginx</code> manually after big changes — the file on disk is always current.</p>
+                      <p>5. Open <strong>Host health</strong> — the helper one-liners are prefilled to match the sudoers example; save there once after fixing sudo so quick actions work.</p>
+
+                      <p>Alternative if you can't grant sudo: leave automatic reload off and run <code>sudo systemctl reload nginx</code> manually after big changes — the include file on disk is still updated every time.</p>
                     </div>
                   </details>
                 </div>

@@ -308,15 +308,15 @@ TXT;
         <form method="post">
           <input type="hidden" name="host_health_action" value="save_commands">
           <label for="hostNginxTestCommand">Nginx config test command (optional)</label>
-          <textarea id="hostNginxTestCommand" name="hostNginxTestCommand" placeholder="sudo -n nginx -t 2>&1"><?= station_h((string) ($settings['hostNginxTestCommand'] ?? '')) ?></textarea>
+          <textarea id="hostNginxTestCommand" name="hostNginxTestCommand" placeholder="Clear field to use default (sudo -n nginx -t)"><?= station_h(station_admin_resolved_shell_command($settings, 'hostNginxTestCommand')) ?></textarea>
           <label for="hostRestartNginxCommand">Restart nginx</label>
-          <textarea id="hostRestartNginxCommand" name="hostRestartNginxCommand"><?= station_h((string) ($settings['hostRestartNginxCommand'] ?? '')) ?></textarea>
+          <textarea id="hostRestartNginxCommand" name="hostRestartNginxCommand"><?= station_h(station_admin_resolved_shell_command($settings, 'hostRestartNginxCommand')) ?></textarea>
           <label for="hostRestartPhpFpmCommand">Restart PHP-FPM</label>
-          <textarea id="hostRestartPhpFpmCommand" name="hostRestartPhpFpmCommand"><?= station_h((string) ($settings['hostRestartPhpFpmCommand'] ?? '')) ?></textarea>
+          <textarea id="hostRestartPhpFpmCommand" name="hostRestartPhpFpmCommand"><?= station_h(station_admin_resolved_shell_command($settings, 'hostRestartPhpFpmCommand')) ?></textarea>
           <label for="hostRestartDockerCommand">Restart Docker</label>
-          <textarea id="hostRestartDockerCommand" name="hostRestartDockerCommand"><?= station_h((string) ($settings['hostRestartDockerCommand'] ?? '')) ?></textarea>
+          <textarea id="hostRestartDockerCommand" name="hostRestartDockerCommand"><?= station_h(station_admin_resolved_shell_command($settings, 'hostRestartDockerCommand')) ?></textarea>
           <label for="hostDiagExtraCommand">Extra diagnostic (tail, journalctl, etc.)</label>
-          <textarea id="hostDiagExtraCommand" name="hostDiagExtraCommand"><?= station_h((string) ($settings['hostDiagExtraCommand'] ?? '')) ?></textarea>
+          <textarea id="hostDiagExtraCommand" name="hostDiagExtraCommand"><?= station_h(station_admin_resolved_shell_command($settings, 'hostDiagExtraCommand')) ?></textarea>
           <div style="margin-top:16px;">
             <button type="submit" class="secondary-btn">Save helper commands</button>
           </div>
