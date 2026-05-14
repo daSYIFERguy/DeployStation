@@ -1427,6 +1427,7 @@ $statsCards = !$canBuild
               <li><a href="admin-settings.php?tab=docker">Docker</a> — engine path, services, diagnostics.</li>
               <li><a href="admin-settings.php?tab=integrations">Integrations</a> — GitHub, VS Code, ChatGPT, Codex.</li>
               <li><a href="admin-settings.php?tab=onboarding">Onboarding</a> — first-run flow.</li>
+              <li><a href="admin-host-health.php">Host health</a> — live host stats, routing map, optional restarts (nginx / PHP-FPM / Docker).</li>
             </ul>
             <p style="margin: 6px 0 0;"><a class="quick-link" href="admin-settings.php">Open Admin Settings</a></p>
           </div>

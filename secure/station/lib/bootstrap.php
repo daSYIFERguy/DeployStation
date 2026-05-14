@@ -317,6 +317,10 @@ function station_admin_settings(): array
         'nginxAutoReload' => false,
         'nginxReloadCommand' => '',
         'nginxDockerUpstreamHostMode' => 'preserve',
+        'hostRestartNginxCommand' => '',
+        'hostRestartPhpFpmCommand' => '',
+        'hostRestartDockerCommand' => '',
+        'hostDiagExtraCommand' => '',
     ]);
 }
 
@@ -635,6 +639,7 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
 
     if ($isOwner) {
         $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', '◫', 'Settings');
+        $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', '📡', 'Host health');
     }
 
     $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', '◌', 'User Settings');

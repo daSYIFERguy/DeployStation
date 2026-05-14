@@ -1,0 +1,323 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/host-health.php';
+
+station_require_owner();
+
+$ok = station_flash_get('ok');
+$error = '';
+$runResult = null;
+
+$commandKeys = [
+    'hostRestartNginxCommand',
+    'hostRestartPhpFpmCommand',
+    'hostRestartDockerCommand',
+    'hostDiagExtraCommand',
+];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string) ($_POST['host_health_action'] ?? '');
+
+    if ($action === 'save_commands') {
+        $settings = station_admin_settings();
+        foreach ($commandKeys as $key) {
+            $settings[$key] = trim((string) ($_POST[$key] ?? ''));
+        }
+        if (station_save_admin_settings($settings)) {
+            station_flash_set('ok', 'Host helper commands saved.');
+            header('Location: admin-host-health.php');
+            exit;
+        }
+        $error = 'Could not save admin settings (check filesystem permissions on the data directory).';
+    } elseif ($action === 'run_command') {
+        $which = (string) ($_POST['which'] ?? '');
+        $allowedConfigured = [
+            'restart_nginx' => 'hostRestartNginxCommand',
+            'restart_php_fpm' => 'hostRestartPhpFpmCommand',
+            'restart_docker' => 'hostRestartDockerCommand',
+            'run_extra' => 'hostDiagExtraCommand',
+        ];
+        if ($which === 'nginx_test') {
+            $runResult = station_run_shell_command('nginx -t 2>&1', 20);
+            station_log_event('host_health_nginx_test', [
+                'ok' => !empty($runResult['ok']),
+                'code' => (int) ($runResult['code'] ?? -1),
+                'outputSnippet' => substr((string) ($runResult['output'] ?? ''), 0, 800),
+            ]);
+        } elseif (isset($allowedConfigured[$which])) {
+            $settingsKey = $allowedConfigured[$which];
+            $runResult = station_host_health_run_configured_command($settingsKey);
+            station_log_event('host_health_shell', [
+                'which' => $which,
+                'settingsKey' => $settingsKey,
+                'ok' => !empty($runResult['ok']),
+                'code' => (int) ($runResult['code'] ?? -1),
+                'outputSnippet' => substr((string) ($runResult['output'] ?? ''), 0, 800),
+            ]);
+        } else {
+            $error = 'Unknown action.';
+        }
+    }
+}
+
+$settings = station_admin_settings();
+$snapshot = station_host_health_snapshot();
+$routing = station_host_health_routing_map();
+
+$labels = [
+    'uptime' => 'Uptime',
+    'memory' => 'Memory (free -h)',
+    'disk' => 'Disk (df -h)',
+    'top_cpu' => 'Top processes by CPU',
+    'top_mem' => 'Top processes by memory',
+    'listeners' => 'Listening TCP ports (ss / netstat)',
+    'systemd_nginx' => 'systemd: nginx',
+    'systemd_docker' => 'systemd: docker',
+    'php_fpm_units' => 'PHP-FPM units (if present)',
+    'nginx_syntax' => 'nginx -t (syntax test)',
+    'docker_ps' => 'docker ps',
+    'docker_stats' => 'docker stats (one-shot)',
+];
+
+$infra = (string) ($routing['infrastructure'] ?? 'apache');
+$includePath = (string) ($routing['nginxInclude'] ?? '');
+$hostMode = (string) ($routing['nginxUpstreamHostMode'] ?? 'preserve');
+$autoReload = !empty($routing['nginxAutoReload']);
+$webBase = (string) ($routing['webBasePath'] ?? '');
+$secureBase = station_secure_base_path();
+
+$trunc = static function (string $text, int $max = 20000): string {
+    if (strlen($text) <= $max) {
+        return $text;
+    }
+    return substr($text, 0, $max) . "\n\n… output truncated for the browser …\n";
+};
+
+$diagram = <<<'TXT'
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Browser                                                                 │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │
+                    Host reverse proxy (your choice in Admin)
+                                │
+         ┌──────────────────────┴──────────────────────┐
+         │                                             │
+    Station PHP app                          Per-project Docker
+    (this Deployment Station)                  (compose on host)
+         │                                             │
+    Typical paths:                               Public URL prefix:
+    …/station/…  (dashboard)                    /p/<slug>/…
+    …/secure/station/…  (admin, uploads)               │
+         │                                    nginx location →
+         │                                    proxy_pass http://127.0.0.1:<hostPort>
+         │                                             │
+         │                                    Container listens on <appPort>
+         └─────────────────────────────────────────────┘
+
+500 "nginx/1.24" usually means nginx reached an upstream and the upstream
+returned 500 — compare browser response with a direct curl to the loopback URL
+for that project (see table below).
+TXT;
+
+?>
+<!doctype html>
+<html lang="en">
+<head>
+  <?= station_pwa_head_html('Host health', 'Live host diagnostics, routing map, and optional restart commands.') ?>
+  <style>
+    .host-health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+    .host-health-card { background: var(--panel-bg, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 14px 16px; }
+    .host-health-card h3 { margin: 0 0 8px; font-size: 15px; }
+    .host-health-card pre { margin: 0; font-size: 12px; line-height: 1.35; max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--code-bg, #f8fafc); padding: 10px; border-radius: 6px; }
+    .host-health-meta { font-size: 13px; color: var(--muted, #64748b); margin-bottom: 6px; }
+    .host-routing-pre { font-size: 12px; line-height: 1.4; white-space: pre-wrap; background: var(--code-bg, #f8fafc); padding: 12px; border-radius: 8px; overflow: auto; }
+    .host-health-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+    .host-health-table th, .host-health-table td { border: 1px solid var(--border, #e5e7eb); padding: 8px 10px; text-align: left; vertical-align: top; }
+    .host-health-table th { background: var(--code-bg, #f8fafc); }
+    .host-health-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+    .host-health-actions form { display: inline; }
+    .host-health-commands label { display: block; margin-top: 12px; font-weight: 600; font-size: 13px; }
+    .host-health-commands textarea { width: 100%; min-height: 52px; font-family: ui-monospace, monospace; font-size: 12px; margin-top: 4px; padding: 8px; border-radius: 6px; border: 1px solid var(--border, #e5e7eb); }
+  </style>
+</head>
+<body class="station-body">
+  <div class="dashboard-shell">
+    <?= station_dashboard_nav_html('host_health') ?>
+    <main class="dashboard-main">
+      <header class="dashboard-topbar">
+        <div>
+          <p class="dashboard-kicker">Owner only</p>
+          <h1 class="dashboard-heading">Host health & routing</h1>
+          <p class="dashboard-subheading">Bounded snapshots from the same shell user as Station (often <code>www-data</code>). Use the routing map to see how <code>/p/&lt;slug&gt;/</code> maps to loopback ports. Configure optional one-line restart or log-tail commands if your host uses sudo — same idea as the nginx reload command in Admin → Projects.</p>
+        </div>
+        <nav class="nav-pills">
+          <a href="admin-settings.php">← Admin settings</a>
+        </nav>
+      </header>
+
+      <?php if ($ok !== ''): ?><div class="alert ok"><?= station_h($ok) ?></div><?php endif; ?>
+      <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+
+      <?php if (is_array($runResult)): ?>
+        <div class="alert <?= !empty($runResult['ok']) ? 'ok' : 'error' ?>" style="margin-top:12px;">
+          <strong><?= !empty($runResult['ok']) ? 'Command finished' : 'Command failed' ?></strong>
+          — exit <?= (int) ($runResult['code'] ?? -1) ?>.
+          <?= station_h((string) ($runResult['message'] ?? '')) ?>
+        </div>
+        <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
+      <?php endif; ?>
+
+      <p class="setting-description" style="margin-top:8px;">
+        <label class="feature-toggle" style="display:inline-flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="hostHealthAutoRefresh">
+          <span>Auto-refresh this page every 25 seconds (GET only — clears inline command output above).</span>
+        </label>
+      </p>
+
+      <div class="settings-panel" style="margin-top: 20px;">
+        <h2 class="settings-panel-heading" style="font-size:18px;">Routing map (from Station config)</h2>
+        <p class="setting-description">Infrastructure mode: <strong><?= station_h($infra) ?></strong>.
+          Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
+          (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
+          Auto nginx reload after regen: <strong><?= $autoReload ? 'on' : 'off' ?></strong>.
+        </p>
+        <p class="setting-description">Web base path: <code><?= station_h($webBase !== '' ? $webBase : '(empty — site root)') ?></code>.
+          Secure path prefix: <code><?= station_h($secureBase !== '' ? $secureBase : '(empty)') ?></code>.
+        </p>
+        <p class="setting-description">Generated include path (nginx): <code><?= station_h($includePath) ?></code></p>
+        <pre class="host-routing-pre" aria-label="Routing diagram"><?= station_h($diagram) ?></pre>
+
+        <?php if ($infra === 'nginx'): ?>
+          <p class="setting-description" style="margin-top:12px;">Snippet to merge into your server block is under <a href="admin-settings.php?tab=project-defaults">Admin → Projects</a> (nginx project route snippet). Ensure <code>include <?= station_h($includePath) ?>;</code> appears <em>before</em> a catch-all <code>location /</code>.</p>
+        <?php else: ?>
+          <p class="setting-description" style="margin-top:12px;">Apache mode: Docker URL rewrites still use <code>/p/&lt;slug&gt;/</code> through your vhost; confirm mod_proxy and the Station-managed include or equivalent.</p>
+        <?php endif; ?>
+
+        <table class="host-health-table">
+          <thead>
+            <tr>
+              <th>Slug</th>
+              <th>Public path</th>
+              <th>Host port → container</th>
+              <th>Compose</th>
+              <th>Loopback (bypass nginx)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($routing['dockerProjects'] as $row): ?>
+              <tr>
+                <td><code><?= station_h((string) ($row['slug'] ?? '')) ?></code></td>
+                <td><code><?= station_h((string) ($row['publicPath'] ?? '')) ?></code></td>
+                <td><code><?= (int) ($row['hostPort'] ?? 0) ?></code> → app <code><?= (int) ($row['appPort'] ?? 0) ?></code></td>
+                <td><?= station_h((string) ($row['composeState'] ?? '')) ?></td>
+                <td><?php $lb = (string) ($row['loopbackRoot'] ?? ''); ?>
+                  <?php if ($lb !== ''): ?><code><?= station_h($lb) ?></code><?php else: ?><span class="host-health-meta">no port</span><?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+            <?php if ($routing['dockerProjects'] === []): ?>
+              <tr><td colspan="5" class="host-health-meta">No dockerized projects registered.</td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="settings-panel" style="margin-top: 24px;">
+        <h2 class="settings-panel-heading" style="font-size:18px;">Quick actions</h2>
+        <p class="setting-description">Built-in <strong>nginx -t</strong> runs as the web user (may differ from root’s nginx test). Restart lines are only executed when you fill them in below — use the same <code>sudo -n …</code> style as your working nginx reload command.</p>
+        <div class="host-health-actions">
+          <form method="post">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="nginx_test">
+            <button type="submit" class="secondary-btn">Run nginx -t</button>
+          </form>
+          <form method="post" onsubmit="return confirm('Run the configured extra diagnostic command?');">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="run_extra">
+            <button type="submit" class="secondary-btn">Run extra diagnostic</button>
+          </form>
+          <form method="post" onsubmit="return confirm('Restart nginx using the saved command?');">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="restart_nginx">
+            <button type="submit" class="secondary-btn">Restart nginx</button>
+          </form>
+          <form method="post" onsubmit="return confirm('Restart PHP-FPM using the saved command?');">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="restart_php_fpm">
+            <button type="submit" class="secondary-btn">Restart PHP-FPM</button>
+          </form>
+          <form method="post" onsubmit="return confirm('This affects the whole Docker engine on the host. Continue?');">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="restart_docker">
+            <button type="submit" style="background:#b45309;color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;">Restart Docker daemon</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="host-health-grid">
+        <?php foreach ($labels as $key => $label):
+            $block = $snapshot[$key] ?? null;
+            if (!is_array($block)) {
+                continue;
+            }
+            $out = $trunc((string) ($block['output'] ?? ''));
+            $meta = 'exit ' . (int) ($block['code'] ?? -1);
+            if (!empty($block['message'])) {
+                $meta .= ' — ' . (string) $block['message'];
+            }
+            ?>
+          <div class="host-health-card">
+            <h3><?= station_h($label) ?></h3>
+            <div class="host-health-meta"><?= station_h($meta) ?> · <?= !empty($block['ok']) ? 'ok' : 'error' ?></div>
+            <pre><?= station_h($out !== '' ? $out : '(no output)') ?></pre>
+          </div>
+        <?php endforeach; ?>
+      </div>
+
+      <div class="settings-panel host-health-commands" style="margin-top: 28px;">
+        <h2 class="settings-panel-heading" style="font-size:18px;">Helper shell one-liners (saved in admin settings)</h2>
+        <p class="setting-description">Leave blank to disable the matching button. Example nginx restart: <code>sudo -n systemctl reload nginx</code> or <code>sudo -n systemctl restart nginx</code>. Example log tail: <code>sudo -n tail -n 60 /var/log/nginx/error.log</code> (use “Run extra diagnostic”).</p>
+        <form method="post">
+          <input type="hidden" name="host_health_action" value="save_commands">
+          <label for="hostRestartNginxCommand">Restart nginx</label>
+          <textarea id="hostRestartNginxCommand" name="hostRestartNginxCommand"><?= station_h((string) ($settings['hostRestartNginxCommand'] ?? '')) ?></textarea>
+          <label for="hostRestartPhpFpmCommand">Restart PHP-FPM</label>
+          <textarea id="hostRestartPhpFpmCommand" name="hostRestartPhpFpmCommand"><?= station_h((string) ($settings['hostRestartPhpFpmCommand'] ?? '')) ?></textarea>
+          <label for="hostRestartDockerCommand">Restart Docker</label>
+          <textarea id="hostRestartDockerCommand" name="hostRestartDockerCommand"><?= station_h((string) ($settings['hostRestartDockerCommand'] ?? '')) ?></textarea>
+          <label for="hostDiagExtraCommand">Extra diagnostic (tail, journalctl, etc.)</label>
+          <textarea id="hostDiagExtraCommand" name="hostDiagExtraCommand"><?= station_h((string) ($settings['hostDiagExtraCommand'] ?? '')) ?></textarea>
+          <div style="margin-top:16px;">
+            <button type="submit" class="secondary-btn">Save helper commands</button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+  <?= station_pwa_register_html() ?>
+  <script>
+(function () {
+  var cb = document.getElementById('hostHealthAutoRefresh');
+  if (!cb) { return; }
+  var k = 'station_host_health_autorefresh';
+  try {
+    cb.checked = sessionStorage.getItem(k) === '1';
+  } catch (e) {}
+  var timer = null;
+  function arm() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (!cb.checked) { return; }
+    timer = setInterval(function () { window.location.reload(); }, 25000);
+  }
+  cb.addEventListener('change', function () {
+    try { sessionStorage.setItem(k, cb.checked ? '1' : '0'); } catch (e) {}
+    arm();
+  });
+  arm();
+})();
+  </script>
+</body>
+</html>
