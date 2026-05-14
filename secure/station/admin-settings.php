@@ -7,6 +7,12 @@ require_once __DIR__ . '/lib/docker.php';
 
 station_require_owner();
 $settings = station_admin_settings();
+$settings += [
+    'nginxAutoReload' => false,
+    'nginxReloadCommand' => '',
+];
+$currentAppName = (string) (station_config()['appName'] ?? 'Deployment Station');
+$currentStationDirName = basename(station_base_dir());
 $uiConfig = station_ui_config();
 $error = '';
 $ok = station_flash_get('ok');
@@ -41,15 +47,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
             'count' => (int) ($result['count'] ?? 0),
             'path' => (string) ($result['path'] ?? ''),
         ]);
-        station_flash_set('ok', (string) ($result['message'] ?? 'Nginx include regenerated.'));
+        $msg = (string) ($result['message'] ?? 'Nginx include regenerated.') . station_nginx_include_reload_hint_for_flash($result);
+        station_flash_set('ok', $msg);
     } else {
         station_log_event('nginx.include.failed', [
             'phase' => 'admin-manual-rebuild',
             'message' => (string) ($result['message'] ?? ''),
         ]);
-        station_flash_set('ok', 'Could not regenerate nginx include: ' . (string) ($result['message'] ?? 'unknown error'));
+        station_flash_set('error', 'Could not regenerate nginx include: ' . (string) ($result['message'] ?? 'unknown error'));
     }
     header('Location: admin-settings.php?tab=project-defaults');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'rename_station_dir') {
+    $result = station_rename_station_dir((string) ($_POST['station_dir_name'] ?? ''));
+    if (!empty($result['ok'])) {
+        $dir = (string) ($result['dir'] ?? 'station');
+        station_log_event('station.dir.renamed', ['dir' => $dir]);
+        station_flash_set('ok', 'Station renamed. Reopen at /secure/' . $dir . '/');
+        header('Location: ../' . rawurlencode($dir) . '/admin-settings.php?tab=general');
+        exit;
+    }
+    station_flash_set('error', (string) ($result['message'] ?? 'Rename failed.'));
+    header('Location: admin-settings.php?tab=general');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'update_station_name') {
+    $name = (string) ($_POST['station_name'] ?? '');
+    station_update_app_name($name)
+        ? station_flash_set('ok', 'Station name updated.')
+        : station_flash_set('error', 'Could not update station name.');
+    station_log_event('station.name.updated', ['name' => $name]);
+    header('Location: admin-settings.php?tab=general');
     exit;
 }
 
@@ -62,11 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settings['themeColor'] = station_normalize_theme_color((string) ($_POST['themeColor'] ?? '#2f7de2'));
 
             $iconResult = station_apply_brand_icon_inputs($settings, $_POST, $_FILES);
+            $settings = (array) ($iconResult['settings'] ?? $settings);
+            // Save the successful icon changes regardless of partial failures.
+            // Bubble per-file errors so the user can see exactly which icon failed.
             if (empty($iconResult['ok'])) {
-                $settings = (array) ($iconResult['settings'] ?? $settings);
-                $error = (string) ($iconResult['message'] ?? 'Could not save uploaded icons.');
-            } else {
-                $settings = (array) ($iconResult['settings'] ?? $settings);
+                $error = (string) ($iconResult['message'] ?? 'Could not save some icon uploads.');
             }
             break;
 
@@ -77,6 +108,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settings['defaultProjectAccessMode'] = isset($accessModes[$defaultMode]) ? $defaultMode : 'admin';
             $settings['auditLogLimit'] = station_normalize_audit_log_limit($_POST['auditLogLimit'] ?? ($settings['auditLogLimit'] ?? 50));
             $settings['allowPublicProjects'] = isset($_POST['allowPublicProjects']);
+            $settings['nginxAutoReload'] = isset($_POST['nginxAutoReload']);
+            $settings['nginxReloadCommand'] = trim((string) ($_POST['nginxReloadCommand'] ?? ''));
             break;
 
         case 'integrations':
@@ -106,9 +139,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
     }
 
-    if ($error === '' && station_save_admin_settings($settings)) {
+    // Persist whatever changed, even when icon uploads partially failed.
+    $saved = station_save_admin_settings($settings);
+    if ($saved && $error === '') {
         station_log_event('admin.settings.updated', ['tab' => $activeTab]);
         station_flash_set('ok', 'Settings saved successfully!');
+        header('Location: admin-settings.php?tab=' . urlencode($activeTab));
+        exit;
+    }
+    if ($saved && $error !== '') {
+        station_log_event('admin.settings.updated.partial', ['tab' => $activeTab, 'detail' => $error]);
+        station_flash_set('ok', 'Other settings were saved. Issue with icon upload: ' . $error);
         header('Location: admin-settings.php?tab=' . urlencode($activeTab));
         exit;
     }
@@ -214,23 +255,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   <div class="icon-preview-row">
                     <?php if ($currentIconUrl !== ''): ?>
                       <div class="icon-preview">
-                        <img class="icon-preview-image" src="<?= station_h($currentIconUrl) ?>" alt="<?= station_h((string) $iconMeta['label']) ?> preview">
+                        <img class="icon-preview-image" src="<?= station_h(station_icon_url_with_cache_buster($currentIconUrl)) ?>" alt="<?= station_h((string) $iconMeta['label']) ?> preview">
                         <span class="icon-preview-label">Current</span>
                       </div>
                     <?php endif; ?>
                     <div style="flex: 1; min-width: 220px;">
                       <input type="text" name="<?= station_h($urlField) ?>" value="<?= station_h($currentIconUrl) ?>" placeholder="https://example.com/icon.png or /secure/station/icos/icon.png">
                       <input type="file" name="<?= station_h($fileField) ?>" accept="<?= station_h($iconUploadAccept) ?>">
+                      <?php if ($currentIconUrl !== ''): ?>
+                        <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--bad,#c5221f);cursor:pointer;">
+                          <input type="checkbox" name="remove_<?= station_h($urlField) ?>" value="1">
+                          Remove this icon on save
+                        </label>
+                      <?php endif; ?>
                     </div>
                   </div>
-                  <p class="setting-description"><?= station_h((string) $iconMeta['description']) ?></p>
+                  <p class="setting-description"><?= station_h((string) $iconMeta['description']) ?> Leave the URL field empty (or tick the box above) to clear it on save.</p>
                 </div>
               <?php endforeach; ?>
             </div>
 
             <button type="submit" style="margin-top: 20px;">Save Branding Settings</button>
           </div>
+
+          <!-- Station identity (moved off dashboard) -->
+          <div class="settings-panel" style="margin-top: 24px;">
+            <div class="settings-panel-head">
+              <h1 class="settings-panel-heading">Station Identity</h1>
+              <p class="settings-panel-subtitle">Display name shown in the title bar and the directory used in the URL.</p>
+            </div>
+
+            <div class="settings-form-group">
+              <div class="setting-item">
+                <label class="setting-label" for="station_name">Display Name</label>
+                <p class="setting-description">Shown in the title bar and the welcome message. This is separate from the Station Heading above (which is the big page title).</p>
+                <input id="station_name" type="text" value="<?= station_h($currentAppName) ?>" form="stationNameForm" name="station_name" required>
+              </div>
+
+              <div class="setting-item">
+                <label class="setting-label" for="station_dir_name">Station Directory</label>
+                <p class="setting-description">Current directory: <code>/secure/<?= station_h($currentStationDirName) ?>/</code>. Renaming changes the URL — the page reloads at the new path. Avoid <code>station</code> as a custom name only if you don't want the default.</p>
+                <input id="station_dir_name" type="text" form="stationDirForm" name="station_dir_name" value="<?= station_h($currentStationDirName) ?>" placeholder="station" required>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- These tiny side-forms live OUTSIDE the main settings form so they
+             don't get sent with branding/icons. They post their own actions
+             and redirect back. -->
 
         <!-- PROJECT DEFAULTS -->
         <div class="settings-section project-defaults<?= $activeTab === 'project-defaults' ? ' active' : '' ?>" id="project-defaults">
@@ -275,8 +348,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <p class="setting-description">No dockerized projects yet — the file will appear as soon as you configure one.</p>
                   <?php else: ?>
                     <pre class="code-block" style="max-height: 320px; overflow: auto;"><?= station_h($nginxIncludeContents) ?></pre>
-                    <p class="setting-description">Updated whenever a docker project is configured, started, stopped, rebuilt, or torn down. Users will reach each running project at <code>/p/&lt;slug&gt;/</code>.</p>
+                    <p class="setting-description">Updated whenever a docker project is configured, started, stopped, rebuilt, torn down, or when a project is deleted or archived. Users reach each running project at <code>/p/&lt;slug&gt;/</code>.</p>
                   <?php endif; ?>
+                </div>
+
+                <div class="setting-item">
+                  <label class="feature-toggle">
+                    <input type="checkbox" name="nginxAutoReload" <?= !empty($settings['nginxAutoReload']) ? 'checked' : '' ?>>
+                    <div class="feature-toggle-content">
+                      <span class="feature-toggle-title">Automatic nginx test + reload</span>
+                      <span class="feature-toggle-desc">After <code>projects.conf</code> is regenerated, run a shell command (below) so the system nginx picks up new <code>/p/&lt;slug&gt;/</code> routes without a manual reload. Requires passwordless sudo for the PHP user — instructions below.</span>
+                    </div>
+                  </label>
+                  <label class="setting-label" for="nginxReloadCommand" style="margin-top: 14px;">Reload shell command</label>
+                  <textarea id="nginxReloadCommand" name="nginxReloadCommand" rows="3" spellcheck="false" class="code-block" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;"><?= station_h((string) ($settings['nginxReloadCommand'] ?? '')) ?></textarea>
+                  <p class="setting-description">Leave empty to use <code>sudo -n /usr/sbin/nginx -t &amp;&amp; sudo -n /usr/sbin/nginx -s reload</code>.</p>
+
+                  <details style="margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; background: var(--panel-soft);">
+                    <summary style="cursor:pointer; font-weight:600;">How to grant passwordless nginx reload to the web server user</summary>
+                    <div style="margin-top: 10px;">
+                      <p>1. Identify the system user PHP runs as. Run on your server:</p>
+                      <pre class="code-block">ps -eo user,comm | grep -E 'php-fpm|nginx|apache' | awk '{print $1}' | sort -u</pre>
+                      <p>On Debian/Ubuntu it's usually <code>www-data</code>. On RHEL/Alpine/Docker images it's often <code>nginx</code>.</p>
+
+                      <p>2. Run <code>sudo visudo -f /etc/sudoers.d/deployment-station</code> and paste (replace <code>www-data</code> with the user from step 1):</p>
+                      <pre class="code-block"># Deployment Station — allow PHP user to test + reload nginx without a password.
+www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t
+www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
+                      <p>Save the file. Sudo refuses bad files, so a typo just rejects the change — you can't lock yourself out.</p>
+
+                      <p>3. Verify, as the PHP user:</p>
+                      <pre class="code-block">sudo -u www-data sudo -n /usr/sbin/nginx -t</pre>
+                      <p>Expected output ends with <code>syntax is ok</code> and <code>test is successful</code>. If you see a password prompt, the sudoers line didn't match — recheck the user/binary path.</p>
+
+                      <p>4. Tick <strong>Automatic nginx test + reload</strong> above and click <strong>Save Project Defaults</strong>. The next time Station regenerates <code>projects.conf</code> (Docker save, project upload/delete/archive, etc.), it'll run the command and either succeed silently or surface the error in the activity log.</p>
+
+                      <p>Alternative if you can't grant sudo: leave it disabled and run <code>sudo systemctl reload nginx</code> manually after big changes — the file on disk is always current.</p>
+                    </div>
+                  </details>
                 </div>
               <?php endif; ?>
 
@@ -537,6 +646,22 @@ sudo systemctl restart php*-fpm
           </div>
         </div>
 
+          </form>
+
+          <!-- Tiny side-forms for station identity (kept out of the multipart
+               icon form so file uploads can't accidentally affect them, and
+               vice versa). Buttons inside their own form via the `form` attr. -->
+          <form id="stationNameForm" method="post" action="admin-settings.php?tab=general" style="margin: 14px 0;">
+            <input type="hidden" name="action" value="update_station_name">
+            <button type="submit" class="secondary-btn">Save Display Name</button>
+            <span class="setting-description" style="margin-left: 10px;">Updates the value in the "Display Name" field above.</span>
+          </form>
+
+          <form id="stationDirForm" method="post" action="admin-settings.php?tab=general" style="margin: 6px 0 20px;"
+                onsubmit="return confirm('Rename the station directory? The URL will change and this page will reload at the new path.');">
+            <input type="hidden" name="action" value="rename_station_dir">
+            <button type="submit" class="secondary-btn">Rename Station Directory</button>
+            <span class="setting-description" style="margin-left: 10px;">Uses the value in the "Station Directory" field above. The page will reload at the new <code>/secure/&lt;new&gt;/</code> path.</span>
           </form>
         </div>
       </div>

@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'message' => (string) ($includeResult['message'] ?? ''),
                     ]);
                 }
-                station_flash_set('ok', 'Docker configuration saved. Generated docker-compose.yml.');
+                station_flash_set('ok', 'Docker configuration saved. Generated docker-compose.yml.' . station_nginx_include_reload_hint_for_flash($includeResult));
                 header('Location: docker-config.php?project=' . urlencode($projectSlug));
                 exit;
             }
@@ -151,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'message' => (string) ($includeResult['message'] ?? ''),
                 ]);
             }
-            station_flash_set('ok', 'Docker configuration saved.');
+            station_flash_set('ok', 'Docker configuration saved.' . station_nginx_include_reload_hint_for_flash($includeResult));
             header('Location: docker-config.php?project=' . urlencode($projectSlug));
             exit;
         }
@@ -261,7 +261,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <strong class="docker-status-value"><code><?= station_h($reverseProxyPath) ?></code></strong>
           <span class="docker-status-meta">
             <?php if ($isNginxInfrastructure): ?>
-              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Include that file <strong>before</strong> <code>location /</code> in this <code>server_name</code> block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>), then reload nginx. Verify with <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> — you should see <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>. If that header is missing, the request never hit the proxy <code>location</code> (wrong server block, wrong include path, or stale nginx config).
+              Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Each route uses <code>auth_request</code> against Station so <strong>the same access mode as the file viewer</strong> applies (private projects need a signed-in session cookie). The container port is published on <strong>127.0.0.1</strong> only, so remote clients cannot skip auth by opening <code>:<?= (int) $projectConfig['hostPort'] ?></code> from another machine. Include that file <strong>before</strong> <code>location /</code> in this <code>server_name</code> block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>), then reload nginx. Verify with <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> — you should see <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>. If that header is missing, the request never hit the proxy <code>location</code> (wrong server block, wrong include path, or stale nginx config).
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>
@@ -273,9 +273,9 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <strong class="docker-status-value"><?= $nginxRouteOk ? 'Route present' : 'Route missing' ?></strong>
           <span class="docker-status-meta">
             <?php if ($nginxRouteOk): ?>
-              This project’s <code>location ^~ /p/<?= station_h($projectSlug) ?>/</code> block is in the generated file. Reload nginx if you still get the main site when opening the friendly URL.
+              This project’s <code>location ^~ /p/<?= station_h($projectSlug) ?>/</code> block is in the generated file. If you still get the main site, enable automatic nginx reload in Admin → Projects or run <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code> once.
             <?php else: ?>
-              Save Docker settings or start the stack, then reload nginx. Until then, Launch uses the direct <code>:<?= (int) $projectConfig['hostPort'] ?></code> URL.
+              Save Docker settings or start the stack, then reload nginx. Until then, Launch uses the direct <code>:<?= (int) $projectConfig['hostPort'] ?></code> URL (reachable only on this server because the port binds to <code>127.0.0.1</code>).
             <?php endif; ?>
           </span>
         </div>

@@ -31,44 +31,15 @@ $codexReady   = !empty($adminSettings['codexEnabled'])   && station_integration_
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
 
-    if ($action === 'update_station_name' && $isOwner) {
-        $name = (string) ($_POST['station_name'] ?? '');
-        station_update_app_name($name)
-            ? station_flash_set('ok', 'Station name updated.')
-            : station_flash_set('error', 'Could not update name.');
-        station_log_event('station.name.updated', ['name' => $name]);
-        header('Location: station.php'); exit;
-    }
-
-    if ($action === 'rename_station_dir' && $isOwner) {
-        $result = station_rename_station_dir((string) ($_POST['station_dir_name'] ?? ''));
-        if (!empty($result['ok'])) {
-            $dir = (string) ($result['dir'] ?? 'station');
-            station_log_event('station.dir.renamed', ['dir' => $dir]);
-            station_flash_set('ok', 'Station renamed. Reopen at /secure/' . $dir . '/');
-            header('Location: ../' . rawurlencode($dir) . '/index.php'); exit;
-        }
-        station_flash_set('error', (string) ($result['message'] ?? 'Rename failed.'));
-        header('Location: station.php'); exit;
-    }
-
-      if ($action === 'update_audit_log_limit' && $isOwner) {
-        $settings = station_admin_settings();
-        $settings['auditLogLimit'] = station_normalize_audit_log_limit($_POST['audit_log_limit'] ?? ($settings['auditLogLimit'] ?? 50));
-        if (station_save_admin_settings($settings)) {
-          station_log_event('admin.audit_log_limit.updated', ['limit' => $settings['auditLogLimit']]);
-          station_flash_set('ok', 'Audit log retention updated.');
-        } else {
-          station_flash_set('error', 'Could not update audit log retention.');
-        }
-        header('Location: station.php'); exit;
-      }
+    // Station identity controls (Display Name, Station Directory rename) live
+    // in admin-settings.php now. The handlers there redirect with a flash.
 
     if ($action === 'rename_project') {
         $project = station_safe_name((string) ($_POST['project_slug'] ?? ''));
         $result  = station_rename_project_slug($project, (string) ($_POST['new_project_slug'] ?? ''));
         if (!empty($result['ok'])) {
             station_log_event('project.renamed', ['from' => $project, 'to' => $result['slug']]);
+            station_touch_nginx_routes_after_project_mutation();
             station_flash_set('ok', 'Project renamed to ' . $result['slug']);
             header('Location: station.php'); exit;
         }
@@ -1448,26 +1419,16 @@ $statsCards = !$canBuild
       <div class="admin-sections">
         <details class="admin-panel collapsible-section">
           <summary>Station Settings</summary>
-          <div class="grid-two collapsible-body">
-            <form class="form-grid" method="post">
-              <h2>Station Name</h2>
-              <input type="hidden" name="action" value="update_station_name">
-              <label>Display Name<input type="text" name="station_name" value="<?= station_h($appName) ?>" required></label>
-              <button type="submit">Save</button>
-            </form>
-            <form class="form-grid" method="post">
-              <h2>Station Directory</h2>
-              <input type="hidden" name="action" value="rename_station_dir">
-              <label>New Directory Name<input type="text" name="station_dir_name" placeholder="station" required></label>
-              <button type="submit">Rename Directory</button>
-            </form>
-            <form class="form-grid" method="post">
-              <h2>Activity Log</h2>
-              <input type="hidden" name="action" value="update_audit_log_limit">
-              <label>Entries to Keep<input type="number" name="audit_log_limit" min="50" max="200000" step="50" value="<?= station_h((string) $auditLogLimit) ?>" required></label>
-              <p><a class="mini-link" href="admin-settings.php">More admin settings</a></p>
-              <button type="submit">Save Retention</button>
-            </form>
+          <div class="collapsible-body" style="display:flex;flex-direction:column;gap:10px;">
+            <p style="margin: 0; color: var(--soft);">Station-wide settings have moved to <strong><a href="admin-settings.php">Admin Settings</a></strong>:</p>
+            <ul style="margin: 0 0 4px 18px; color: var(--soft); line-height: 1.7;">
+              <li><a href="admin-settings.php?tab=general">Branding</a> — display name, station directory, theme, icons (now with per-icon remove).</li>
+              <li><a href="admin-settings.php?tab=project-defaults">Projects</a> — visibility defaults, activity log size, automatic nginx test + reload.</li>
+              <li><a href="admin-settings.php?tab=docker">Docker</a> — engine path, services, diagnostics.</li>
+              <li><a href="admin-settings.php?tab=integrations">Integrations</a> — GitHub, VS Code, ChatGPT, Codex.</li>
+              <li><a href="admin-settings.php?tab=onboarding">Onboarding</a> — first-run flow.</li>
+            </ul>
+            <p style="margin: 6px 0 0;"><a class="quick-link" href="admin-settings.php">Open Admin Settings</a></p>
           </div>
         </details>
 

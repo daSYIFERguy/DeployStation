@@ -158,6 +158,17 @@ if (is_array($templateBootstrap)) {
 
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
+if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfrastructure'] ?? 'apache')) === 'nginx') {
+    $nr = station_write_nginx_projects_conf();
+    if (empty($nr['ok'])) {
+        station_log_event('nginx.include.failed', [
+            'phase' => 'post-upload',
+            'slug' => $slug,
+            'message' => (string) ($nr['message'] ?? ''),
+        ]);
+    }
+}
+
 $redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
     ? 'docker-config.php?project=' . urlencode($slug)
     : 'viewer.php?project=' . urlencode($slug);

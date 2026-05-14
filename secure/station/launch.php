@@ -182,7 +182,7 @@ if ($isContainerized) {
       <?php if (($status['state'] ?? '') !== 'running'): ?>
         <p>The container is not running. Use the controls below to start it.</p>
         <?php if ($usesNginx): ?>
-          <p class="topbar-sub">After start, reload nginx if you use friendly URLs. Put <code>include …/projects.conf</code> <strong>before</strong> <code>location /</code> in your server block, then <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>. Friendly URL: <code><?= station_h($friendlyTarget) ?></code></p>
+          <p class="topbar-sub">After start, reload nginx if you use friendly URLs and automatic reload is off in Admin → Projects. Put <code>include …/projects.conf</code> <strong>before</strong> <code>location /</code> in your server block, then <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>. Friendly URL: <code><?= station_h($friendlyTarget) ?></code></p>
         <?php else: ?>
           <p class="topbar-sub">Direct access (when running): <code><?= station_h($directTarget) ?></code>. Switch the production web server to Nginx in Admin Settings to also expose a friendly <code>/p/<?= station_h($slug) ?>/</code> URL.</p>
         <?php endif; ?>
