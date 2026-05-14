@@ -59,16 +59,40 @@ function station_session_cookie_params_from_env(): array
     return $params;
 }
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
+/**
+ * True when this request is nginx auth_request hitting nginx-docker-auth.php.
+ * Used so we always use read_and_close (or reopen after a normal session_start) and avoid
+ * blocking other Station tabs on the same session file — otherwise /p/… can 500 for
+ * signed-in users while anonymous still works.
+ */
+function station_script_is_nginx_docker_auth(): bool
+{
+    $sf = (string) ($_SERVER['SCRIPT_FILENAME'] ?? '');
+    if ($sf !== '' && str_ends_with($sf, 'nginx-docker-auth.php')) {
+        return true;
+    }
+    $sn = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+
+    return $sn !== '' && str_ends_with($sn, 'nginx-docker-auth.php');
+}
+
+$stationSessionReadAndClose = station_script_is_nginx_docker_auth()
+    || (defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE') && STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE);
+
+if (session_status() === PHP_SESSION_ACTIVE) {
+    if ($stationSessionReadAndClose) {
+        session_write_close();
+        if (headers_sent() === false) {
+            session_set_cookie_params(station_session_cookie_params_from_env());
+        }
+        session_start(['read_and_close' => true]);
+    }
+} elseif (session_status() === PHP_SESSION_NONE) {
     if (headers_sent() === false) {
         session_set_cookie_params(station_session_cookie_params_from_env());
     }
-    $sessionStartOptions = [];
-    if (defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE') && STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE) {
-        $sessionStartOptions['read_and_close'] = true;
-    }
-    if ($sessionStartOptions !== []) {
-        session_start($sessionStartOptions);
+    if ($stationSessionReadAndClose) {
+        session_start(['read_and_close' => true]);
     } else {
         session_start();
     }
