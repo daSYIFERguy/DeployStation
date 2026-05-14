@@ -317,10 +317,12 @@ function station_admin_settings(): array
         'nginxAutoReload' => false,
         'nginxReloadCommand' => '',
         'nginxDockerUpstreamHostMode' => 'preserve',
+        'nginxAuthRequestBasePath' => '',
         'hostRestartNginxCommand' => '',
         'hostRestartPhpFpmCommand' => '',
         'hostRestartDockerCommand' => '',
         'hostDiagExtraCommand' => '',
+        'hostNginxTestCommand' => '',
     ]);
 }
 

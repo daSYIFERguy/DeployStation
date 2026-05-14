@@ -2259,6 +2259,8 @@ function station_admin_host_config_snapshot(): array
         'nginxIncludePath' => station_nginx_include_path(),
         'nginxAutoReload' => !empty($settings['nginxAutoReload']),
         'nginxReloadCommandConfigured' => $nginxCmd !== '',
+        'nginxAuthRequestBasePath' => trim((string) ($settings['nginxAuthRequestBasePath'] ?? '')),
+        'nginxAuthRequestResolved' => station_nginx_auth_request_base_path(),
     ];
 }
 
@@ -2455,15 +2457,33 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
  * URI prefix for `auth_request` inside generated nginx snippets. Must match
  * how Station is exposed on the public host (not a filesystem path). When
  * `SCRIPT_NAME` is missing or is a CLI path, fall back to the usual deploy path.
+ *
+ * Optional admin override `nginxAuthRequestBasePath`: set when auto-detection
+ * is wrong (e.g. Station lives at `/station` but CLI regeneration would emit
+ * `/secure/station`). Wrong auth URIs break every `/p/<slug>/` route with 500.
  */
 function station_nginx_auth_request_base_path(): string
 {
+    $admin = station_admin_settings();
+    $override = trim((string) ($admin['nginxAuthRequestBasePath'] ?? ''));
+    if ($override !== '') {
+        $normalized = '/' . trim($override, "/ \t\r\n");
+        $normalized = rtrim($normalized, '/');
+        if ($normalized === '' || $normalized === '/') {
+            return '/secure/station';
+        }
+
+        return $normalized;
+    }
+
     $base = rtrim(station_web_base_path(), '/');
     if ($base === '' || $base === '.') {
         return '/secure/station';
     }
-    if (str_starts_with($base, '/var/') || str_starts_with($base, '/srv/') || str_starts_with($base, '/home/')) {
-        return '/secure/station';
+    foreach (['/var/', '/srv/', '/usr/', '/opt/', '/home/'] as $prefix) {
+        if (str_starts_with($base, $prefix)) {
+            return '/secure/station';
+        }
     }
 
     return $base;

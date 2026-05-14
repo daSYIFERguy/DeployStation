@@ -138,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settings['nginxReloadCommand'] = trim((string) ($_POST['nginxReloadCommand'] ?? ''));
             $hostMode = strtolower(trim((string) ($_POST['nginxDockerUpstreamHostMode'] ?? 'preserve')));
             $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
+            $settings['nginxAuthRequestBasePath'] = trim((string) ($_POST['nginxAuthRequestBasePath'] ?? ''));
             break;
 
         case 'integrations':
@@ -430,6 +431,12 @@ www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
                 </div>
 
                 <div class="setting-item" style="margin-top: 18px;">
+                  <label class="setting-label" for="nginxAuthRequestBasePath">Nginx <code>auth_request</code> URL prefix (optional)</label>
+                  <input type="text" id="nginxAuthRequestBasePath" name="nginxAuthRequestBasePath" spellcheck="false" class="code-block" style="width:100%;max-width:520px;font-family:ui-monospace,monospace;font-size:13px;padding:8px 10px;" value="<?= station_h((string) ($settings['nginxAuthRequestBasePath'] ?? '')) ?>" placeholder="/secure/station or /station">
+                  <p class="setting-description">Each <code>/p/&lt;slug&gt;/</code> location calls <code>auth_request <?= station_h(station_nginx_auth_request_base_path()) ?>/nginx-docker-auth.php?project=…</code>. That URI must hit this Station install. Leave empty to derive from the current PHP URL (see Host health “Web base path”). If you saved Docker settings from the CLI or Station is mounted at a different URL than <code>/secure/station</code>, set the real browser-visible prefix here (no trailing slash), save, then reload nginx.</p>
+                </div>
+
+                <div class="setting-item" style="margin-top: 18px;">
                   <label class="setting-label" for="nginxDockerUpstreamHostMode">Docker proxy: Host header to containers</label>
                   <select id="nginxDockerUpstreamHostMode" name="nginxDockerUpstreamHostMode">
                     <?php $upHost = (string) ($settings['nginxDockerUpstreamHostMode'] ?? 'preserve'); ?>
@@ -580,6 +587,9 @@ sudo systemctl restart php*-fpm
                 <dd><code><?= station_h($hostFleetSnap['stationPhpDir']) ?></code></dd>
                 <dt>Web base path (<code>SCRIPT_NAME</code>)</dt>
                 <dd><code><?= station_h($hostFleetSnap['webBasePath'] !== '' ? $hostFleetSnap['webBasePath'] : '/') ?></code></dd>
+                <dt>Nginx <code>auth_request</code> URL prefix</dt>
+                <dd><?php $authSaved = trim((string) ($hostFleetSnap['nginxAuthRequestBasePath'] ?? '')); ?>
+                  <?php if ($authSaved !== ''): ?>Override <code><?= station_h($authSaved) ?></code> — <?php endif; ?>effective <code><?= station_h((string) ($hostFleetSnap['nginxAuthRequestResolved'] ?? '')) ?></code> (used in <code>projects.conf</code>)</dd>
                 <dt>Production web server (admin default)</dt>
                 <dd><code><?= station_h($hostFleetSnap['serverInfrastructure']) ?></code></dd>
                 <dt>Nginx include file</dt>

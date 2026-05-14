@@ -6,6 +6,39 @@ require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/docker.php';
 
 /**
+ * Command used for nginx config tests from Host health (PHP user, often www-data).
+ *
+ * Default: `nginx -t` with `pid` overridden to a file under /tmp so opening
+ * /run/nginx.pid is not required (avoids false "test failed" when the real master runs as root).
+ *
+ * Optional admin override: set `hostNginxTestCommand` to e.g. `sudo -n nginx -t 2>&1` for the
+ * same check root would run (requires matching sudoers for the web user).
+ */
+function station_host_health_nginx_syntax_test_command(): string
+{
+    $admin = station_admin_settings();
+    $override = trim((string) ($admin['hostNginxTestCommand'] ?? ''));
+    if ($override !== '') {
+        return $override;
+    }
+
+    $suffix = (string) getmypid() . '_' . bin2hex(random_bytes(4));
+    return 'TMP=/tmp/station-nginx-configtest-' . $suffix . '.pid; rm -f "$TMP" 2>/dev/null; '
+        . 'touch "$TMP" && chmod 600 "$TMP" 2>/dev/null; '
+        . 'nginx -t -g "pid $TMP;" 2>&1; RC=$?; rm -f "$TMP" 2>/dev/null; exit $RC';
+}
+
+/**
+ * Run the configured / default nginx syntax test (same as snapshot panel).
+ *
+ * @return array{ok: bool, code: int, output: string, message: string}
+ */
+function station_host_health_run_nginx_syntax_test(): array
+{
+    return station_run_shell_command(station_host_health_nginx_syntax_test_command(), 25);
+}
+
+/**
  * Bounded shell snippets for the owner Host health dashboard (same execution
  * environment as Docker CLI from PHP).
  *
@@ -25,14 +58,20 @@ function station_host_health_snapshot(): array
         'php_fpm_units' => 'for s in php8.4-fpm php8.3-fpm php8.2-fpm php-fpm8.4 php-fpm8.3 php-fpm8.2 php-fpm php8-fpm; do '
             . 'if systemctl cat "$s" >/dev/null 2>&1; then echo -n "$s: "; systemctl is-active "$s" 2>&1; fi; '
             . 'done; true',
-        'nginx_syntax' => 'nginx -t 2>&1',
+        'nginx_syntax' => station_host_health_nginx_syntax_test_command(),
         'docker_ps' => 'docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>&1 | head -45',
         'docker_stats' => 'docker stats --no-stream 2>&1 | head -40',
     ];
 
     $out = [];
     foreach ($blocks as $key => $cmd) {
-        $out[$key] = station_run_shell_command($cmd, $key === 'docker_stats' ? 20 : 12);
+        $timeout = 12;
+        if ($key === 'docker_stats') {
+            $timeout = 20;
+        } elseif ($key === 'nginx_syntax') {
+            $timeout = 25;
+        }
+        $out[$key] = station_run_shell_command($cmd, $timeout);
     }
 
     return $out;
@@ -70,6 +109,7 @@ function station_host_health_routing_map(): array
         'nginxInclude' => station_nginx_include_path(),
         'nginxUpstreamHostMode' => (string) ($admin['nginxDockerUpstreamHostMode'] ?? 'preserve'),
         'nginxAutoReload' => !empty($admin['nginxAutoReload']),
+        'nginxAuthRequestBase' => station_nginx_auth_request_base_path(),
         'webBasePath' => station_web_base_path(),
         'dataDir' => station_data_dir(),
         'projectsDir' => station_projects_dir(),

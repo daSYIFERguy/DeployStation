@@ -195,6 +195,8 @@ $isNginxInfrastructure = station_normalize_server_infrastructure((string) ($admi
 $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
+$nginxAuthBase = station_nginx_auth_request_base_path();
+$nginxAuthProbe = $nginxAuthBase . '/nginx-docker-auth.php?project=' . rawurlencode($projectSlug);
 ?>
 <!doctype html>
 <html lang="en">
@@ -262,6 +264,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <span class="docker-status-meta">
             <?php if ($isNginxInfrastructure): ?>
               Routes to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. Each route uses <code>auth_request</code> against Station so <strong>the same access mode as the file viewer</strong> applies (private projects need a signed-in session cookie). The container port is published on <strong>127.0.0.1</strong> only, so remote clients cannot skip auth by opening <code>:<?= (int) $projectConfig['hostPort'] ?></code> from another machine. Include that file <strong>before</strong> <code>location /</code> in this <code>server_name</code> block (see <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>), then reload nginx. Verify with <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> — you should see <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>. If that header is missing, the request never hit the proxy <code>location</code> (wrong server block, wrong include path, or stale nginx config).
+              <br><br><strong>auth_request</strong> uses <code><?= station_h($nginxAuthProbe) ?></code>. If <code>/p/…</code> returns <strong>500</strong> but <code>curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:<?= (int) $projectConfig['hostPort'] ?>/</code> returns <code>200</code>, nginx is probably failing the auth subrequest (wrong URL prefix). Set <em>Nginx auth_request URL prefix</em> in Admin → Projects, save, reload nginx.
             <?php else: ?>
               Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
             <?php endif; ?>

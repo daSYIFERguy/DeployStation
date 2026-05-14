@@ -12,6 +12,7 @@ $error = '';
 $runResult = null;
 
 $commandKeys = [
+    'hostNginxTestCommand',
     'hostRestartNginxCommand',
     'hostRestartPhpFpmCommand',
     'hostRestartDockerCommand',
@@ -41,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'run_extra' => 'hostDiagExtraCommand',
         ];
         if ($which === 'nginx_test') {
-            $runResult = station_run_shell_command('nginx -t 2>&1', 20);
+            $runResult = station_host_health_run_nginx_syntax_test();
             station_log_event('host_health_nginx_test', [
                 'ok' => !empty($runResult['ok']),
                 'code' => (int) ($runResult['code'] ?? -1),
@@ -67,6 +68,10 @@ $settings = station_admin_settings();
 $snapshot = station_host_health_snapshot();
 $routing = station_host_health_routing_map();
 
+$nginxTestLabel = trim((string) ($settings['hostNginxTestCommand'] ?? '')) !== ''
+    ? 'nginx config test (custom hostNginxTestCommand)'
+    : 'nginx -t (web user; pid in /tmp — avoids /run/nginx.pid permission noise)';
+
 $labels = [
     'uptime' => 'Uptime',
     'memory' => 'Memory (free -h)',
@@ -77,7 +82,7 @@ $labels = [
     'systemd_nginx' => 'systemd: nginx',
     'systemd_docker' => 'systemd: docker',
     'php_fpm_units' => 'PHP-FPM units (if present)',
-    'nginx_syntax' => 'nginx -t (syntax test)',
+    'nginx_syntax' => $nginxTestLabel,
     'docker_ps' => 'docker ps',
     'docker_stats' => 'docker stats (one-shot)',
 ];
@@ -170,6 +175,12 @@ TXT;
         <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
       <?php endif; ?>
 
+      <div class="settings-panel" style="margin-top: 16px;">
+        <h2 class="settings-panel-heading" style="font-size:16px;">About nginx checks and HTTP 500</h2>
+        <p class="setting-description" style="margin:0;">The Host health page runs shell commands as the <strong>same Unix user as PHP</strong> (often <code>www-data</code>), not as root. A plain <code>nginx -t</code> then tries to open paths from <code>nginx.conf</code> (for example <code>/run/nginx.pid</code>) and can fail with “Permission denied” even while the <strong>real</strong> nginx master (running as root) is fine — that result does <strong>not</strong> by itself explain browser 500 responses.</p>
+        <p class="setting-description" style="margin:8px 0 0;">By default we run <code>nginx -t</code> with <code>pid</code> pointed at a file under <code>/tmp</code> so the config test is meaningful for the web user. The warning about the <code>user</code> directive is normal when the test is not run as root. For an exact root-equivalent test, set <strong>Nginx config test command</strong> below to something like <code>sudo -n nginx -t 2>&1</code> (with matching <code>sudoers</code>). HTTP 500 is usually the <strong>upstream app</strong> (PHP-FPM, Station, or a Docker container) — compare the public URL with the loopback URL in the routing table and use “Extra diagnostic” / container logs to see the real error.</p>
+      </div>
+
       <p class="setting-description" style="margin-top:8px;">
         <label class="feature-toggle" style="display:inline-flex;align-items:center;gap:8px;">
           <input type="checkbox" id="hostHealthAutoRefresh">
@@ -184,6 +195,7 @@ TXT;
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
           Auto nginx reload after regen: <strong><?= $autoReload ? 'on' : 'off' ?></strong>.
         </p>
+        <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
         <p class="setting-description">Web base path: <code><?= station_h($webBase !== '' ? $webBase : '(empty — site root)') ?></code>.
           Secure path prefix: <code><?= station_h($secureBase !== '' ? $secureBase : '(empty)') ?></code>.
         </p>
@@ -227,12 +239,12 @@ TXT;
 
       <div class="settings-panel" style="margin-top: 24px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Quick actions</h2>
-        <p class="setting-description">Built-in <strong>nginx -t</strong> runs as the web user (may differ from root’s nginx test). Restart lines are only executed when you fill them in below — use the same <code>sudo -n …</code> style as your working nginx reload command.</p>
+        <p class="setting-description">Uses the same command as the nginx panel (default: <code>nginx -t</code> with <code>pid</code> under <code>/tmp</code>, or your saved <strong>Nginx config test command</strong> below). Restart lines run only when configured.</p>
         <div class="host-health-actions">
           <form method="post">
             <input type="hidden" name="host_health_action" value="run_command">
             <input type="hidden" name="which" value="nginx_test">
-            <button type="submit" class="secondary-btn">Run nginx -t</button>
+            <button type="submit" class="secondary-btn">Run nginx config test</button>
           </form>
           <form method="post" onsubmit="return confirm('Run the configured extra diagnostic command?');">
             <input type="hidden" name="host_health_action" value="run_command">
@@ -279,9 +291,11 @@ TXT;
 
       <div class="settings-panel host-health-commands" style="margin-top: 28px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Helper shell one-liners (saved in admin settings)</h2>
-        <p class="setting-description">Leave blank to disable the matching button. Example nginx restart: <code>sudo -n systemctl reload nginx</code> or <code>sudo -n systemctl restart nginx</code>. Example log tail: <code>sudo -n tail -n 60 /var/log/nginx/error.log</code> (use “Run extra diagnostic”).</p>
+        <p class="setting-description">Leave blank to use the built-in web-user test (pid in <code>/tmp</code>). For a full test matching root’s environment, use e.g. <code>sudo -n nginx -t 2>&1</code> (requires <code>sudoers</code> for the PHP user). Example nginx restart: <code>sudo -n systemctl reload nginx</code>. Example log tail: <code>sudo -n tail -n 60 /var/log/nginx/error.log</code> (use “Run extra diagnostic”).</p>
         <form method="post">
           <input type="hidden" name="host_health_action" value="save_commands">
+          <label for="hostNginxTestCommand">Nginx config test command (optional)</label>
+          <textarea id="hostNginxTestCommand" name="hostNginxTestCommand" placeholder="sudo -n nginx -t 2>&1"><?= station_h((string) ($settings['hostNginxTestCommand'] ?? '')) ?></textarea>
           <label for="hostRestartNginxCommand">Restart nginx</label>
           <textarea id="hostRestartNginxCommand" name="hostRestartNginxCommand"><?= station_h((string) ($settings['hostRestartNginxCommand'] ?? '')) ?></textarea>
           <label for="hostRestartPhpFpmCommand">Restart PHP-FPM</label>
