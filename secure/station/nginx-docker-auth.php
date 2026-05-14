@@ -17,33 +17,40 @@ require_once __DIR__ . '/lib/projects.php';
 
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
-if (!station_is_setup_complete()) {
-    http_response_code(503);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Setup incomplete';
-    exit;
-}
+try {
+    if (!station_is_setup_complete()) {
+        http_response_code(503);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Setup incomplete';
+        exit;
+    }
 
-$slug = station_safe_name((string) ($_GET['project'] ?? ''));
-if ($slug === '' || !station_project_exists($slug)) {
+    $slug = station_safe_name((string) ($_GET['project'] ?? ''));
+    if ($slug === '' || !station_project_exists($slug)) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Forbidden';
+        exit;
+    }
+
+    $user = station_current_user();
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
+    if (!station_user_may_access_project($user, $slug)) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Forbidden';
+        exit;
+    }
+
+    http_response_code(200);
+    header('Content-Length: 0');
+} catch (\Throwable $e) {
+    error_log('nginx-docker-auth: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Forbidden';
-    exit;
 }
-
-$user = station_current_user();
-if (session_status() === PHP_SESSION_ACTIVE) {
-    session_write_close();
-}
-
-if (!station_user_may_access_project($user, $slug)) {
-    http_response_code(403);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Forbidden';
-    exit;
-}
-
-http_response_code(200);
-header('Content-Length: 0');
 exit;

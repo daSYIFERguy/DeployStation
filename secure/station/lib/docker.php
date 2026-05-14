@@ -2455,22 +2455,34 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
 
 /**
  * URI prefix for `auth_request` inside generated nginx snippets. Must match
- * how Station is exposed on the public host (not a filesystem path). When
- * `SCRIPT_NAME` is missing or is a CLI path, fall back to the usual deploy path.
+ * the browser-visible URL path to Station PHP (not the filesystem path).
  *
- * Optional admin override `nginxAuthRequestBasePath`: set when auto-detection
- * is wrong (e.g. Station lives at `/station` but CLI regeneration would emit
- * `/secure/station`). Wrong auth URIs break every `/p/<slug>/` route.
+ * Resolution order:
+ * 1. Env `STATION_AUTH_REQUEST_BASE` (e.g. `/station`) — set in php-fpm pool when
+ *    CLI regeneration or SCRIPT_NAME does not match nginx's public URL.
+ * 2. Admin override `nginxAuthRequestBasePath`.
+ * 3. `station_web_base_path()` when it looks like a URL path (not /var/…).
+ * 4. Fallback `/station` (filesystem-style SCRIPT_NAME often means a site-root
+ *    Station tree); use env or Admin override if your vhost uses `/secure/station`.
  */
 function station_nginx_auth_request_base_path(): string
 {
+    $envRaw = getenv('STATION_AUTH_REQUEST_BASE');
+    if (is_string($envRaw) && trim($envRaw) !== '') {
+        $normalized = '/' . trim(trim($envRaw), "/ \t\r\n");
+        $normalized = rtrim($normalized, '/');
+        if ($normalized !== '' && $normalized !== '/') {
+            return $normalized;
+        }
+    }
+
     $admin = station_admin_settings();
     $override = trim((string) ($admin['nginxAuthRequestBasePath'] ?? ''));
     if ($override !== '') {
         $normalized = '/' . trim($override, "/ \t\r\n");
         $normalized = rtrim($normalized, '/');
         if ($normalized === '' || $normalized === '/') {
-            return '/secure/station';
+            return '/station';
         }
 
         return $normalized;
@@ -2478,11 +2490,11 @@ function station_nginx_auth_request_base_path(): string
 
     $base = rtrim(station_web_base_path(), '/');
     if ($base === '' || $base === '.') {
-        return '/secure/station';
+        return '/station';
     }
     foreach (['/var/', '/srv/', '/usr/', '/opt/', '/home/'] as $prefix) {
         if (str_starts_with($base, $prefix)) {
-            return '/secure/station';
+            return '/station';
         }
     }
 
@@ -2548,6 +2560,8 @@ function station_render_nginx_projects_conf(array $projects): string
         $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
         // Literal auth_request URI; Host / X-Forwarded-Host lines come from
         // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
+        $lines[] = '    # Large browser Cookie headers (logged-in Station + CF) can exceed nginx defaults.';
+        $lines[] = '    large_client_header_buffers 4 32k;';
         $lines[] = '    auth_request ' . $authUri . ';';
         $lines[] = '    # auth_request must resolve to Station PHP (correct server_name / include).';
         $lines[] = '    proxy_http_version 1.1;';
