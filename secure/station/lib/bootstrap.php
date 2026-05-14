@@ -24,10 +24,9 @@ function station_base_dir(): string
  * Persistent state directory (config, admin-settings, archives, nginx includes, …).
  *
  * - If env `STATION_DATA_DIR` is set, that path is used (recommended for production).
- * - Otherwise on Linux, `/var/lib/deployment-station` is used when it already exists
- *   or can be created (typically requires the directory to be pre-created with correct
- *   ownership, or a writable `/var/lib` — if creation fails, falls back next to the
- *   Station tree).
+ * - Otherwise on Linux, `/var/lib/deployment-station` is used only when it already
+ *   exists and is writable by this process, or when it can be created here. If the
+ *   path exists but is not writable (e.g. root-owned), we fall back next to the tree.
  * - Else: `<parent-of-station-php>/.secure-station-data` (same parent as the folder
  *   that contains `station/` — works when you only deploy `/secure/` and the web user
  *   owns the parent path).
@@ -48,7 +47,13 @@ function station_data_dir(): string
 
     if (PHP_OS_FAMILY === 'Linux') {
         $lib = '/var/lib/deployment-station';
-        if (is_dir($lib) || @mkdir($lib, 0775, true)) {
+        $useLib = false;
+        if (is_dir($lib)) {
+            $useLib = is_writable($lib);
+        } else {
+            $useLib = @mkdir($lib, 0775, true);
+        }
+        if ($useLib) {
             $resolved = $lib;
 
             return $resolved;

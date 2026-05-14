@@ -99,7 +99,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     if ($error === '') {
-      $error = 'Failed to write config files. Check write permissions.';
+      $dataDir = station_data_dir();
+      $error = 'Failed to write config files. Check write permissions for the data directory: ' . $dataDir
+        . ' (set STATION_DATA_DIR to a path the web server user can write, or chown/chmod that directory).';
     }
     }
 }
