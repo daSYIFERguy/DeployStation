@@ -2291,13 +2291,13 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
         $authBase = station_nginx_auth_request_base_path();
         $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
-        // Quoted set value keeps `?project=` parse-safe; do not force Connection: upgrade
-        // here — many HTTP apps return 500 when Upgrade is absent but Connection is "upgrade".
-        $authQuoted = str_replace(['\\', '"'], ['\\\\', '\\"'], $authUri);
-        $lines[] = '    set $station_docker_auth_uri "' . $authQuoted . '";';
-        $lines[] = '    auth_request $station_docker_auth_uri;';
+        // Literal URI avoids auth_request + variable quirks on some nginx builds.
+        // Send loopback Host to the container (matches curl to 127.0.0.1:port); keep
+        // the browser hostname on X-Forwarded-Host for apps that need the public name.
+        $lines[] = '    auth_request ' . $authUri . ';';
         $lines[] = '    proxy_http_version 1.1;';
-        $lines[] = '    proxy_set_header Host $host;';
+        $lines[] = '    proxy_set_header Host 127.0.0.1:' . $hostPort . ';';
+        $lines[] = '    proxy_set_header X-Forwarded-Host $http_host;';
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';
