@@ -74,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $settings = station_admin_settings();
 $snapshot = station_host_health_snapshot();
 $routing = station_host_health_routing_map();
+$upstreamMatrix = station_host_health_docker_upstream_matrix();
 
 $nginxTestLabel = trim((string) ($settings['hostNginxTestCommand'] ?? '')) !== ''
     ? 'nginx config test (custom hostNginxTestCommand)'
@@ -164,7 +165,7 @@ TXT;
         <div>
           <p class="dashboard-kicker">Owner only</p>
           <h1 class="dashboard-heading">Host health & routing</h1>
-          <p class="dashboard-subheading">Bounded snapshots from the same shell user as Station (often <code>www-data</code>). Use the routing map to see how <code>/p/&lt;slug&gt;/</code> maps to loopback ports. Configure optional one-line restart or log-tail commands if your host uses sudo — same idea as the nginx reload command in Admin → Projects.</p>
+          <p class="dashboard-subheading">Bounded snapshots from the same shell user as Station (often <code>www-data</code>). The <strong>HTTP 500 playbook</strong> probes each stack on <code>127.0.0.1:&lt;hostPort&gt;</code> and lists copy-paste <code>curl</code>, <code>ss</code>, and compose log commands for SSH. Use the routing map and optional sudo one-liners the same way as Admin → Projects nginx reload.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -243,6 +244,55 @@ TXT;
             <?php endif; ?>
           </tbody>
         </table>
+      </div>
+
+      <div class="settings-panel" style="margin-top: 24px;">
+        <h2 class="settings-panel-heading" style="font-size:18px;">HTTP 500 playbook (loopback vs nginx vs app)</h2>
+        <p class="setting-description" style="margin:0;">There is no single magic test for every 500. Use this order: <strong>(1)</strong> TCP + HTTP to <code>127.0.0.1:&lt;hostPort&gt;</code> below (same user as PHP — mimics <code>proxy_pass</code> without nginx). <strong>(2)</strong> If loopback is OK but the public <code>/p/…</code> URL fails, suspect <strong>nginx</strong> (<code>auth_request</code>, wrong include, stale reload) or <strong>Host header</strong> (try Admin → Projects loopback vs preserve). <strong>(3)</strong> If loopback returns 5xx, the <strong>container app</strong> is failing — use compose logs. <strong>(4)</strong> Ping is not useful for TCP services; use <code>curl</code> or <code>ss</code> instead.</p>
+        <ol class="setting-description" style="margin:12px 0 0 18px;line-height:1.55;">
+          <li><strong>Loopback OK, public 500/502</strong> — nginx error log; verify <code>auth_request</code> URL is reachable by nginx; run isolated <code>projects.conf</code> test in the grid above.</li>
+          <li><strong>Loopback fails TCP</strong> — container not listening, wrong host port, or compose not up (<code>docker compose ps</code>).</li>
+          <li><strong>Loopback HTTP 5xx</strong> — fix the app or its env inside the stack; nginx is not the root cause.</li>
+          <li><strong>Loopback 200 but browser 403 on /p/</strong> — Station session / project access (auth subrequest returns 403), not 500.</li>
+        </ol>
+        <?php if ($upstreamMatrix === []): ?>
+          <p class="setting-description" style="margin-top:14px;">No dockerized projects — nothing to probe yet.</p>
+        <?php else: ?>
+          <p class="setting-description" style="margin-top:14px;">Probes run from this PHP request (typically <code>www-data</code>). Copy any block into SSH on the server.</p>
+          <?php foreach ($upstreamMatrix as $um): ?>
+            <?php
+              $slug = (string) ($um['slug'] ?? '');
+              $hp = (int) ($um['hostPort'] ?? 0);
+              $pr = $um['probe'] ?? [];
+              $tcpOk = !empty($pr['tcp']);
+              $httpC = (int) ($pr['httpCode'] ?? 0);
+              $sum = $tcpOk ? ('TCP ok' . ($httpC > 0 ? ' · HTTP ' . $httpC : '')) : ('TCP failed: ' . (string) ($pr['tcpError'] ?? ''));
+            ?>
+            <div style="margin-top:18px;padding:14px;border:1px solid var(--border,#e5e7eb);border-radius:10px;background:var(--panel-soft,#f8fafc);">
+              <h3 style="margin:0 0 8px;font-size:15px;"><code><?= station_h($slug) ?></code> — <?= station_h($sum) ?></h3>
+              <?php if ((string) ($pr['httpError'] ?? '') !== ''): ?>
+                <p class="setting-description" style="margin:0 0 8px;"><strong>HTTP layer:</strong> <?= station_h((string) $pr['httpError']) ?></p>
+              <?php endif; ?>
+              <?php if ((string) ($pr['bodySnippet'] ?? '') !== ''): ?>
+                <p class="setting-description" style="margin:0 0 6px;"><strong>Body snippet:</strong></p>
+                <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) $pr['bodySnippet']) ?></pre>
+              <?php endif; ?>
+              <p class="setting-description" style="margin:0 0 6px;">Quick status (HTTP code only):</p>
+              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellCurlLoop'] ?? '')) ?></pre>
+              <p class="setting-description" style="margin:0 0 6px;">Verbose loopback (headers + tail of body):</p>
+              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellCurlLoopVerbose'] ?? '')) ?></pre>
+              <?php if ((string) ($um['shellCurlPublic'] ?? '') !== ''): ?>
+                <p class="setting-description" style="margin:0 0 6px;">Public URL (through nginx — same as browser without your session cookie):</p>
+                <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) $um['shellCurlPublic']) ?></pre>
+                <p class="setting-description" style="margin:0 0 10px;font-size:12px;opacity:0.85;">A 403 here with 200 on loopback often means <code>auth_request</code> / session; a 5xx on both points at the upstream app or nginx upstream config.</p>
+              <?php endif; ?>
+              <p class="setting-description" style="margin:0 0 6px;">Who is listening on this port:</p>
+              <pre class="host-routing-pre" style="margin:0 0 10px;"><?= station_h((string) ($um['shellSs'] ?? '')) ?></pre>
+              <p class="setting-description" style="margin:0 0 6px;">Fetch recent container logs (run on server):</p>
+              <pre class="host-routing-pre" style="margin:0;"><?= station_h((string) ($um['shellComposeLogs'] ?? '')) ?></pre>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
       </div>
 
       <div class="settings-panel" style="margin-top: 24px;">

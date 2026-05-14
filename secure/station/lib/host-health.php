@@ -186,3 +186,145 @@ function station_host_health_run_configured_command(string $settingsKey): array
 
     return station_run_shell_command($cmd, 120);
 }
+
+/**
+ * Browser-visible origin for curl examples (e.g. https://syifer.dev), or empty if unknown.
+ */
+function station_host_health_infer_public_origin(): string
+{
+    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $scheme = $https ? 'https' : 'http';
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+
+    return $scheme . '://' . $host;
+}
+
+/**
+ * TCP + quick HTTP/1.1 GET to the published host port (same target as nginx proxy_pass).
+ * Uses Host: 127.0.0.1:port — some apps differ vs public Host; compare with the public curl line in Host health.
+ *
+ * @return array{tcp: bool, tcpError: string, httpCode: int, httpError: string, bodySnippet: string}
+ */
+function station_host_health_probe_loopback_http(int $port, string $path = '/'): array
+{
+    $out = [
+        'tcp' => false,
+        'tcpError' => '',
+        'httpCode' => 0,
+        'httpError' => '',
+        'bodySnippet' => '',
+    ];
+    if ($port <= 0 || $port > 65535) {
+        $out['tcpError'] = 'invalid port';
+
+        return $out;
+    }
+
+    $path = $path === '' ? '/' : (str_starts_with($path, '/') ? $path : '/' . $path);
+    $errno = 0;
+    $errstr = '';
+    $fp = @fsockopen('127.0.0.1', $port, $errno, $errstr, 3.0);
+    if (!is_resource($fp)) {
+        $out['tcpError'] = $errstr !== '' ? $errstr . ' (' . $errno . ')' : 'connection refused or timeout';
+
+        return $out;
+    }
+    $out['tcp'] = true;
+    stream_set_timeout($fp, 6);
+    $req = 'GET ' . $path . " HTTP/1.1\r\n"
+        . 'Host: 127.0.0.1:' . $port . "\r\n"
+        . "User-Agent: DeploymentStation-HealthProbe/1\r\n"
+        . "Connection: close\r\n\r\n";
+    fwrite($fp, $req);
+
+    $response = '';
+    while (!feof($fp)) {
+        $chunk = fread($fp, 16384);
+        if ($chunk === false || $chunk === '') {
+            break;
+        }
+        $response .= $chunk;
+        $meta = stream_get_meta_data($fp);
+        if (!empty($meta['timed_out'])) {
+            $out['httpError'] = 'read timeout';
+            break;
+        }
+        if (strlen($response) > 524288) {
+            break;
+        }
+    }
+    fclose($fp);
+
+    if ($response === '') {
+        $out['httpError'] = 'empty response (non-HTTP service or immediate close)';
+
+        return $out;
+    }
+
+    if (preg_match('/^HTTP\/\d(?:\.\d)?\s+(\d{3})\b/m', $response, $m)) {
+        $out['httpCode'] = (int) $m[1];
+    }
+
+    $pos = strpos($response, "\r\n\r\n");
+    $body = $pos !== false ? substr($response, $pos + 4) : '';
+
+    if ($out['httpCode'] >= 500) {
+        $out['httpError'] = 'application inside the container returned 5xx';
+    } elseif ($out['httpCode'] === 0) {
+        $out['httpError'] = 'not valid HTTP on this port (TLS? wrong process?)';
+    }
+
+    if ($body !== '') {
+        $out['bodySnippet'] = mb_substr(trim(preg_replace('/\s+/', ' ', $body)), 0, 320);
+    }
+
+    return $out;
+}
+
+/**
+ * Per-docker-project loopback probes + copy-paste shell snippets for SSH debugging.
+ *
+ * @return list<array<string, mixed>>
+ */
+function station_host_health_docker_upstream_matrix(): array
+{
+    $origin = station_host_health_infer_public_origin();
+    $rows = [];
+
+    foreach (station_collect_dockerized_projects() as $p) {
+        $slug = (string) ($p['slug'] ?? '');
+        if ($slug === '') {
+            continue;
+        }
+        $hostPort = (int) ($p['hostPort'] ?? 0);
+        $probe = station_host_health_probe_loopback_http($hostPort, '/');
+        $projDir = station_projects_dir() . '/' . $slug;
+        $curlLoop = 'curl -sS -o /dev/null -w "HTTP %{http_code}\n" --max-time 8 http://127.0.0.1:' . $hostPort . '/';
+        $curlLoopVerbose = 'curl -sv --max-time 8 -H "Host: 127.0.0.1:' . $hostPort . '" http://127.0.0.1:' . $hostPort . '/ 2>&1 | tail -n 40';
+        $curlPublic = $origin !== ''
+            ? 'curl -sS -o /dev/null -w "HTTP %{http_code}\n" --max-time 15 ' . escapeshellarg($origin . '/p/' . rawurlencode($slug) . '/')
+            : '';
+        $ss = '(command -v ss >/dev/null 2>&1 && ss -ltnp | grep -F ":'
+            . $hostPort . ' ") || (command -v netstat >/dev/null 2>&1 && netstat -tlnp 2>/dev/null | grep -F ":'
+            . $hostPort . ' ") || true';
+        $logs = 'cd ' . escapeshellarg($projDir) . ' && docker compose logs --tail=60 2>&1';
+
+        $rows[] = [
+            'slug' => $slug,
+            'hostPort' => $hostPort,
+            'appPort' => (int) ($p['appPort'] ?? 80),
+            'projectDir' => $projDir,
+            'probe' => $probe,
+            'shellCurlLoop' => $curlLoop,
+            'shellCurlLoopVerbose' => $curlLoopVerbose,
+            'shellCurlPublic' => $curlPublic,
+            'shellSs' => $ss,
+            'shellComposeLogs' => $logs,
+        ];
+    }
+
+    return $rows;
+}
