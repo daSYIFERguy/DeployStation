@@ -1432,26 +1432,36 @@ $statsCards = !$canBuild
           </div>
         </details>
 
-        <?php if ($backups || $archivedProjects): ?>
         <details class="admin-panel collapsible-section">
           <summary>Backups &amp; Archives</summary>
           <div class="grid-two collapsible-body">
             <div>
               <h2>Project Backups</h2>
+              <p class="setting-description" style="margin-bottom: 12px;">Backups are stored as <code>.zip</code> under <code>…/archives/</code> in your Station data directory.</p>
+              <form method="post" action="backups.php" enctype="multipart/form-data" class="form-grid" style="margin-bottom: 18px; gap: 10px;">
+                <input type="hidden" name="action" value="upload_backup_zip">
+                <label class="setting-label">Upload backup <code>.zip</code></label>
+                <input type="file" name="backup_zip" accept=".zip,application/zip" required>
+                <button type="submit" class="secondary-btn">Upload to archives</button>
+              </form>
               <?php if (!$backups): ?>
-                <p>No backups yet.</p>
+                <p>No backups yet. Create one from a project’s ⚙ menu, or upload a zip above.</p>
               <?php else: ?>
                 <table>
-                  <thead><tr><th>Archive</th><th>Size</th><th>Restore</th></tr></thead>
+                  <thead><tr><th>Archive</th><th>Size</th><th>Download</th><th>Restore</th></tr></thead>
                   <tbody>
                     <?php foreach ($backups as $bk): ?>
+                      <?php $bkName = (string) ($bk['name'] ?? ''); ?>
                       <tr>
-                        <td><?= station_h((string) ($bk['name'] ?? '')) ?></td>
+                        <td><?= station_h($bkName) ?></td>
                         <td><?= number_format((int) ($bk['size'] ?? 0)) ?> B</td>
+                        <td>
+                          <a class="quick-link" href="archive-download.php?type=backup&amp;name=<?= urlencode($bkName) ?>">Download</a>
+                        </td>
                         <td>
                           <form method="post" action="backups.php" class="inline-form">
                             <input type="hidden" name="action" value="restore_backup">
-                            <input type="hidden" name="archive_name" value="<?= station_h((string) ($bk['name'] ?? '')) ?>">
+                            <input type="hidden" name="archive_name" value="<?= station_h($bkName) ?>">
                             <button type="submit" class="secondary-btn">Restore</button>
                           </form>
                         </td>
@@ -1463,19 +1473,24 @@ $statsCards = !$canBuild
             </div>
             <div>
               <h2>Archived Projects</h2>
+              <p class="setting-description" style="margin-bottom: 12px;">Archived folders can be downloaded as a zip or restored as a live project.</p>
               <?php if (!$archivedProjects): ?>
                 <p>No archived projects.</p>
               <?php else: ?>
                 <table>
-                  <thead><tr><th>Archive</th><th>Restore</th></tr></thead>
+                  <thead><tr><th>Archive</th><th>Download</th><th>Restore</th></tr></thead>
                   <tbody>
                     <?php foreach ($archivedProjects as $ar): ?>
+                      <?php $arName = (string) ($ar['name'] ?? ''); ?>
                       <tr>
-                        <td><?= station_h((string) ($ar['name'] ?? '')) ?></td>
+                        <td><?= station_h($arName) ?></td>
+                        <td>
+                          <a class="quick-link" href="archive-download.php?type=archived&amp;name=<?= urlencode($arName) ?>">Download zip</a>
+                        </td>
                         <td>
                           <form method="post" action="backups.php" class="inline-form">
                             <input type="hidden" name="action" value="restore_archive">
-                            <input type="hidden" name="archive_name" value="<?= station_h((string) ($ar['name'] ?? '')) ?>">
+                            <input type="hidden" name="archive_name" value="<?= station_h($arName) ?>">
                             <button type="submit" class="secondary-btn">Restore</button>
                           </form>
                         </td>
@@ -1487,7 +1502,6 @@ $statsCards = !$canBuild
             </div>
           </div>
         </details>
-        <?php endif; ?>
 
         <details class="admin-panel collapsible-section">
           <summary>Activity Log (<?= count($recentEvents) ?>)</summary>

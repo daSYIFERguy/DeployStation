@@ -2470,6 +2470,28 @@ function station_nginx_auth_request_base_path(): string
 }
 
 /**
+ * Nginx proxy lines for Host / X-Forwarded-Host toward dockerized apps.
+ *
+ * @return list<string>
+ */
+function station_nginx_docker_proxy_host_header_lines(int $hostPort): array
+{
+    $settings = station_admin_settings();
+    $mode = strtolower(trim((string) ($settings['nginxDockerUpstreamHostMode'] ?? 'preserve')));
+    if ($mode === 'loopback') {
+        return [
+            '    proxy_set_header Host 127.0.0.1:' . $hostPort . ';',
+            '    proxy_set_header X-Forwarded-Host $http_host;',
+        ];
+    }
+
+    return [
+        '    proxy_set_header Host $host;',
+        '    proxy_set_header X-Forwarded-Host $http_host;',
+    ];
+}
+
+/**
  * Render the body of `projects.conf` (one nginx `location` block per
  * dockerized project) from the collected project list.
  */
@@ -2504,13 +2526,13 @@ function station_render_nginx_projects_conf(array $projects): string
         $lines[] = 'location ^~ /p/' . $slug . '/ {';
         $authBase = station_nginx_auth_request_base_path();
         $authUri = $authBase . '/nginx-docker-auth.php?project=' . rawurlencode($slug);
-        // Literal URI avoids auth_request + variable quirks on some nginx builds.
-        // Send loopback Host to the container (matches curl to 127.0.0.1:port); keep
-        // the browser hostname on X-Forwarded-Host for apps that need the public name.
+        // Literal auth_request URI; Host / X-Forwarded-Host lines come from
+        // station_nginx_docker_proxy_host_header_lines() (Admin → Projects).
         $lines[] = '    auth_request ' . $authUri . ';';
         $lines[] = '    proxy_http_version 1.1;';
-        $lines[] = '    proxy_set_header Host 127.0.0.1:' . $hostPort . ';';
-        $lines[] = '    proxy_set_header X-Forwarded-Host $http_host;';
+        foreach (station_nginx_docker_proxy_host_header_lines($hostPort) as $hostLine) {
+            $lines[] = $hostLine;
+        }
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';

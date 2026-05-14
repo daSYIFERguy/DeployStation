@@ -316,6 +316,7 @@ function station_admin_settings(): array
         'customTemplates' => [],
         'nginxAutoReload' => false,
         'nginxReloadCommand' => '',
+        'nginxDockerUpstreamHostMode' => 'preserve',
     ]);
 }
 

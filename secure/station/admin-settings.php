@@ -10,6 +10,7 @@ $settings = station_admin_settings();
 $settings += [
     'nginxAutoReload' => false,
     'nginxReloadCommand' => '',
+    'nginxDockerUpstreamHostMode' => 'preserve',
 ];
 $currentAppName = (string) (station_config()['appName'] ?? 'Deployment Station');
 $currentStationDirName = basename(station_base_dir());
@@ -135,6 +136,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $settings['allowPublicProjects'] = isset($_POST['allowPublicProjects']);
             $settings['nginxAutoReload'] = isset($_POST['nginxAutoReload']);
             $settings['nginxReloadCommand'] = trim((string) ($_POST['nginxReloadCommand'] ?? ''));
+            $hostMode = strtolower(trim((string) ($_POST['nginxDockerUpstreamHostMode'] ?? 'preserve')));
+            $settings['nginxDockerUpstreamHostMode'] = $hostMode === 'loopback' ? 'loopback' : 'preserve';
             break;
 
         case 'integrations':
@@ -167,6 +170,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Persist whatever changed, even when icon uploads partially failed.
     $saved = station_save_admin_settings($settings);
     if ($saved && $error === '') {
+        if ($activeTab === 'project-defaults'
+            && station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? '')) === 'nginx'
+            && function_exists('station_write_nginx_projects_conf')) {
+            station_write_nginx_projects_conf();
+        }
         station_log_event('admin.settings.updated', ['tab' => $activeTab]);
         station_flash_set('ok', 'Settings saved successfully!');
         header('Location: admin-settings.php?tab=' . urlencode($activeTab));
@@ -415,6 +423,16 @@ www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
                       <p>Alternative if you can't grant sudo: leave it disabled and run <code>sudo systemctl reload nginx</code> manually after big changes — the file on disk is always current.</p>
                     </div>
                   </details>
+                </div>
+
+                <div class="setting-item" style="margin-top: 18px;">
+                  <label class="setting-label" for="nginxDockerUpstreamHostMode">Docker proxy: Host header to containers</label>
+                  <select id="nginxDockerUpstreamHostMode" name="nginxDockerUpstreamHostMode">
+                    <?php $upHost = (string) ($settings['nginxDockerUpstreamHostMode'] ?? 'preserve'); ?>
+                    <option value="preserve" <?= $upHost !== 'loopback' ? 'selected' : '' ?>>Public hostname (<code>$host</code>) — default; best for many PHP/Laravel apps behind <code>/p/&lt;slug&gt;/</code></option>
+                    <option value="loopback" <?= $upHost === 'loopback' ? 'selected' : '' ?>>Loopback (<code>127.0.0.1:&lt;port&gt;</code>) — use if the app only responds when Host matches a direct local hit</option>
+                  </select>
+                  <p class="setting-description">Regenerates <code>projects.conf</code> on save. If you still see <strong>500</strong> only on <code>/p/…</code> URLs, try switching this setting, save, then check whether the footer says <strong>nginx/1.24</strong> from the <em>host</em> (Station proxy/auth) or from the <em>container</em> (app error).</p>
                 </div>
               <?php endif; ?>
 

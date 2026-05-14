@@ -539,7 +539,10 @@ function station_list_archived_projects(): array
 
 function station_restore_archived_project(string $archiveName): array
 {
-    $name = trim(str_replace(['..', '/', '\\'], '', $archiveName));
+    $name = station_sanitize_archived_folder_name($archiveName);
+    if ($name === null) {
+        return ['ok' => false, 'message' => 'Invalid archive name.'];
+    }
     $source = station_archived_projects_dir() . '/' . $name;
     if ($name === '' || !is_dir($source)) {
         return ['ok' => false, 'message' => 'Archived project not found.'];
@@ -645,9 +648,47 @@ function station_list_backups(): array
     return $result;
 }
 
+/**
+ * Safe filename for a zip under archives/ (download or restore).
+ */
+function station_sanitize_stored_backup_zip_name(string $name): ?string
+{
+    $name = basename(str_replace('\\', '/', trim($name)));
+    if ($name === '' || str_contains($name, '..')) {
+        return null;
+    }
+    if (!str_ends_with(strtolower($name), '.zip')) {
+        return null;
+    }
+    if (!preg_match('/^[a-zA-Z0-9._-]+\.zip$/', $name)) {
+        return null;
+    }
+
+    return $name;
+}
+
+/**
+ * Safe directory name under archived-projects/.
+ */
+function station_sanitize_archived_folder_name(string $name): ?string
+{
+    $name = basename(str_replace('\\', '/', trim($name)));
+    if ($name === '' || str_contains($name, '..')) {
+        return null;
+    }
+    if (!preg_match('/^[a-zA-Z0-9_-]+$/', $name)) {
+        return null;
+    }
+
+    return $name;
+}
+
 function station_restore_backup_zip(string $archiveFile): array
 {
-    $name = trim(str_replace(['..', '/', '\\'], '', $archiveFile));
+    $name = station_sanitize_stored_backup_zip_name($archiveFile);
+    if ($name === null) {
+        return ['ok' => false, 'message' => 'Invalid backup file name.'];
+    }
     $path = station_archives_dir() . '/' . $name;
     if ($name === '' || !is_file($path)) {
         return ['ok' => false, 'message' => 'Backup not found.'];
