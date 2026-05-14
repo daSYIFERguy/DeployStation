@@ -2556,14 +2556,24 @@ function station_render_nginx_projects_conf(array $projects): string
         }
         $adminGen = station_admin_settings();
         if (!empty($adminGen['nginxDockerProxyStripCookies'])) {
-            $lines[] = '    # Admin: strip browser Cookie so Station PHPSESSID is not forwarded to the container.';
+            $lines[] = '    # Admin: do not forward browser auth headers to the container (Station session / tokens).';
             $lines[] = '    proxy_set_header Cookie "";';
+            $lines[] = '    proxy_set_header Authorization "";';
         }
         $lines[] = '    proxy_set_header X-Real-IP $remote_addr;';
         $lines[] = '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;';
         $lines[] = '    proxy_set_header X-Forwarded-Proto $scheme;';
         $lines[] = '    proxy_set_header X-Forwarded-Prefix /p/' . $slug . ';';
         $lines[] = '    proxy_read_timeout 300s;';
+        // Upstream apps often send cacheable headers; CDNs (e.g. Cloudflare) may then
+        // serve that 200 to everyone — bypassing auth for "private" docker routes.
+        $lines[] = '    proxy_hide_header Cache-Control;';
+        $lines[] = '    proxy_hide_header Expires;';
+        $lines[] = '    proxy_hide_header Pragma;';
+        $lines[] = '    proxy_hide_header ETag;';
+        $lines[] = '    proxy_hide_header Last-Modified;';
+        $lines[] = '    add_header Cache-Control "private, no-store, no-cache, must-revalidate, max-age=0" always;';
+        $lines[] = '    add_header Vary "Cookie" always;';
         $lines[] = '    add_header X-Station-Docker-Project "' . $slug . '" always;';
         $lines[] = '    proxy_pass http://127.0.0.1:' . $hostPort . '/;';
         $lines[] = '}';

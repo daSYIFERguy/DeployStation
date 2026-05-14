@@ -416,8 +416,8 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
                 <label class="feature-toggle" style="margin-top: 14px;">
                   <input type="checkbox" name="nginxDockerProxyStripCookies" <?= !empty($settings['nginxDockerProxyStripCookies']) ? 'checked' : '' ?>>
                   <div class="feature-toggle-content">
-                    <span class="feature-toggle-title">Strip browser Cookie header to Docker upstream</span>
-                    <span class="feature-toggle-desc">After <code>auth_request</code> succeeds, nginx forwards the same <code>Cookie</code> header your browser sent to Station — including <code>PHPSESSID</code>. Some apps in the container mis-handle that and return <strong>500</strong> only while you are signed into Station. Enabling this sets <code>proxy_set_header Cookie "";</code> on every <code>/p/&lt;slug&gt;/</code> route (regenerates <code>projects.conf</code> on save; reload nginx). Leave off if your container needs its own cookies from the browser.</span>
+                    <span class="feature-toggle-title">Strip browser Cookie + Authorization to Docker upstream</span>
+                    <span class="feature-toggle-desc">After <code>auth_request</code> succeeds, nginx normally forwards the same <code>Cookie</code> and <code>Authorization</code> your browser sent to Station (<code>PHPSESSID</code>, API tokens, etc.). Many container apps return <strong>500</strong> only when those are present. Enabling this clears both on the <code>proxy_pass</code> hop (regenerates <code>projects.conf</code> on save; reload nginx). Leave off only if the app behind <code>/p/…</code> must receive browser cookies or Bearer tokens.</span>
                   </div>
                 </label>
               <?php endif; ?>

@@ -203,7 +203,7 @@ TXT;
         <p class="setting-description">Infrastructure mode: <strong><?= station_h($infra) ?></strong>.
           Nginx docker upstream Host header: <strong><?= station_h($hostMode) ?></strong>
           (<code>preserve</code> = <code>$host</code>; <code>loopback</code> = literal <code>127.0.0.1:port</code>).
-          Strip <code>Cookie</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
+          Strip <code>Cookie</code> + <code>Authorization</code> to container: <strong><?= $stripDockerCookies ? 'on' : 'off' ?></strong>.
           Auto nginx reload after regen: <strong><?= $autoReload ? 'on' : 'off' ?></strong>.
         </p>
         <p class="setting-description"><code>auth_request</code> base path (must match where nginx can reach Station PHP): <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?></code> — full probe: <code><?= station_h((string) ($routing['nginxAuthRequestBase'] ?? '')) ?>/nginx-docker-auth.php?project=&lt;slug&gt;</code></p>
@@ -257,7 +257,8 @@ TXT;
           <li><strong>Loopback HTTP 5xx</strong> — fix the app or its env inside the stack; nginx is not the root cause.</li>
           <li><strong>Loopback 200 but browser 403 on /p/</strong> — Station session / project access (auth subrequest returns 403), not 500.</li>
           <li><strong>Loopback 200 but browser 500 on /p/</strong> — often <code>auth_request</code>: nginx turns a <strong>404/502/500 from the auth subrequest</strong> (wrong path, wrong <code>server_name</code> for Cloudflare Tunnel host, PHP fatal) into <strong>HTTP 500</strong> on the public URL. The loopback container test <strong>never runs auth</strong> — use the auth <code>curl</code> block below. Note: nginx maps <strong>403</strong> from the auth script to a client <strong>403</strong>, not 500 — so “500 only when logged in” is often the <strong>container</strong> after auth passes, or an auth subrequest that is <strong>not</strong> 2xx/401/403.</li>
-          <li><strong>500 in the browser when signed into Station, but fine in a private window</strong> — the app may be choking on Station’s <code>PHPSESSID</code> forwarded on <code>Cookie</code>. Try Admin → Projects → <strong>Strip browser Cookie header to Docker upstream</strong>, save, reload nginx.</li>
+          <li><strong>500 in the browser when signed into Station, but fine in a private window</strong> — the app may be choking on headers nginx forwards after <code>auth_request</code> (<code>Cookie</code>, <code>Authorization</code>). Try Admin → Projects → <strong>Strip browser Cookie + Authorization to Docker upstream</strong>, save, reload nginx.</li>
+          <li><strong>Private project but anonymous / incognito still sees the app</strong> — often <strong>CDN or browser cache</strong> of an earlier 200. Station-generated <code>projects.conf</code> now hides upstream cache headers and sends <code>Cache-Control: private, no-store</code> on <code>/p/…</code> responses; purge Cloudflare cache for that URL (or use a “Bypass cache” rule for <code>/p/*</code>), then hard-reload.</li>
         </ol>
         <?php
           $authProbeHost = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
