@@ -2239,6 +2239,219 @@ function station_collect_dockerized_projects(): array
 }
 
 /**
+ * Read-only snapshot of host paths and web-server settings for the admin UI.
+ *
+ * @return array<string, mixed>
+ */
+function station_admin_host_config_snapshot(): array
+{
+    $settings = station_admin_settings();
+    $nginxCmd = trim((string) ($settings['nginxReloadCommand'] ?? ''));
+    $envData = getenv('STATION_DATA_DIR');
+
+    return [
+        'stationDataDir' => station_data_dir(),
+        'stationDataDirEnv' => is_string($envData) && trim($envData) !== '' ? trim($envData) : '',
+        'projectsDir' => station_projects_dir(),
+        'stationPhpDir' => station_base_dir(),
+        'webBasePath' => station_web_base_path(),
+        'serverInfrastructure' => station_normalize_server_infrastructure((string) ($settings['serverInfrastructure'] ?? 'apache')),
+        'nginxIncludePath' => station_nginx_include_path(),
+        'nginxAutoReload' => !empty($settings['nginxAutoReload']),
+        'nginxReloadCommandConfigured' => $nginxCmd !== '',
+    ];
+}
+
+/**
+ * Bounded `docker ps -a` table for admin overview.
+ *
+ * @return array{ok: bool, output: string, truncated: bool}
+ */
+function station_docker_global_ps(int $maxBytes = 100000): array
+{
+    $docker = station_docker_binary();
+    $engine = station_docker_engine_available();
+    if (empty($engine['ok'])) {
+        return ['ok' => false, 'output' => 'Docker engine is not reachable from PHP.', 'truncated' => false];
+    }
+    $result = station_run_shell_cmd([
+        $docker,
+        'ps',
+        '-a',
+        '--format',
+        'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}',
+    ], null, 25);
+    $out = trim((string) ($result['output'] ?? ''));
+    $truncated = mb_strlen($out) > $maxBytes;
+    if ($truncated) {
+        $out = mb_substr($out, 0, $maxBytes) . "\n... (truncated)\n";
+    }
+
+    return [
+        'ok' => ($result['code'] ?? 1) === 0,
+        'output' => $out !== '' ? $out : '(no output)',
+        'truncated' => $truncated,
+    ];
+}
+
+/**
+ * Per-project docker status for each containerized project (admin fleet table).
+ *
+ * @return list<array{slug: string, hostPort: int, appPort: int, state: string, composePath: string}>
+ */
+function station_admin_containerized_project_rows(): array
+{
+    $rows = [];
+    foreach (station_collect_dockerized_projects() as $p) {
+        $slug = (string) ($p['slug'] ?? '');
+        if ($slug === '') {
+            continue;
+        }
+        $st = station_project_docker_status($slug);
+        $rows[] = [
+            'slug' => $slug,
+            'hostPort' => (int) ($p['hostPort'] ?? 0),
+            'appPort' => (int) ($p['appPort'] ?? 80),
+            'state' => (string) ($st['state'] ?? 'unknown'),
+            'composePath' => station_projects_dir() . '/' . $slug . '/docker-compose.yml',
+        ];
+    }
+
+    return $rows;
+}
+
+/**
+ * Owner-only: restart or force-recreate every containerized project stack, then
+ * regenerate the nginx projects include.
+ *
+ * @param 'restart'|'recreate' $bulkAction
+ * @return array{ok: bool, message: string, results: array<string, array{ok: bool, output: string, code: int}>, nginx_include: array<string, mixed>}
+ */
+function station_admin_bulk_docker_projects(string $bulkAction): array
+{
+    if ($bulkAction !== 'restart' && $bulkAction !== 'recreate') {
+        return [
+            'ok' => false,
+            'message' => 'Invalid bulk action.',
+            'results' => [],
+            'nginx_include' => ['ok' => false, 'message' => 'skipped'],
+        ];
+    }
+    if (!station_docker_enabled()) {
+        return [
+            'ok' => false,
+            'message' => 'Docker deployment is disabled.',
+            'results' => [],
+            'nginx_include' => ['ok' => false, 'message' => 'skipped'],
+        ];
+    }
+    $engine = station_docker_engine_available();
+    if (empty($engine['ok'])) {
+        return [
+            'ok' => false,
+            'message' => 'Docker engine is not reachable.',
+            'results' => [],
+            'nginx_include' => ['ok' => false, 'message' => 'skipped'],
+        ];
+    }
+
+    $args = $bulkAction === 'restart' ? ['restart'] : ['up', '-d', '--force-recreate'];
+    $timeout = $bulkAction === 'restart' ? 420 : 900;
+    $results = [];
+    $anyOk = false;
+    $anyFail = false;
+
+    foreach (station_collect_dockerized_projects() as $p) {
+        $slug = (string) ($p['slug'] ?? '');
+        if ($slug === '') {
+            continue;
+        }
+        $projectPath = station_projects_dir() . '/' . $slug;
+        $composePath = $projectPath . '/docker-compose.yml';
+        $projectSettings = station_project_settings($slug);
+        $dockerConfig = isset($projectSettings['docker']) && is_array($projectSettings['docker']) ? $projectSettings['docker'] : [];
+        if ($dockerConfig === []) {
+            $results[$slug] = ['ok' => false, 'output' => 'Missing docker settings.', 'code' => -1];
+            $anyFail = true;
+            continue;
+        }
+        if (!isset($dockerConfig['hostPort']) || (int) $dockerConfig['hostPort'] <= 0) {
+            $dockerConfig['hostPort'] = station_allocate_project_host_port($slug);
+            $projectSettings['docker'] = $dockerConfig;
+            station_save_project_settings($slug, $projectSettings);
+        }
+        station_merge_station_entries_into_project_dockerignore($projectPath);
+        $composeContent = station_generate_docker_compose($dockerConfig, $slug);
+        if (@file_put_contents($composePath, $composeContent, LOCK_EX) === false) {
+            $results[$slug] = ['ok' => false, 'output' => 'Could not write docker-compose.yml', 'code' => -1];
+            $anyFail = true;
+            continue;
+        }
+
+        $run = station_run_project_docker_compose($slug, $args, $timeout);
+        $code = (int) ($run['code'] ?? -1);
+        $ok = !empty($run['ok']);
+        $results[$slug] = [
+            'ok' => $ok,
+            'output' => trim((string) ($run['output'] ?? '')),
+            'code' => $code,
+        ];
+        if ($ok) {
+            $anyOk = true;
+            station_log_event('project.docker.' . $bulkAction . '.bulk', ['project' => $slug, 'exit' => $code]);
+        } else {
+            $anyFail = true;
+        }
+    }
+
+    $nginxInclude = station_write_nginx_projects_conf();
+    if (empty($nginxInclude['ok'])) {
+        station_log_event('nginx.include.failed', [
+            'phase' => 'admin-bulk-docker-' . $bulkAction,
+            'message' => (string) ($nginxInclude['message'] ?? ''),
+        ]);
+    }
+
+    $n = count($results);
+    if ($n === 0) {
+        return [
+            'ok' => true,
+            'message' => 'No containerized projects to operate on.',
+            'results' => [],
+            'nginx_include' => $nginxInclude,
+        ];
+    }
+
+    $verb = $bulkAction === 'restart' ? 'Restarted' : 'Recreated';
+    $summary = $verb . ' ' . $n . ' stack(s). ';
+    if ($anyFail && $anyOk) {
+        $summary .= 'Some commands failed — check per-project Docker logs.';
+    } elseif ($anyFail) {
+        $summary .= 'All compose commands failed.';
+    } else {
+        $summary .= 'All compose commands succeeded.';
+    }
+    $summary .= station_nginx_include_reload_hint_for_flash($nginxInclude);
+
+    $failed = [];
+    foreach ($results as $slug => $row) {
+        if (empty($row['ok'])) {
+            $failed[] = $slug;
+        }
+    }
+    if ($failed !== []) {
+        $summary .= ' Failed slugs: ' . implode(', ', $failed) . '.';
+    }
+
+    return [
+        'ok' => !$anyFail,
+        'message' => $summary,
+        'results' => $results,
+        'nginx_include' => $nginxInclude,
+    ];
+}
+
+/**
  * URI prefix for `auth_request` inside generated nginx snippets. Must match
  * how Station is exposed on the public host (not a filesystem path). When
  * `SCRIPT_NAME` is missing or is a CLI path, fall back to the usual deploy path.

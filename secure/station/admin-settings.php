@@ -60,6 +60,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'admin_docker_restart_all') {
+    @set_time_limit(0);
+    @ignore_user_abort(true);
+    $r = station_admin_bulk_docker_projects('restart');
+    station_log_event('admin.docker.bulk', ['action' => 'restart', 'ok' => !empty($r['ok'])]);
+    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Bulk restart finished.'));
+    header('Location: admin-settings.php?tab=docker');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'admin_docker_recreate_all') {
+    if (empty($_POST['confirm_recreate_all'])) {
+        station_flash_set('error', 'Tick the confirmation box before force-recreating all container stacks.');
+        header('Location: admin-settings.php?tab=docker');
+        exit;
+    }
+    @set_time_limit(0);
+    @ignore_user_abort(true);
+    $r = station_admin_bulk_docker_projects('recreate');
+    station_log_event('admin.docker.bulk', ['action' => 'recreate', 'ok' => !empty($r['ok'])]);
+    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Bulk recreate finished.'));
+    header('Location: admin-settings.php?tab=docker');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'rename_station_dir') {
     $result = station_rename_station_dir((string) ($_POST['station_dir_name'] ?? ''));
     if (!empty($result['ok'])) {
@@ -450,6 +475,9 @@ www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -s reload</pre>
               $socketExists = !empty($dockerDiagnostics['socketExists']);
               $socketWritable = !empty($dockerDiagnostics['socketWritable']);
               $isSnap = !empty($dockerDiagnostics['binaryIsSnap']);
+              $hostFleetSnap = station_admin_host_config_snapshot();
+              $fleetRows = station_admin_containerized_project_rows();
+              $globalPsLines = station_docker_global_ps();
             ?>
             <?php if ($isSnap): ?>
               <div class="docker-diag-card is-bad" style="margin-bottom: 14px;">
@@ -508,6 +536,96 @@ sudo systemctl restart php*-fpm
               <?php if (!$engineOk && !$isSnap): ?>
                 <p class="docker-diag-hint">Most often this means PHP-FPM's PATH doesn't include where docker lives, or the web user isn't in the <code>docker</code> group. Set "Docker Binary Path" below to the absolute path (e.g. <code>/usr/local/bin/docker</code>) and save, then refresh this page.</p>
               <?php endif; ?>
+            </div>
+
+            <div class="settings-panel" style="margin-top: 22px;">
+              <div class="settings-panel-head">
+                <h2 class="settings-panel-heading" style="font-size: 18px;">Host paths &amp; web server</h2>
+                <p class="settings-panel-subtitle">What this Station instance uses on disk and for nginx routing (read-only).</p>
+              </div>
+              <dl class="docker-diag-list">
+                <dt><code>STATION_DATA_DIR</code> (env)</dt>
+                <dd><?= $hostFleetSnap['stationDataDirEnv'] !== '' ? '<code>' . station_h($hostFleetSnap['stationDataDirEnv']) . '</code>' : '<span style="opacity:0.75;">(not set — using default)</span>' ?></dd>
+                <dt>Data directory</dt>
+                <dd><code><?= station_h($hostFleetSnap['stationDataDir']) ?></code></dd>
+                <dt>Projects directory</dt>
+                <dd><code><?= station_h($hostFleetSnap['projectsDir']) ?></code></dd>
+                <dt>Station PHP tree</dt>
+                <dd><code><?= station_h($hostFleetSnap['stationPhpDir']) ?></code></dd>
+                <dt>Web base path (<code>SCRIPT_NAME</code>)</dt>
+                <dd><code><?= station_h($hostFleetSnap['webBasePath'] !== '' ? $hostFleetSnap['webBasePath'] : '/') ?></code></dd>
+                <dt>Production web server (admin default)</dt>
+                <dd><code><?= station_h($hostFleetSnap['serverInfrastructure']) ?></code></dd>
+                <dt>Nginx include file</dt>
+                <dd><code><?= station_h($hostFleetSnap['nginxIncludePath']) ?></code></dd>
+                <dt>Automatic nginx reload</dt>
+                <dd><?= !empty($hostFleetSnap['nginxAutoReload']) ? 'On' : 'Off' ?><?= !empty($hostFleetSnap['nginxReloadCommandConfigured']) ? ' <span style="opacity:0.8;">(custom reload command configured)</span>' : '' ?></dd>
+              </dl>
+            </div>
+
+            <div class="settings-panel" style="margin-top: 22px;">
+              <div class="settings-panel-head">
+                <h2 class="settings-panel-heading" style="font-size: 18px;">Containerized projects (Station)</h2>
+                <p class="settings-panel-subtitle">Projects with Docker enabled and a host port. Status comes from <code>docker compose ps</code> for each stack.</p>
+              </div>
+              <?php if ($fleetRows === []): ?>
+                <p class="setting-description">No containerized projects yet.</p>
+              <?php else: ?>
+                <div style="overflow-x: auto;">
+                  <table style="width:100%; border-collapse:collapse; font-size: 13px;">
+                    <thead>
+                      <tr style="text-align:left; border-bottom:1px solid var(--border,#e2e8f0);">
+                        <th style="padding:8px 6px;">Project</th>
+                        <th style="padding:8px 6px;">State</th>
+                        <th style="padding:8px 6px;">Host → app port</th>
+                        <th style="padding:8px 6px;">Compose file</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <?php foreach ($fleetRows as $row): ?>
+                        <tr style="border-bottom:1px solid var(--border,#f1f5f9);">
+                          <td style="padding:8px 6px;">
+                            <a href="docker-config.php?project=<?= urlencode($row['slug']) ?>"><?= station_h($row['slug']) ?></a>
+                          </td>
+                          <td style="padding:8px 6px;"><code><?= station_h($row['state']) ?></code></td>
+                          <td style="padding:8px 6px;"><code>127.0.0.1:<?= (int) $row['hostPort'] ?> → :<?= (int) $row['appPort'] ?></code></td>
+                          <td style="padding:8px 6px;"><code style="word-break:break-all;"><?= station_h($row['composePath']) ?></code></td>
+                        </tr>
+                      <?php endforeach; ?>
+                    </tbody>
+                  </table>
+                </div>
+              <?php endif; ?>
+            </div>
+
+            <div class="settings-panel" style="margin-top: 22px;">
+              <div class="settings-panel-head">
+                <h2 class="settings-panel-heading" style="font-size: 18px;">All Docker containers on this host</h2>
+                <p class="settings-panel-subtitle">Output of <code>docker ps -a</code> (not only Station projects). <?php if (!empty($globalPsLines['truncated'])): ?><strong>Truncated</strong> for display.<?php endif; ?></p>
+              </div>
+              <pre class="code-mini" style="max-height: 320px; overflow: auto; white-space: pre; font-size: 12px;"><?= station_h($globalPsLines['output']) ?></pre>
+            </div>
+
+            <div class="settings-panel" style="margin-top: 22px;">
+              <div class="settings-panel-head">
+                <h2 class="settings-panel-heading" style="font-size: 18px;">Bulk operations</h2>
+                <p class="settings-panel-subtitle">Runs sequentially for every <strong>containerized</strong> project, refreshes <code>docker-compose.yml</code> from saved settings, then regenerates the nginx routes file.</p>
+              </div>
+              <p class="setting-description" style="margin-bottom: 12px;"><strong>Restart all</strong> runs <code>docker compose restart</code> per project (containers only, no image rebuild). <strong>Force recreate all</strong> runs <code>docker compose up -d --force-recreate</code> — still no image rebuild unless you rebuild per project; named volumes (e.g. databases) are kept.</p>
+              <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
+                <form method="post" style="margin:0;">
+                  <input type="hidden" name="action" value="admin_docker_restart_all">
+                  <button type="submit" class="secondary-btn" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Restart all container stacks</button>
+                </form>
+                <form method="post" style="margin:0;">
+                  <input type="hidden" name="action" value="admin_docker_recreate_all">
+                  <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:8px;">
+                    <input type="checkbox" name="confirm_recreate_all" value="1">
+                    I want to force-recreate every stack
+                  </label>
+                  <button type="submit" class="secondary-btn" <?= !station_docker_enabled() || !$engineOk ? 'disabled' : '' ?>>Force recreate all</button>
+                </form>
+              </div>
             </div>
 
             <h3 style="font-size: 15px; margin: 0 0 16px;">Docker Deployment</h3>
