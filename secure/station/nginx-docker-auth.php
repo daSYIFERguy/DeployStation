@@ -9,6 +9,10 @@ declare(strict_types=1);
  * this dockerized project (same rules as project-serve.php). Returns 403 otherwise.
  * We use 200 instead of 204 for maximum compatibility with nginx auth_request.
  *
+ * Emergency bypass (not for production): set `STATION_DOCKER_AUTH_BYPASS=1` in the
+ * php-fpm pool or nginx `fastcgi_param STATION_DOCKER_AUTH_BYPASS 1;` on Station
+ * PHP — then any existing project slug returns 200 without session checks.
+ *
  * @see station_render_nginx_projects_conf() in lib/docker.php
  */
 
@@ -30,6 +34,17 @@ try {
         http_response_code(403);
         header('Content-Type: text/plain; charset=utf-8');
         echo 'Forbidden';
+        exit;
+    }
+
+    $bypassRaw = trim((string) ($_SERVER['STATION_DOCKER_AUTH_BYPASS'] ?? ''));
+    if ($bypassRaw === '') {
+        $g = getenv('STATION_DOCKER_AUTH_BYPASS');
+        $bypassRaw = is_string($g) ? trim($g) : '';
+    }
+    if (in_array(strtolower($bypassRaw), ['1', 'true', 'yes', 'on'], true)) {
+        http_response_code(200);
+        header('Content-Length: 0');
         exit;
     }
 

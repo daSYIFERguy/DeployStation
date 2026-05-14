@@ -2458,18 +2458,21 @@ function station_admin_bulk_docker_projects(string $bulkAction): array
  * the browser-visible URL path to Station PHP (not the filesystem path).
  *
  * Resolution order:
- * 1. Env `STATION_AUTH_REQUEST_BASE` (e.g. `/station`) — set in php-fpm pool when
- *    CLI regeneration or SCRIPT_NAME does not match nginx's public URL.
+ * 1. `$_SERVER['STATION_AUTH_REQUEST_BASE']` (set via nginx `fastcgi_param` on Station PHP)
+ *    or getenv('STATION_AUTH_REQUEST_BASE') (php-fpm pool `env[...]`).
  * 2. Admin override `nginxAuthRequestBasePath`.
  * 3. `station_web_base_path()` when it looks like a URL path (not /var/…).
- * 4. Fallback `/station` (filesystem-style SCRIPT_NAME often means a site-root
- *    Station tree); use env or Admin override if your vhost uses `/secure/station`.
+ * 4. Fallback `/station`; use step 1–2 if your vhost uses `/secure/station` only.
  */
 function station_nginx_auth_request_base_path(): string
 {
-    $envRaw = getenv('STATION_AUTH_REQUEST_BASE');
-    if (is_string($envRaw) && trim($envRaw) !== '') {
-        $normalized = '/' . trim(trim($envRaw), "/ \t\r\n");
+    $raw = trim((string) ($_SERVER['STATION_AUTH_REQUEST_BASE'] ?? ''));
+    if ($raw === '') {
+        $g = getenv('STATION_AUTH_REQUEST_BASE');
+        $raw = is_string($g) ? trim($g) : '';
+    }
+    if ($raw !== '') {
+        $normalized = '/' . trim($raw, "/ \t\r\n");
         $normalized = rtrim($normalized, '/');
         if ($normalized !== '' && $normalized !== '/') {
             return $normalized;
