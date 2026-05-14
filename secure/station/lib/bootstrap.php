@@ -63,7 +63,15 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     if (headers_sent() === false) {
         session_set_cookie_params(station_session_cookie_params_from_env());
     }
-    session_start();
+    $sessionStartOptions = [];
+    if (defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE') && STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE) {
+        $sessionStartOptions['read_and_close'] = true;
+    }
+    if ($sessionStartOptions !== []) {
+        session_start($sessionStartOptions);
+    } else {
+        session_start();
+    }
 }
 
 function station_base_dir(): string

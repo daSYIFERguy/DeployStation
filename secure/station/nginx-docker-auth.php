@@ -11,12 +11,21 @@ declare(strict_types=1);
  * but not the docker reverse proxy at /p/&lt;slug&gt;/. Returns 403 otherwise.
  * We use 200 instead of 204 for maximum compatibility with nginx auth_request.
  *
+ * Session: define STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE before loading auth so
+ * PHP opens the session with read_and_close — releases the file lock immediately.
+ * Otherwise this subrequest can block behind a normal Station tab holding the lock,
+ * which nginx surfaces as 500 / timeout on /p/… for signed-in users.
+ *
  * Emergency bypass (not for production): enable **Admin → Projects → Bypass docker
  * auth_request** or set `STATION_DOCKER_AUTH_BYPASS=1` in php-fpm / nginx `fastcgi_param`
  * on Station PHP — then any existing project slug returns 200 without session checks.
  *
  * @see station_render_nginx_projects_conf() in lib/docker.php
  */
+
+if (!defined('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE')) {
+    define('STATION_AUTH_REQUEST_SESSION_READ_AND_CLOSE', true);
+}
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';

@@ -2551,11 +2551,18 @@ function station_render_nginx_projects_conf(array $projects): string
         return implode("\n", $lines) . "\n";
     }
 
+    // One location per slug: last duplicate wins (avoids nginx merging two ^~ blocks where
+    // the second can drop auth_request and leave /p/… world-open).
+    $bySlug = [];
     foreach ($projects as $project) {
         $slug = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) ($project['slug'] ?? ''));
         if ($slug === null || $slug === '') {
             continue;
         }
+        $bySlug[$slug] = $project;
+    }
+
+    foreach ($bySlug as $slug => $project) {
         $hostPort = max(1, min(65535, (int) ($project['hostPort'] ?? 0)));
         $appPort = max(1, min(65535, (int) ($project['appPort'] ?? 80)));
 
