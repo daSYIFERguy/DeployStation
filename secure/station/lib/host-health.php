@@ -8,11 +8,15 @@ require_once __DIR__ . '/docker.php';
 /**
  * Command used for nginx config tests from Host health (PHP user, often www-data).
  *
- * Default: `nginx -t` with `pid` overridden to a file under /tmp so opening
- * /run/nginx.pid is not required (avoids false "test failed" when the real master runs as root).
+ * Default: plain `nginx -t` against the system main config. Do **not** add `-g "pid …"`
+ * here: most installs already declare `pid` in nginx.conf, and a second `pid` causes
+ * [emerg] duplicate directive / test failure.
  *
- * Optional admin override: set `hostNginxTestCommand` to e.g. `sudo -n nginx -t 2>&1` for the
- * same check root would run (requires matching sudoers for the web user).
+ * Optional admin override: set `hostNginxTestCommand` to e.g. `sudo -n nginx -t 2>&1` for
+ * root-equivalent checks (sudoers), or a wrapper script if the PHP user cannot read pid paths.
+ *
+ * For validating **only** the Station-generated `projects.conf`, use
+ * `station_host_health_run_nginx_projects_include_syntax_test()` (isolated `nginx -t -c`).
  */
 function station_host_health_nginx_syntax_test_command(): string
 {
@@ -22,10 +26,64 @@ function station_host_health_nginx_syntax_test_command(): string
         return $override;
     }
 
-    $suffix = (string) getmypid() . '_' . bin2hex(random_bytes(4));
-    return 'TMP=/tmp/station-nginx-configtest-' . $suffix . '.pid; rm -f "$TMP" 2>/dev/null; '
-        . 'touch "$TMP" && chmod 600 "$TMP" 2>/dev/null; '
-        . 'nginx -t -g "pid $TMP;" 2>&1; RC=$?; rm -f "$TMP" 2>/dev/null; exit $RC';
+    return 'nginx -t 2>&1';
+}
+
+/**
+ * Run `nginx -t` against a throwaway main config that includes only `projects.conf`.
+ * Does not read `/etc/nginx/nginx.conf`, so it still works when the system main file is
+ * broken (e.g. duplicate `pid`) while you verify Station’s generated snippet parses.
+ *
+ * @return array{ok: bool, code: int, output: string, message: string}
+ */
+function station_host_health_run_nginx_projects_include_syntax_test(): array
+{
+    $includePath = station_nginx_include_path();
+    if (!is_file($includePath) || !is_readable($includePath)) {
+        return [
+            'ok' => true,
+            'code' => 0,
+            'output' => 'No readable projects.conf yet at: ' . $includePath . "\n"
+                . '(Normal until the first dockerized project writes the include.)',
+            'message' => 'Skipped — no include file.',
+        ];
+    }
+
+    $resolved = realpath($includePath);
+    $includePath = $resolved !== false ? str_replace('\\', '/', $resolved) : str_replace('\\', '/', $includePath);
+
+    $suffix = bin2hex(random_bytes(8));
+    $dir = rtrim(sys_get_temp_dir(), '/');
+    $wrapper = $dir . '/station-ngx-wrap-' . $suffix . '.conf';
+    $pidFile = $dir . '/station-ngx-pid-' . $suffix . '.pid';
+
+    $body = 'pid ' . $pidFile . ";\n"
+        . "events { worker_connections 64; }\n"
+        . "http {\n"
+        . "    include /etc/nginx/mime.types;\n"
+        . "    default_type application/octet-stream;\n"
+        . "    server {\n"
+        . "        listen 127.0.0.1:28999;\n"
+        . "        server_name _;\n"
+        . '        include ' . $includePath . ";\n"
+        . "    }\n"
+        . "}\n";
+
+    if (@file_put_contents($wrapper, $body) === false) {
+        return [
+            'ok' => false,
+            'code' => -1,
+            'output' => '',
+            'message' => 'Could not write temporary nginx wrapper config under ' . $dir . '.',
+        ];
+    }
+
+    $cmd = 'nginx -t -c ' . escapeshellarg($wrapper) . ' 2>&1';
+    $result = station_run_shell_command($cmd, 25);
+    @unlink($wrapper);
+    @unlink($pidFile);
+
+    return $result;
 }
 
 /**
@@ -73,6 +131,8 @@ function station_host_health_snapshot(): array
         }
         $out[$key] = station_run_shell_command($cmd, $timeout);
     }
+
+    $out['nginx_projects_include'] = station_host_health_run_nginx_projects_include_syntax_test();
 
     return $out;
 }

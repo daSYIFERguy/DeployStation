@@ -48,6 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'code' => (int) ($runResult['code'] ?? -1),
                 'outputSnippet' => substr((string) ($runResult['output'] ?? ''), 0, 800),
             ]);
+        } elseif ($which === 'nginx_projects_include_test') {
+            $runResult = station_host_health_run_nginx_projects_include_syntax_test();
+            station_log_event('host_health_nginx_projects_include_test', [
+                'ok' => !empty($runResult['ok']),
+                'code' => (int) ($runResult['code'] ?? -1),
+                'outputSnippet' => substr((string) ($runResult['output'] ?? ''), 0, 800),
+            ]);
         } elseif (isset($allowedConfigured[$which])) {
             $settingsKey = $allowedConfigured[$which];
             $runResult = station_host_health_run_configured_command($settingsKey);
@@ -70,7 +77,7 @@ $routing = station_host_health_routing_map();
 
 $nginxTestLabel = trim((string) ($settings['hostNginxTestCommand'] ?? '')) !== ''
     ? 'nginx config test (custom hostNginxTestCommand)'
-    : 'nginx -t (web user; pid in /tmp — avoids /run/nginx.pid permission noise)';
+    : 'nginx -t (full system nginx.conf as the PHP user)';
 
 $labels = [
     'uptime' => 'Uptime',
@@ -83,6 +90,7 @@ $labels = [
     'systemd_docker' => 'systemd: docker',
     'php_fpm_units' => 'PHP-FPM units (if present)',
     'nginx_syntax' => $nginxTestLabel,
+    'nginx_projects_include' => 'nginx: projects.conf only (isolated -c; ignores /etc/nginx/nginx.conf)',
     'docker_ps' => 'docker ps',
     'docker_stats' => 'docker stats (one-shot)',
 ];
@@ -177,8 +185,8 @@ TXT;
 
       <div class="settings-panel" style="margin-top: 16px;">
         <h2 class="settings-panel-heading" style="font-size:16px;">About nginx checks and HTTP 500</h2>
-        <p class="setting-description" style="margin:0;">The Host health page runs shell commands as the <strong>same Unix user as PHP</strong> (often <code>www-data</code>), not as root. A plain <code>nginx -t</code> then tries to open paths from <code>nginx.conf</code> (for example <code>/run/nginx.pid</code>) and can fail with “Permission denied” even while the <strong>real</strong> nginx master (running as root) is fine — that result does <strong>not</strong> by itself explain browser 500 responses.</p>
-        <p class="setting-description" style="margin:8px 0 0;">By default we run <code>nginx -t</code> with <code>pid</code> pointed at a file under <code>/tmp</code> so the config test is meaningful for the web user. The warning about the <code>user</code> directive is normal when the test is not run as root. For an exact root-equivalent test, set <strong>Nginx config test command</strong> below to something like <code>sudo -n nginx -t 2>&1</code> (with matching <code>sudoers</code>). HTTP 500 is usually the <strong>upstream app</strong> (PHP-FPM, Station, or a Docker container) — compare the public URL with the loopback URL in the routing table and use “Extra diagnostic” / container logs to see the real error.</p>
+        <p class="setting-description" style="margin:0;">The Host health page runs shell commands as the <strong>same Unix user as PHP</strong> (often <code>www-data</code>), not as root. A full <code>nginx -t</code> reads your real <code>/etc/nginx/nginx.conf</code>. If that file is invalid (for example <strong>duplicate <code>pid</code></strong> lines), the test fails until you fix the file on the server — that is unrelated to Station’s generated <code>projects.conf</code>.</p>
+        <p class="setting-description" style="margin:8px 0 0;">The card <strong>nginx: projects.conf only</strong> runs an isolated <code>nginx -t -c</code> on a temporary main config that includes only the Station-managed include, so you can still verify the generated <code>location ^~ /p/…</code> blocks even when the system main config is broken. The warning about the <code>user</code> directive is normal when the test is not run as root. For a root-equivalent full test, set <strong>Nginx config test command</strong> below to e.g. <code>sudo -n nginx -t 2>&1</code> (with matching <code>sudoers</code>). HTTP 500 on <code>/p/…</code> is often a bad <code>auth_request</code> URL, the app inside the container, or upstream — compare the public URL with the loopback URL in the routing table and check nginx / PHP error logs.</p>
       </div>
 
       <p class="setting-description" style="margin-top:8px;">
@@ -239,12 +247,17 @@ TXT;
 
       <div class="settings-panel" style="margin-top: 24px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Quick actions</h2>
-        <p class="setting-description">Uses the same command as the nginx panel (default: <code>nginx -t</code> with <code>pid</code> under <code>/tmp</code>, or your saved <strong>Nginx config test command</strong> below). Restart lines run only when configured.</p>
+        <p class="setting-description">Default full-config test: <code>nginx -t</code> (or your custom command below). Isolated include test: see the <strong>projects.conf only</strong> card in the grid. Restart lines run only when configured.</p>
         <div class="host-health-actions">
           <form method="post">
             <input type="hidden" name="host_health_action" value="run_command">
             <input type="hidden" name="which" value="nginx_test">
             <button type="submit" class="secondary-btn">Run nginx config test</button>
+          </form>
+          <form method="post">
+            <input type="hidden" name="host_health_action" value="run_command">
+            <input type="hidden" name="which" value="nginx_projects_include_test">
+            <button type="submit" class="secondary-btn">Re-run projects.conf syntax test</button>
           </form>
           <form method="post" onsubmit="return confirm('Run the configured extra diagnostic command?');">
             <input type="hidden" name="host_health_action" value="run_command">
@@ -291,7 +304,7 @@ TXT;
 
       <div class="settings-panel host-health-commands" style="margin-top: 28px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Helper shell one-liners (saved in admin settings)</h2>
-        <p class="setting-description">Leave blank to use the built-in web-user test (pid in <code>/tmp</code>). For a full test matching root’s environment, use e.g. <code>sudo -n nginx -t 2>&1</code> (requires <code>sudoers</code> for the PHP user). Example nginx restart: <code>sudo -n systemctl reload nginx</code>. Example log tail: <code>sudo -n tail -n 60 /var/log/nginx/error.log</code> (use “Run extra diagnostic”).</p>
+        <p class="setting-description">Leave blank for a plain <code>nginx -t 2>&1</code> (validates the real system main config). If the PHP user cannot read the configured pid file, use e.g. <code>sudo -n nginx -t 2>&1</code> (requires <code>sudoers</code>). To validate only Station’s generated routes without touching <code>/etc/nginx/nginx.conf</code>, use the <strong>projects.conf only</strong> snapshot card or “Re-run projects.conf syntax test” above — not this field.</p>
         <form method="post">
           <input type="hidden" name="host_health_action" value="save_commands">
           <label for="hostNginxTestCommand">Nginx config test command (optional)</label>
