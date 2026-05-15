@@ -196,15 +196,15 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 3px;
+  gap: 3px;
+  padding: 7px 4px;
   border-radius: 10px;
   flex-shrink: 0;
   color: rgba(255,255,255,.76);
   text-decoration: none;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.2;
   text-align: center;
   transition: background var(--ease), color var(--ease);
 }
@@ -223,13 +223,13 @@ a:hover { text-decoration: underline; }
 
 .menu-icon {
   position: relative;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: 8px;
   background: rgba(255,255,255,.10);
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1;
   color: #fff;
   flex-shrink: 0;
@@ -237,7 +237,7 @@ a:hover { text-decoration: underline; }
 
 .menu-icon .menu-emoji {
   display: block;
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   line-height: 1;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
@@ -312,29 +312,29 @@ a:hover { text-decoration: underline; }
   }
 
   .dashboard-menu-link {
-    padding: 3px 2px 4px;
-    gap: 1px;
-    font-size: 8.5px;
-    line-height: 1.1;
-    border-radius: 9px;
+    padding: 5px 3px 6px;
+    gap: 3px;
+    font-size: 10px;
+    line-height: 1.15;
+    border-radius: 10px;
   }
 
   .dashboard-menu-link .menu-label {
     display: block;
-    max-width: 92px;
-    font-size: 8.5px;
-    letter-spacing: -0.01em;
+    max-width: 96px;
+    font-size: 10px;
+    letter-spacing: 0;
   }
 
   .menu-icon {
-    width: 22px;
-    height: 22px;
-    border-radius: 7px;
-    font-size: 0.9rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 1.05rem;
   }
 
   .menu-icon .menu-emoji {
-    font-size: 0.92rem;
+    font-size: 1.1rem;
   }
 
   .dashboard-menu::-webkit-scrollbar {

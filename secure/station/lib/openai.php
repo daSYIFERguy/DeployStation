@@ -173,7 +173,8 @@ function station_openai_chat_with_tools(
     array $messages,
     array $tools = [],
     ?string $username = null,
-    int $maxTokens = 1400
+    int $maxTokens = 1400,
+    int $timeoutSeconds = 300
 ): array {
     $key = station_openai_resolve_api_key($username);
     if ($key === '') {

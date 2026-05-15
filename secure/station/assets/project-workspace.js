@@ -24,14 +24,14 @@
   var tabFiles = document.getElementById('wsTabFiles');
   var tabEditor = document.getElementById('wsTabEditor');
   var backToFiles = document.getElementById('wsBackToFiles');
-  var mobileMq = window.matchMedia('(max-width: 900px)');
+  var mobileMq = window.matchMedia('(max-width: 760px)');
 
   function isMobileWorkspace() {
     return mobileMq.matches;
   }
 
   function setMobilePanel(panel) {
-    if (!ideBody) {
+    if (!ideBody || !isMobileWorkspace()) {
       return;
     }
     var showEditor = panel === 'editor';
@@ -44,6 +44,28 @@
     if (tabEditor) {
       tabEditor.classList.toggle('is-active', showEditor);
       tabEditor.setAttribute('aria-selected', showEditor ? 'true' : 'false');
+    }
+  }
+
+  function syncWorkspaceLayout() {
+    if (!ideBody) {
+      return;
+    }
+    if (!isMobileWorkspace()) {
+      ideBody.classList.remove('workspace-ide-body--panel-files', 'workspace-ide-body--panel-editor');
+      if (tabFiles) {
+        tabFiles.classList.remove('is-active');
+        tabFiles.setAttribute('aria-selected', 'false');
+      }
+      if (tabEditor) {
+        tabEditor.classList.remove('is-active');
+        tabEditor.setAttribute('aria-selected', 'false');
+      }
+      return;
+    }
+    if (!ideBody.classList.contains('workspace-ide-body--panel-files') &&
+        !ideBody.classList.contains('workspace-ide-body--panel-editor')) {
+      setMobilePanel('files');
     }
   }
 
@@ -64,15 +86,12 @@
       backToFiles.addEventListener('click', onTab('files'));
     }
     if (typeof mobileMq.addEventListener === 'function') {
-      mobileMq.addEventListener('change', function () {
-        if (!isMobileWorkspace()) {
-          setMobilePanel('files');
-        }
-      });
+      mobileMq.addEventListener('change', syncWorkspaceLayout);
     }
   }
 
   bindMobileTabs();
+  syncWorkspaceLayout();
 
   function setStatus(msg, isError) {
     if (!statusEl) {
@@ -379,13 +398,12 @@
       });
   }
 
-  function toggleTerminal(show) {
+  function setTerminalOpen(open) {
     if (!terminalPanel) {
       return;
     }
-    var shouldShow = show !== undefined ? show : terminalPanel.hidden;
-    terminalPanel.hidden = !shouldShow;
-    if (shouldShow && terminalFrame && cfg.terminalUrl && !terminalFrame.src) {
+    terminalPanel.hidden = !open;
+    if (open && terminalFrame && cfg.terminalUrl && !terminalFrame.src) {
       terminalFrame.src = cfg.terminalUrl;
     }
   }
@@ -434,13 +452,13 @@
   var termBtn = document.getElementById('wsToggleTerminal');
   if (termBtn) {
     termBtn.addEventListener('click', function () {
-      toggleTerminal(terminalPanel.hidden);
+      setTerminalOpen(terminalPanel.hidden);
     });
   }
   var termClose = document.getElementById('wsTerminalClose');
   if (termClose) {
     termClose.addEventListener('click', function () {
-      toggleTerminal(true);
+      setTerminalOpen(false);
     });
   }
 
@@ -466,8 +484,7 @@
       } else {
         openFile(openPath);
       }
-    } else if (isMobileWorkspace()) {
-      setMobilePanel('files');
     }
+    syncWorkspaceLayout();
   });
 })();

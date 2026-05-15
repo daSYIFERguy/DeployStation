@@ -50,7 +50,7 @@ $ideConfig = [
 <html lang="en">
 <head>
   <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.') ?>
-  <link rel="stylesheet" href="assets/project-workspace.css?v=20260515d">
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260515f">
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -109,7 +109,7 @@ $ideConfig = [
         <button type="button" class="workspace-ide-mobile-tab" role="tab" id="wsTabEditor" aria-selected="false" aria-controls="wsPanelEditor" data-ws-panel="editor">Editor</button>
       </div>
 
-      <div class="workspace-ide-body workspace-ide-body--panel-files" id="wsIdeBody">
+      <div class="workspace-ide-body" id="wsIdeBody">
         <aside class="workspace-ide-sidebar" id="wsPanelFiles">
           <div class="workspace-ide-sidebar-head">
             <nav class="workspace-ide-breadcrumb" id="wsBreadcrumb" aria-label="Folder path"></nav>
@@ -143,7 +143,7 @@ $ideConfig = [
   <script>
   window.STATION_WORKSPACE_IDE = <?= json_encode($ideConfig, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) ?>;
   </script>
-  <script src="assets/project-workspace.js?v=20260515d"></script>
+  <script src="assets/project-workspace.js?v=20260515f"></script>
   <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

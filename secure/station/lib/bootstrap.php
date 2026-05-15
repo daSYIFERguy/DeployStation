@@ -932,7 +932,7 @@ function station_nav_icon_svg(string $key): string
     return station_nav_icon($key);
 }
 
-function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260515c'): string
+function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260515f'): string
 {
     $uiConfig = station_ui_config();
     $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));

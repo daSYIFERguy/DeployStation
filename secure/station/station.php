@@ -404,17 +404,20 @@ $statsCards = !$canBuild
     .mini-stat,
     .metric-card {
       display: grid;
-      gap: 4px;
-      padding: 14px 12px;
+      gap: 6px;
+      padding: 18px 16px;
       border-radius: 18px;
       background: rgba(255,255,255,.96);
       border: 1px solid #dbe5f4;
       box-shadow: 0 8px 24px rgba(19,35,63,.06);
+      text-align: center;
+      justify-items: center;
+      align-content: center;
     }
 
     .metric-trigger {
       width: 100%;
-      text-align: left;
+      text-align: center;
       cursor: pointer;
       transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
     }
