@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/github-auth.php';
 require_once __DIR__ . '/lib/github-sync.php';
 
 station_require_login();
@@ -31,6 +32,13 @@ if (!station_integration_ready($profile, 'github')) {
 $token = trim((string) ($profile['integrations']['github']['token'] ?? ''));
 $pages = (int) ($_GET['pages'] ?? 3);
 $pages = max(1, min(8, $pages));
+
+$verify = station_github_verify_repo_access($token, (string) ($profile['integrations']['github']['authMode'] ?? ''));
+if (empty($verify['ok'])) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'message' => (string) ($verify['message'] ?? 'GitHub token cannot access repositories.')], JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
 $list = station_github_list_user_repositories($token, $pages);
 echo json_encode($list, JSON_UNESCAPED_SLASHES);

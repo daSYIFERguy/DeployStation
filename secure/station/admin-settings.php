@@ -207,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.', 'assets/style.css?v=20260520b') ?>
+  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.', 'assets/style.css?v=20260520c') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -948,8 +948,6 @@ sudo systemctl restart php*-fpm
     })();
   </script>
 
-  <?= station_dashboard_nav_script_html() ?>
-  <?= station_clipboard_fab_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

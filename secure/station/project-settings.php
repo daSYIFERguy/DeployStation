@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/github-auth.php';
 require_once __DIR__ . '/lib/github-sync.php';
 require_once __DIR__ . '/lib/project-launch.php';
 
@@ -73,8 +74,10 @@ $profile = station_user_profile($username);
 $ghProfile = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
     ? $profile['integrations']['github']
     : [];
-$githubToken = trim((string) ($ghProfile['token'] ?? ''));
-$githubUserEnabled = !empty($ghProfile['enabled']);
+$ghIntegration = station_github_user_integration(station_current_username());
+$githubToken = $ghIntegration['token'];
+$githubAuthMode = $ghIntegration['authMode'];
+$githubUserEnabled = $ghIntegration['enabled'];
 $stationGithubOn = !empty(station_admin_settings()['githubEnabled']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -101,18 +104,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $run('Could not save GitHub metadata before sync action.', false);
         }
         if ($syncAct === 'pull') {
-            $r = station_github_project_git_pull($project, $githubToken);
+            $r = station_github_project_git_pull($project, $githubToken, $githubAuthMode);
             $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
         }
         if ($syncAct === 'push') {
-            $r = station_github_project_git_push($project, $githubToken);
+            $r = station_github_project_git_push($project, $githubToken, $githubAuthMode);
             $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
         }
         if ($syncAct === 'init_link') {
             if (!station_git_available()) {
                 $run('Git is not available on this host.', false);
             }
-            $r = station_github_project_init_and_link($project, $githubToken);
+            $r = station_github_project_init_and_link($project, $githubToken, $githubAuthMode);
             $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
         }
         if ($syncAct === 'create_repo_and_link') {
@@ -129,11 +132,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($cr['ok'])) {
                 $run((string) ($cr['message'] ?? 'Create repo failed'), false);
             }
-            $il = station_github_project_init_and_link($project, $githubToken);
+            $il = station_github_project_init_and_link($project, $githubToken, $githubAuthMode);
             $run('Repository created, then: ' . ($il['message'] ?? ''), !empty($il['ok']));
         }
         if ($syncAct === 'pull_redeploy') {
-            $pull = station_github_project_git_pull($project, $githubToken);
+            $pull = station_github_project_git_pull($project, $githubToken, $githubAuthMode);
             if (empty($pull['ok'])) {
                 $run((string) ($pull['message'] ?? 'Pull failed'), false);
             }
@@ -244,14 +247,14 @@ $launchProfile = station_project_launch_profile($project);
 $launchCfg = station_project_launch_config($settings);
 $webEntryResolved = station_project_resolve_web_entry($project);
 $githubSyncRow = ($stationGithubOn && $githubUserEnabled && $githubToken !== '')
-    ? station_github_project_sync_row($project, $githubToken)
+    ? station_github_project_sync_row($project, $githubToken, $githubAuthMode)
     : null;
 $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project($user, $project);
 ?>
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260520b') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260520c') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -571,7 +574,6 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 
   <script>window.STATION_ENTRYPOINT_PICKER = <?= json_encode(['project' => $project], JSON_UNESCAPED_SLASHES) ?>;</script>
   <script src="assets/project-entrypoint-picker.js?v=20260518b"></script>
-  <?= station_dashboard_nav_script_html() ?>
   <script>
     (function () {
       var navLinks = document.querySelectorAll('.project-settings-hub .settings-nav-item');
@@ -601,7 +603,6 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
       });
     })();
   </script>
-  <?= station_clipboard_fab_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

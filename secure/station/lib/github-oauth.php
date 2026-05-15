@@ -14,19 +14,28 @@ function station_github_oauth_redirect_uri(): string
     return $base === '' ? '' : $base . '/github-oauth-callback.php';
 }
 
-function station_github_oauth_authorize_url(string $clientId, string $state, string $scope = 'repo read:user'): string
-{
+function station_github_oauth_authorize_url(
+    string $clientId,
+    string $state,
+    string $scope = 'repo read:user',
+    bool $forceConsent = false
+): string {
     $redirect = station_github_oauth_redirect_uri();
     if ($redirect === '') {
         return '';
     }
 
-    return 'https://github.com/login/oauth/authorize?' . http_build_query([
+    $params = [
         'client_id' => $clientId,
         'redirect_uri' => $redirect,
         'scope' => trim($scope) !== '' ? trim($scope) : 'read:user',
         'state' => $state,
-    ]);
+    ];
+    if ($forceConsent) {
+        $params['prompt'] = 'consent';
+    }
+
+    return 'https://github.com/login/oauth/authorize?' . http_build_query($params);
 }
 
 /**

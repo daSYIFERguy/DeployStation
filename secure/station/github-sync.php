@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/github-auth.php';
 require_once __DIR__ . '/lib/github-sync.php';
 
 station_require_builder();
@@ -12,11 +13,13 @@ $username = station_current_username();
 $profile = station_user_profile($username);
 $adminSettings = station_admin_settings();
 $stationGithubOn = !empty($adminSettings['githubEnabled']);
+$ghIntegration = station_github_user_integration($username);
+$token = $ghIntegration['token'];
+$githubAuthMode = $ghIntegration['authMode'];
+$githubUserEnabled = $ghIntegration['enabled'];
 $ghProfile = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
     ? $profile['integrations']['github']
     : [];
-$token = trim((string) ($ghProfile['token'] ?? ''));
-$githubUserEnabled = !empty($ghProfile['enabled']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stationGithubOn && $githubUserEnabled && $token !== '') {
     $act = (string) ($_POST['github_sync_action'] ?? '');
@@ -37,18 +40,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stationGithubOn && $githubUserEnab
     }
 
     if ($act === 'pull') {
-        $r = station_github_project_git_pull($slug, $token);
+        $r = station_github_project_git_pull($slug, $token, $githubAuthMode);
         $run(($r['message'] ?? 'Done') . '', !empty($r['ok']));
     }
     if ($act === 'push') {
-        $r = station_github_project_git_push($slug, $token);
+        $r = station_github_project_git_push($slug, $token, $githubAuthMode);
         $run(($r['message'] ?? 'Done') . '', !empty($r['ok']));
     }
     if ($act === 'init_link') {
         if (!station_git_available()) {
             $run('Git is not available on this host (install git).', false);
         }
-        $r = station_github_project_init_and_link($slug, $token);
+        $r = station_github_project_init_and_link($slug, $token, $githubAuthMode);
         $run(($r['message'] ?? 'Done') . '', !empty($r['ok']));
     }
     if ($act === 'create_repo') {
@@ -77,14 +80,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stationGithubOn && $githubUserEnab
         if (empty($cr['ok'])) {
             $run((string) ($cr['message'] ?? 'Create repo failed'), false);
         }
-        $il = station_github_project_init_and_link($slug, $token);
+        $il = station_github_project_init_and_link($slug, $token, $githubAuthMode);
         $run(
             'Repository created, then: ' . ($il['message'] ?? ''),
             !empty($il['ok'])
         );
     }
     if ($act === 'pull_redeploy') {
-        $pull = station_github_project_git_pull($slug, $token);
+        $pull = station_github_project_git_pull($slug, $token, $githubAuthMode);
         if (empty($pull['ok'])) {
             $run((string) ($pull['message'] ?? 'Pull failed'), false);
         }
@@ -105,7 +108,7 @@ if ($stationGithubOn && $githubUserEnabled && $token !== '') {
         if ($slug === '' || !station_github_user_may_sync_project($user, $slug)) {
             continue;
         }
-        $syncRows[] = station_github_project_sync_row($slug, $token);
+        $syncRows[] = station_github_project_sync_row($slug, $token, $githubAuthMode);
     }
 }
 
@@ -139,7 +142,7 @@ if ($stationGithubOn && $githubUserEnabled && $token !== '') {
         </div>
       <?php elseif (!$githubUserEnabled || $token === ''): ?>
         <div class="settings-panel gh-sync-panel" style="margin-top:16px;">
-          <p class="setting-description">Enable GitHub for your account and paste a personal access token under <a href="user-settings.php">User settings → GitHub</a> (scopes: <code>repo</code> for private repositories).</p>
+          <p class="setting-description">Enable GitHub under <a href="user-settings.php">User settings → GitHub</a> and connect with <strong>Sign in with GitHub</strong> (recommended) or a personal access token with <code>repo</code> scope.</p>
         </div>
       <?php else: ?>
         <div class="gh-sync-toolbar">
@@ -292,7 +295,6 @@ if ($stationGithubOn && $githubUserEnabled && $token !== '') {
       <?php endif; ?>
     </main>
   </div>
-  <?= station_dashboard_nav_script_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

@@ -32,9 +32,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($tokIn !== '') {
             $authMode = 'pat';
         }
+        $ghUsername = trim((string) ($_POST['github_username'] ?? ''));
+        if ($ghUsername === '') {
+            $ghUsername = trim((string) ($prevGh['username'] ?? ''));
+        }
         $profile['integrations']['github'] = [
             'enabled' => isset($_POST['github_enabled']),
-            'username' => trim((string) ($_POST['github_username'] ?? '')),
+            'username' => $ghUsername,
             'token' => $token,
             'repo' => trim((string) ($_POST['github_repo'] ?? '')),
             'authMode' => $authMode,
@@ -149,7 +153,7 @@ $adminOpenaiConfigured = !empty($openaiStatus['globalConfigured']);
                             </p>
                             <?php endif; ?>
                             <?php if (!empty($gh['authMode']) && (string) $gh['authMode'] === 'oauth'): ?>
-                            <p class="mission-help-link" style="margin-top:6px;">Connected via <strong>OAuth</strong><?php if (!empty($gh['oauthConnectedAt'])): ?> · <?= station_h((string) $gh['oauthConnectedAt']) ?><?php endif; ?></p>
+                            <p class="mission-help-link" style="margin-top:6px;">Connected via <strong>OAuth</strong><?php if (!empty($gh['oauthConnectedAt'])): ?> · <?= station_h((string) $gh['oauthConnectedAt']) ?><?php endif; ?>. If repos or sync stopped working, use <strong>Sign in with GitHub</strong> again (GitHub may have granted sign-in only without <code>repo</code>).</p>
                             <?php endif; ?>
                             <label class="mission-field">
                                 <span class="mission-field-label">Default repo <span class="mission-optional">optional</span></span>
@@ -227,8 +231,6 @@ $adminOpenaiConfigured = !empty($openaiStatus['globalConfigured']);
             </div>
         </main>
     </div>
-    <?= station_dashboard_nav_script_html() ?>
-    <?= station_clipboard_fab_html() ?>
-    <?= station_pwa_register_html() ?>
+    <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

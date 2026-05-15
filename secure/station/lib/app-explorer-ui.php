@@ -47,7 +47,7 @@ function station_render_app_explorer_page(
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('App explorer — ' . station_h($slug), 'Deploy assistant and launch guide for ' . $slug, 'assets/style.css?v=20260520b') ?>
+  <?= station_pwa_head_html('App explorer — ' . station_h($slug), 'Deploy assistant and launch guide for ' . $slug, 'assets/style.css?v=20260520c') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -217,8 +217,7 @@ function station_render_app_explorer_page(
       </div>
     </main>
   </div>
-  <?= station_dashboard_nav_script_html() ?>
-  <script src="assets/station-assist.js?v=20260518a"></script>
+  <?= station_dashboard_page_footer_html() ?>
   <script>
   (function () {
     var slug = <?= json_encode($slug, JSON_THROW_ON_ERROR) ?>;
@@ -316,7 +315,6 @@ function station_render_app_explorer_page(
     }
   })();
   </script>
-  <?= station_pwa_register_html() ?>
 </body>
 </html>
     <?php

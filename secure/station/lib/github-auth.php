@@ -72,7 +72,8 @@ function station_github_oauth_begin(string $purpose, string $redirectAfter = 'in
     $_SESSION['github_oauth_redirect_after'] = $redirectAfter;
 
     $scopes = station_github_oauth_scopes_for_purpose($purpose);
-    $url = station_github_oauth_authorize_url($clientId, $state, $scopes);
+    $forceConsent = $purpose === 'connect';
+    $url = station_github_oauth_authorize_url($clientId, $state, $scopes, $forceConsent);
     if ($url === '') {
         return ['ok' => false, 'message' => 'Could not start GitHub authorization.'];
     }
@@ -185,21 +186,76 @@ function station_link_github_to_user(string $username, string $githubLogin, stri
         break;
     }
 
-    if ($accessToken !== '') {
-        $profile = station_user_profile($username);
-        if (!isset($profile['integrations']) || !is_array($profile['integrations'])) {
-            $profile['integrations'] = [];
-        }
-        $prev = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
-            ? $profile['integrations']['github']
-            : [];
-        $profile['integrations']['github'] = array_merge($prev, [
-            'enabled' => true,
-            'username' => $githubLogin,
-            'token' => $accessToken,
-            'authMode' => 'oauth',
-            'oauthConnectedAt' => gmdate('c'),
-        ]);
-        station_save_user_profile($username, $profile);
+    if (trim($accessToken) === '') {
+        return;
     }
+
+    $profile = station_user_profile($username);
+    if (!isset($profile['integrations']) || !is_array($profile['integrations'])) {
+        $profile['integrations'] = [];
+    }
+    $prev = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
+        ? $profile['integrations']['github']
+        : [];
+    $repo = trim((string) ($prev['repo'] ?? ''));
+    $profile['integrations']['github'] = array_merge($prev, [
+        'enabled' => true,
+        'username' => $githubLogin,
+        'token' => trim($accessToken),
+        'repo' => $repo,
+        'authMode' => 'oauth',
+        'oauthConnectedAt' => gmdate('c'),
+    ]);
+    station_save_user_profile($username, $profile);
+}
+
+/**
+ * @return array{token: string, authMode: string, enabled: bool, username: string}
+ */
+function station_github_user_integration(string $username): array
+{
+    $profile = station_user_profile($username);
+    $gh = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
+        ? $profile['integrations']['github']
+        : [];
+
+    return [
+        'token' => trim((string) ($gh['token'] ?? '')),
+        'authMode' => trim((string) ($gh['authMode'] ?? 'pat')),
+        'enabled' => !empty($gh['enabled']),
+        'username' => trim((string) ($gh['username'] ?? '')),
+    ];
+}
+
+/**
+ * @return array{ok: bool, message: string, scopes?: string}
+ */
+function station_github_verify_repo_access(string $token, string $authMode = ''): array
+{
+    $token = trim($token);
+    if ($token === '') {
+        return ['ok' => false, 'message' => 'No GitHub token saved.'];
+    }
+
+    $user = station_github_api('GET', '/user', $token);
+    if (empty($user['ok'])) {
+        $detail = station_github_api_error_detail($user);
+
+        return ['ok' => false, 'message' => 'GitHub rejected this token' . ($detail !== '' ? ': ' . $detail : '.')];
+    }
+
+    $repos = station_github_api('GET', '/user/repos?per_page=1', $token);
+    if (empty($repos['ok'])) {
+        $detail = station_github_api_error_detail($repos);
+        if (($repos['code'] ?? 0) === 403 || str_contains(strtolower($detail), 'scope')) {
+            return [
+                'ok' => false,
+                'message' => 'Token is valid but cannot list repositories. Reconnect with “Sign in with GitHub” on User Settings and approve the repo permission (or revoke this app under GitHub → Settings → Applications and try again).',
+            ];
+        }
+
+        return ['ok' => false, 'message' => 'Could not list repositories' . ($detail !== '' ? ': ' . $detail : '.')];
+    }
+
+    return ['ok' => true, 'message' => 'OK', 'scopes' => $authMode];
 }

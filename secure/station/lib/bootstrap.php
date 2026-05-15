@@ -932,7 +932,7 @@ function station_nav_icon_svg(string $key): string
     return station_nav_icon($key);
 }
 
-function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css'): string
+function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260520d'): string
 {
     $uiConfig = station_ui_config();
     $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
@@ -1051,8 +1051,8 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     }
 
     if ($isOwner) {
-        $adminLinks[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Admin settings');
-        $adminLinks[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
+        $adminLinks[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Settings');
+        $adminLinks[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Health');
     }
 
     if ($adminLinks !== []) {
@@ -1064,7 +1064,7 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
         $adminGh = station_admin_settings();
         if (!empty($adminGh['githubEnabled'])) {
             $links[] = station_dashboard_nav_divider();
-            $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', 'github_sync', 'GitHub sync');
+            $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', 'github_sync', 'GitHub');
         }
     }
 
@@ -1150,6 +1150,16 @@ function station_access_requests_owner_alert_html(): string
 })();
 </script>
 HTML;
+}
+
+/**
+ * Standard authenticated dashboard footer: mobile nav, AI Assist + clipboard, PWA.
+ */
+function station_dashboard_page_footer_html(): string
+{
+    return station_dashboard_nav_script_html()
+        . station_clipboard_fab_html()
+        . station_pwa_register_html();
 }
 
 function station_dashboard_nav_script_html(): string
@@ -1277,7 +1287,7 @@ function station_clipboard_fab_html(): string
 </aside>
   </div>
 </aside>
-<script src="assets/station-assist.js?v=20260519f"></script>
+<script src="assets/station-assist.js?v=20260520d"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {

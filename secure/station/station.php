@@ -135,7 +135,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260520b') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260520c') ?>
   <style>
     .station-body {
       margin: 0;
@@ -2231,7 +2231,6 @@ $statsCards = !$canBuild
     scheduleClipboardPolling();
   })();
   </script>
-  <?= station_clipboard_fab_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

@@ -102,7 +102,7 @@ if ($purpose === 'login') {
         exit;
     }
 
-    station_link_github_to_user($stationUser, $githubLogin, $accessToken);
+    station_link_github_to_user($stationUser, $githubLogin);
     if (!station_login_as_user($stationUser)) {
         station_flash_set('error', 'Could not sign you in.');
         header('Location: index.php');
@@ -128,9 +128,27 @@ if (!station_can_build(station_current_user())) {
 }
 
 $username = station_current_username();
+$oauthScope = trim((string) ($ex['scope'] ?? ''));
+if ($oauthScope !== '' && !preg_match('/\brepo\b/', $oauthScope)) {
+    station_flash_set(
+        'error',
+        'GitHub connected but did not grant repository access (scopes: ' . $oauthScope . '). '
+        . 'Revoke this app under GitHub → Settings → Applications → Authorized OAuth Apps, then use “Sign in with GitHub” on User Settings again and approve repo access.'
+    );
+    header('Location: user-settings.php');
+    exit;
+}
+
 station_link_github_to_user($username, $githubLogin, $accessToken);
-station_log_event('github.oauth.connected', ['username' => $username, 'github_login' => $githubLogin]);
-station_flash_set('ok', 'GitHub account connected.');
+$verify = station_github_verify_repo_access($accessToken, 'oauth');
+if (empty($verify['ok'])) {
+    station_flash_set('error', (string) ($verify['message'] ?? 'GitHub connected but API check failed.'));
+    header('Location: user-settings.php');
+    exit;
+}
+
+station_log_event('github.oauth.connected', ['username' => $username, 'github_login' => $githubLogin, 'scope' => $oauthScope]);
+station_flash_set('ok', 'GitHub account connected with repository access.');
 
 $after = basename($redirectAfter);
 $allowedAfter = ['user-settings.php', 'station.php', 'github-sync.php', 'index.php'];

@@ -51,6 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" name="skip" value="1" class="secondary-btn">Skip for now</button>
         </form>
     </main>
-    <?= station_pwa_register_html() ?>
+    <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

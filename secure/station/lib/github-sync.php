@@ -73,6 +73,51 @@ function station_github_api(string $method, string $pathQuery, string $token, ?a
     return ['ok' => $ok, 'code' => $code, 'body' => $body, 'message' => $ok ? 'OK' : ('HTTP ' . $code)];
 }
 
+function station_github_api_error_detail(array $apiResult): string
+{
+    $body = trim((string) ($apiResult['body'] ?? ''));
+    if ($body === '') {
+        return '';
+    }
+    $data = json_decode($body, true);
+    if (!is_array($data)) {
+        return mb_substr($body, 0, 240);
+    }
+    $msg = trim((string) ($data['message'] ?? ''));
+    $doc = trim((string) ($data['documentation_url'] ?? ''));
+
+    return $msg !== '' ? $msg . ($doc !== '' ? ' (' . $doc . ')' : '') : mb_substr($body, 0, 240);
+}
+
+/**
+ * Git HTTPS username embedded in remote URLs and GIT_ASKPASS.
+ */
+function station_github_git_auth_mode(string $token, string $authMode = ''): string
+{
+    $authMode = strtolower(trim($authMode));
+    if ($authMode === 'oauth' || $authMode === 'pat') {
+        return $authMode;
+    }
+
+    return str_starts_with(trim($token), 'gho_') ? 'oauth' : 'pat';
+}
+
+function station_github_git_username(string $token, string $authMode = ''): string
+{
+    if (station_github_git_auth_mode($token, $authMode) === 'oauth') {
+        return 'oauth2';
+    }
+
+    return 'x-access-token';
+}
+
+function station_github_https_remote(string $owner, string $name, string $token, string $authMode = ''): string
+{
+    $user = station_github_git_username($token, $authMode);
+
+    return 'https://' . $user . ':' . rawurlencode(trim($token)) . '@github.com/' . $owner . '/' . $name . '.git';
+}
+
 /**
  * @return array{ok: bool, message: string, html_url?: string}
  */
@@ -117,16 +162,12 @@ function station_github_create_private_repo(string $token, string $owner, string
     return ['ok' => false, 'message' => 'Create repo failed (' . ($res['code'] ?? 0) . '): ' . $detail];
 }
 
-function station_github_https_remote(string $owner, string $name, string $token): string
-{
-    return 'https://x-access-token:' . rawurlencode($token) . '@github.com/' . $owner . '/' . $name . '.git';
-}
-
 /**
  * @return array<string, mixed>
  */
-function station_github_project_sync_row(string $slug, string $token): array
+function station_github_project_sync_row(string $slug, string $token, string $authMode = ''): array
 {
+    $authMode = station_github_git_auth_mode($token, $authMode);
     $path = station_project_path($slug);
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
@@ -180,7 +221,7 @@ function station_github_project_sync_row(string $slug, string $token): array
         return $row;
     }
 
-    $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token);
+    $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token, $authMode);
     if (!empty($st['ok'])) {
         $summary = station_git_worktree_summary(trim((string) ($st['output'] ?? '')));
         $row['dirty'] = !empty($summary['dirty']);
@@ -192,10 +233,10 @@ function station_github_project_sync_row(string $slug, string $token): array
         $row['has_untracked'] = !empty($summary['has_untracked']);
     }
 
-    $ru = station_run_git_command(['git', '-C', $path, 'remote', 'get-url', 'origin'], $token);
+    $ru = station_run_git_command(['git', '-C', $path, 'remote', 'get-url', 'origin'], $token, $authMode);
     $row['remote_url'] = !empty($ru['ok']) ? trim((string) ($ru['output'] ?? '')) : '';
 
-    $fb = station_run_git_command(['git', '-C', $path, 'fetch', 'origin'], $token);
+    $fb = station_run_git_command(['git', '-C', $path, 'fetch', 'origin'], $token, $authMode);
     if (empty($fb['ok'])) {
         $fetchOut = (string) ($fb['output'] ?? '');
         if (stripos($fetchOut, 'Repository not found') !== false) {
@@ -209,7 +250,8 @@ function station_github_project_sync_row(string $slug, string $token): array
 
     $ab = station_run_git_command(
         ['git', '-C', $path, 'rev-list', '--left-right', '--count', 'origin/' . $branch . '...HEAD'],
-        $token
+        $token,
+        $authMode
     );
     if (!empty($ab['ok'])) {
         $parts = preg_split('/\s+/', trim((string) ($ab['output'] ?? '')));
@@ -386,13 +428,14 @@ function station_github_list_user_repositories(string $token, int $maxPages = 3)
 /**
  * @return array{ok: bool, message: string}
  */
-function station_github_project_git_pull(string $slug, string $token): array
+function station_github_project_git_pull(string $slug, string $token, string $authMode = ''): array
 {
+    $authMode = station_github_git_auth_mode($token, $authMode);
     $path = station_project_path($slug);
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
     $branch = trim((string) ($gh['defaultBranch'] ?? 'main')) ?: 'main';
-    $pull = station_run_git_command(['git', '-C', $path, 'pull', '--ff-only', 'origin', $branch], $token);
+    $pull = station_run_git_command(['git', '-C', $path, 'pull', '--ff-only', 'origin', $branch], $token, $authMode);
     if (empty($pull['ok'])) {
         return ['ok' => false, 'message' => mb_substr((string) ($pull['output'] ?? 'pull failed'), 0, 800)];
     }
@@ -403,13 +446,14 @@ function station_github_project_git_pull(string $slug, string $token): array
 /**
  * @return array{ok: bool, message: string}
  */
-function station_github_project_git_push(string $slug, string $token): array
+function station_github_project_git_push(string $slug, string $token, string $authMode = ''): array
 {
+    $authMode = station_github_git_auth_mode($token, $authMode);
     $path = station_project_path($slug);
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
     $branch = trim((string) ($gh['defaultBranch'] ?? 'main')) ?: 'main';
-    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token);
+    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
     if (empty($push['ok'])) {
         return ['ok' => false, 'message' => mb_substr((string) ($push['output'] ?? 'push failed'), 0, 800)];
     }
@@ -420,8 +464,9 @@ function station_github_project_git_push(string $slug, string $token): array
 /**
  * @return array{ok: bool, message: string}
  */
-function station_github_project_init_and_link(string $slug, string $token): array
+function station_github_project_init_and_link(string $slug, string $token, string $authMode = ''): array
 {
+    $authMode = station_github_git_auth_mode($token, $authMode);
     $path = station_project_path($slug);
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
@@ -437,29 +482,29 @@ function station_github_project_init_and_link(string $slug, string $token): arra
     }
 
     if (!is_dir($path . '/.git')) {
-        $init = station_run_git_command(['git', '-C', $path, 'init'], $token);
+        $init = station_run_git_command(['git', '-C', $path, 'init'], $token, $authMode);
         if (empty($init['ok'])) {
             return ['ok' => false, 'message' => 'git init failed: ' . ($init['output'] ?? '')];
         }
-        station_run_git_command(['git', '-C', $path, 'checkout', '-B', $branch], $token);
+        station_run_git_command(['git', '-C', $path, 'checkout', '-B', $branch], $token, $authMode);
     }
 
-    $remote = station_github_https_remote($owner, $name, $token);
-    $hasOrigin = station_run_git_command(['git', '-C', $path, 'remote'], $token);
+    $remote = station_github_https_remote($owner, $name, $token, $authMode);
+    $hasOrigin = station_run_git_command(['git', '-C', $path, 'remote'], $token, $authMode);
     $hasO = !empty($hasOrigin['ok']) && str_contains((string) ($hasOrigin['output'] ?? ''), 'origin');
     if ($hasO) {
-        station_run_git_command(['git', '-C', $path, 'remote', 'set-url', 'origin', $remote], $token);
+        station_run_git_command(['git', '-C', $path, 'remote', 'set-url', 'origin', $remote], $token, $authMode);
     } else {
-        station_run_git_command(['git', '-C', $path, 'remote', 'add', 'origin', $remote], $token);
+        station_run_git_command(['git', '-C', $path, 'remote', 'add', 'origin', $remote], $token, $authMode);
     }
 
-    station_run_git_command(['git', '-C', $path, 'add', '-A'], $token);
-    $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token);
+    station_run_git_command(['git', '-C', $path, 'add', '-A'], $token, $authMode);
+    $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token, $authMode);
     if (!empty($st['ok']) && trim((string) ($st['output'] ?? '')) !== '') {
-        station_run_git_command(['git', '-C', $path, 'commit', '-m', 'Initial commit from Deployment Station'], $token);
+        station_run_git_command(['git', '-C', $path, 'commit', '-m', 'Initial commit from Deployment Station'], $token, $authMode);
     }
 
-    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token);
+    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
     if (empty($push['ok'])) {
         return ['ok' => false, 'message' => 'Linked remote but push failed (create the empty repo on GitHub first, or fix permissions): ' . mb_substr((string) ($push['output'] ?? ''), 0, 600)];
     }

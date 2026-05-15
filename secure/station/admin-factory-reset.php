@@ -166,6 +166,6 @@ $optsPreview = is_array($armed) && isset($armed['opts']) && is_array($armed['opt
       <?php endif; ?>
     </main>
   </div>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

@@ -299,7 +299,7 @@ foreach (array_keys($activeFiles) as $candidatePath) {
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.', 'assets/style.css?v=20260520b') ?>
+  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.', 'assets/style.css?v=20260520c') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -540,8 +540,6 @@ foreach (array_keys($activeFiles) as $candidatePath) {
   <script id="templateFilesData" type="application/json"><?= station_h($templateFilesJson) ?></script>
   <script src="assets/template-manager-editor.js?v=20260520a"></script>
 
-  <?= station_dashboard_nav_script_html() ?>
-  <?= station_clipboard_fab_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

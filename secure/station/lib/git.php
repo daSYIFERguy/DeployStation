@@ -22,7 +22,7 @@ function station_detect_current_git_branch(string $projectPath): string
  * @param list<string> $command
  * @return array{ok: bool, code: int, output: string}
  */
-function station_run_git_command(array $command, string $token = ''): array
+function station_run_git_command(array $command, string $token = '', string $githubAuthMode = ''): array
 {
     $askPassPath = '';
     $env = getenv();
@@ -31,15 +31,10 @@ function station_run_git_command(array $command, string $token = ''): array
     $env['GIT_TERMINAL_PROMPT'] = '0';
 
     if ($token !== '') {
+        require_once __DIR__ . '/github-sync.php';
+        $gitUser = station_github_git_username($token, $githubAuthMode);
         $askPassPath = station_data_dir() . '/github-askpass-' . bin2hex(random_bytes(6)) . '.sh';
-        $askPassScript = <<<'BASH'
-#!/bin/sh
-case "$1" in
-*Username*) printf '%s\n' 'x-access-token' ;;
-*Password*) printf '%s\n' "$GITHUB_TOKEN" ;;
-*) printf '\n' ;;
-esac
-BASH;
+        $askPassScript = "#!/bin/sh\ncase \"\$1\" in\n*Username*) printf '%s\\n' " . escapeshellarg($gitUser) . " ;;\n*Password*) printf '%s\\n' \"\$GITHUB_TOKEN\" ;;\n*) printf '\\n' ;;\nesac\n";
         if (@file_put_contents($askPassPath, $askPassScript, LOCK_EX) === false || !@chmod($askPassPath, 0700)) {
             return ['ok' => false, 'code' => -1, 'output' => 'Could not prepare GitHub credentials.'];
         }

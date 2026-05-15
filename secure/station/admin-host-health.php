@@ -361,7 +361,7 @@ TXT;
       </details>
     </main>
   </div>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
   <script>
 (function () {
   var cb = document.getElementById('hostHealthAutoRefresh');

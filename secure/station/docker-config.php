@@ -657,9 +657,7 @@ $serviceCount = count($status['services'] ?? []);
   </script>
 
 <?php if (!$stationDockerEmbedded): ?>
-  <?= station_dashboard_nav_script_html() ?>
-  <?= station_clipboard_fab_html() ?>
-  <?= station_pwa_register_html() ?>
+  <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>
 <?php endif; ?>
