@@ -59,6 +59,22 @@ function station_access_requests_unseen_count(): int
     return $n;
 }
 
+function station_access_requests_queue_owner_alert(): void
+{
+    $user = function_exists('station_current_user') ? station_current_user() : null;
+    if ($user === null || !function_exists('station_is_owner') || !station_is_owner($user)) {
+        return;
+    }
+    if (station_access_requests_unseen_count() > 0) {
+        $_SESSION['station_access_requests_alert'] = true;
+    }
+}
+
+function station_access_requests_clear_owner_alert_session(): void
+{
+    unset($_SESSION['station_access_requests_alert']);
+}
+
 function station_access_request_mark_all_seen(): void
 {
     $changed = false;
@@ -98,7 +114,7 @@ function station_access_request_create(array $data): array
         }
         if (strtolower((string) ($r['email'] ?? '')) === $email
             || (string) ($r['githubLogin'] ?? '') === $githubLogin) {
-            return ['ok' => false, 'message' => 'A pending request already exists for this email or GitHub account.'];
+            return ['ok' => false, 'message' => 'You already have a pending access request.'];
         }
     }
 

@@ -85,12 +85,12 @@ if ($purpose === 'request_access') {
     ]);
 
     if (!empty($result['ok'])) {
-        station_flash_set('ok', 'Your access request was submitted. An owner will review it and email you if approved.');
+        station_flash_set('ok', 'Your access request is pending. You will be notified when your account is ready.');
     } else {
         station_flash_set('error', (string) ($result['message'] ?? 'Could not submit request.'));
     }
 
-    header('Location: index.php');
+    header('Location: index.php#request-access');
     exit;
 }
 

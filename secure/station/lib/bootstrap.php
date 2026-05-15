@@ -1051,19 +1051,6 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     }
 
     if ($isOwner) {
-        require_once __DIR__ . '/access-requests.php';
-        $unseen = function_exists('station_access_requests_unseen_count')
-            ? station_access_requests_unseen_count()
-            : 0;
-        $adminLinks[] = station_dashboard_nav_link(
-            $active,
-            'access_requests',
-            'access-requests.php',
-            'access_requests',
-            'Access requests',
-            '',
-            $unseen > 0 ? $unseen : null
-        );
         $adminLinks[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Admin settings');
         $adminLinks[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
     }
@@ -1112,6 +1099,57 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
             '</nav>' .
         '</div>' .
     '</aside>';
+}
+
+/**
+ * One-time modal for owners after sign-in when unseen access requests exist.
+ */
+function station_access_requests_owner_alert_html(): string
+{
+    if (empty($_SESSION['station_access_requests_alert'])) {
+        return '';
+    }
+
+    require_once __DIR__ . '/access-requests.php';
+    $unseen = station_access_requests_unseen_count();
+    if ($unseen < 1) {
+        station_access_requests_clear_owner_alert_session();
+
+        return '';
+    }
+
+    $nLabel = $unseen === 1 ? '1 new access request' : $unseen . ' new access requests';
+
+    return '<dialog id="stationAccessRequestsAlert" class="modal-dialog access-requests-alert-dialog" aria-labelledby="stationAccessRequestsAlertTitle">'
+        . '<div class="modal-header">'
+        . '<div><p class="dashboard-kicker">Owner</p><h2 id="stationAccessRequestsAlertTitle">' . station_h($nLabel) . '</h2></div>'
+        . '<button type="button" class="modal-close-btn" id="stationAccessRequestsAlertClose" aria-label="Close">&times;</button>'
+        . '</div>'
+        . '<p class="setting-description">Someone requested access via GitHub. Review their details under <strong>Users → Access requests</strong> and create an account when ready.</p>'
+        . '<div class="modal-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">'
+        . '<a class="btn-primary" href="users.php?tab=requests" id="stationAccessRequestsAlertReview">Review requests</a>'
+        . '<button type="button" class="secondary-btn" id="stationAccessRequestsAlertDismiss">Not now</button>'
+        . '</div>'
+        . '</dialog>'
+        . <<<'HTML'
+<script>
+(function () {
+  var dlg = document.getElementById('stationAccessRequestsAlert');
+  if (!dlg || typeof dlg.showModal !== 'function') { return; }
+  var closeBtn = document.getElementById('stationAccessRequestsAlertClose');
+  var dismissBtn = document.getElementById('stationAccessRequestsAlertDismiss');
+  function closeDlg() {
+    if (dlg.open) { dlg.close(); }
+  }
+  dlg.addEventListener('close', function () {
+    fetch('access-requests-alert-dismiss.php', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
+  });
+  if (closeBtn) { closeBtn.addEventListener('click', closeDlg); }
+  if (dismissBtn) { dismissBtn.addEventListener('click', closeDlg); }
+  window.setTimeout(function () { dlg.showModal(); }, 400);
+})();
+</script>
+HTML;
 }
 
 function station_dashboard_nav_script_html(): string
@@ -1510,7 +1548,8 @@ function station_clipboard_fab_html(): string
   });
 })();
 </script>
-HTML;
+HTML
+        . station_access_requests_owner_alert_html();
 }
 
 function station_clipboard_path(string $username): string

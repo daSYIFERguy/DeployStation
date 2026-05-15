@@ -152,6 +152,8 @@ function station_login_as_user(string $username): bool
         $cfg['users'] = $users;
         station_save_config($cfg);
         station_log_event('user.login', ['username' => $candidate, 'method' => 'github']);
+        require_once __DIR__ . '/access-requests.php';
+        station_access_requests_queue_owner_alert();
 
         return true;
     }
@@ -182,6 +184,9 @@ function station_login(string $username, string $password): bool
             $cfg['users'] = $users;
             station_save_config($cfg);
             station_log_event('user.login', ['username' => $candidate]);
+            require_once __DIR__ . '/access-requests.php';
+            station_access_requests_queue_owner_alert();
+
             return true;
         }
     }

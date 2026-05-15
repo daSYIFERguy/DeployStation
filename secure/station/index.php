@@ -97,7 +97,7 @@ $brandMark = $brandIconUrl !== ''
 
       <section class="login-panel" id="login-panel-request" role="tabpanel" hidden>
         <p class="login-request-hint">
-          Request access with GitHub. You will be added to a <strong>pending list</strong> — an owner reviews requests and will email credentials if approved. You do not get access immediately.
+          Enter your name and email, then continue with GitHub so we can verify who you are.
         </p>
         <?php if ($githubOAuthReady): ?>
           <form method="post" action="github-auth-start.php?purpose=request_access" class="login-form">
@@ -118,7 +118,7 @@ $brandMark = $brandIconUrl !== ''
         <?php endif; ?>
       </section>
 
-      <p class="login-note">Accounts are created by the station owner after review.</p>
+      <p class="login-note">New sign-ins are enabled by the station owner after verification.</p>
     </div>
   </main>
   <script>

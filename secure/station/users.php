@@ -16,6 +16,16 @@ if (!$isAdmin) {
     exit;
 }
 
+$usersTab = 'users';
+if ($isOwner) {
+    require_once __DIR__ . '/lib/access-requests.php';
+    if (($_GET['tab'] ?? '') === 'requests') {
+        $usersTab = 'requests';
+        station_access_request_mark_all_seen();
+        station_access_requests_clear_owner_alert_session();
+    }
+}
+
 $cfg = station_config();
 $users = isset($cfg['users']) && is_array($cfg['users']) ? $cfg['users'] : [];
 $error = '';
@@ -80,6 +90,20 @@ function station_can_manage_target(bool $isOwner, string $targetUsername): bool
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
     $currentUsername = (string) ($currentUser['username'] ?? '');
+
+    if ($action === 'access_request' && $isOwner) {
+        $id = (string) ($_POST['id'] ?? '');
+        $sub = (string) ($_POST['access_subaction'] ?? '');
+        if ($id !== '' && $sub === 'dismiss') {
+            $r = station_access_request_update_status($id, 'dismissed');
+            station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Update failed.'));
+        } elseif ($id !== '' && $sub === 'approve') {
+            $r = station_access_request_update_status($id, 'approved');
+            station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Update failed.'));
+        }
+        header('Location: users.php?tab=requests');
+        exit;
+    }
 
     if ($action === 'add_user') {
         $username = station_safe_name((string) ($_POST['username'] ?? ''));
@@ -205,6 +229,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           }
         }
 }
+
+$accessRequests = [];
+$accessPendingCount = 0;
+if ($isOwner) {
+    $accessRequests = station_access_requests_load();
+    usort($accessRequests, static function (array $a, array $b): int {
+        return strcmp((string) ($b['requestedAt'] ?? ''), (string) ($a['requestedAt'] ?? ''));
+    });
+    $accessPendingCount = station_access_requests_pending_count();
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -230,6 +264,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?= station_flash_banners_html() ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+
+    <?php if ($isOwner): ?>
+      <nav class="users-admin-tabs" role="tablist" aria-label="User administration">
+        <a href="users.php" class="users-admin-tab <?= $usersTab === 'users' ? 'active' : '' ?>" role="tab" aria-selected="<?= $usersTab === 'users' ? 'true' : 'false' ?>">Users</a>
+        <a href="users.php?tab=requests" class="users-admin-tab <?= $usersTab === 'requests' ? 'active' : '' ?>" role="tab" aria-selected="<?= $usersTab === 'requests' ? 'true' : 'false' ?>">
+          Access requests<?php if ($accessPendingCount > 0): ?> <span class="users-admin-tab-badge"><?= (int) $accessPendingCount ?></span><?php endif; ?>
+        </a>
+      </nav>
+    <?php endif; ?>
+
+    <?php if ($usersTab === 'requests' && $isOwner): ?>
+      <?php require __DIR__ . '/partials/users-access-requests-panel.php'; ?>
+    <?php else: ?>
 
     <section class="grid-two">
       <form class="card form-grid" method="post">
@@ -328,6 +375,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </tbody>
       </table>
     </section>
+
+    <?php endif; ?>
+
       </div>
     </main>
   </div>

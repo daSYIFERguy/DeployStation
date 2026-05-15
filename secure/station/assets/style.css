@@ -1858,6 +1858,72 @@ tr:last-child td { border-bottom: none; }
   }
 }
 
+/* Users admin tabs (owner) */
+.users-admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+}
+
+.users-admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--soft);
+  text-decoration: none;
+  transition: background var(--ease), color var(--ease);
+}
+
+.users-admin-tab:hover {
+  color: var(--ink);
+  text-decoration: none;
+  background: rgba(255,255,255,.7);
+}
+
+.users-admin-tab.active {
+  background: var(--panel);
+  color: var(--brand-dark);
+  box-shadow: 0 2px 8px rgba(19,35,63,.08);
+}
+
+.users-admin-tab-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e11d48;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.access-requests-alert-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 20px 22px 22px;
+  border: 0;
+}
+
+.access-requests-alert-dialog .modal-header {
+  padding: 0 0 12px;
+  border: 0;
+}
+
+.access-requests-alert-dialog .modal-header h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    ENHANCED ADMIN SETTINGS — TABS, SECTIONS, AND ICONS
    ═══════════════════════════════════════════════════════════════════ */
