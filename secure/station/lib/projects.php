@@ -730,16 +730,31 @@ function station_write_env_file(string $slug, array $environment): bool
 
 function station_generate_github_bootstrap_files(string $slug, array $settings): array
 {
-    $repoName = trim((string) ($settings['github']['repoName'] ?? $slug));
-    $defaultBranch = trim((string) ($settings['github']['defaultBranch'] ?? 'main')) ?: 'main';
+    $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
+    $repoName = trim((string) ($gh['repoName'] ?? $slug));
+    $defaultBranch = trim((string) ($gh['defaultBranch'] ?? 'main')) ?: 'main';
+    $wantWorkflow = !empty($gh['releaseWorkflow']);
     $readme = '# ' . $repoName . "\n\nManaged by Station.\n";
     $workflow = "name: release\n\non:\n  push:\n    branches: [\"{$defaultBranch}\"]\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Basic release note\n        run: echo \"Release workflow placeholder for {$repoName}\"\n";
 
     $ok1 = station_write_project_file($slug, 'README.md', $readme);
-    $ok2 = station_write_project_file($slug, '.github/workflows/release.yml', $workflow);
+    $ok2 = $wantWorkflow
+        ? station_write_project_file($slug, '.github/workflows/release.yml', $workflow)
+        : true;
     $ok3 = station_write_project_file($slug, '.gitignore', ".env\n.env.local\nnode_modules/\ndist/\nbuild/\n");
 
-    return ['ok' => $ok1 && $ok2 && $ok3, 'message' => $ok1 && $ok2 && $ok3 ? 'GitHub bootstrap generated.' : 'Could not write bootstrap files.'];
+    if (!$wantWorkflow) {
+        $workflowPath = station_project_path($slug) . '/.github/workflows/release.yml';
+        if (is_file($workflowPath)) {
+            @unlink($workflowPath);
+        }
+    }
+
+    $message = $wantWorkflow
+        ? 'GitHub bootstrap generated (README, .gitignore, release workflow).'
+        : 'GitHub bootstrap generated (README, .gitignore; release workflow skipped).';
+
+    return ['ok' => $ok1 && $ok2 && $ok3, 'message' => $ok1 && $ok2 && $ok3 ? $message : 'Could not write bootstrap files.'];
 }
 
 /**

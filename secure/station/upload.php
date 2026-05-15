@@ -168,7 +168,7 @@ if (!empty($_POST['configure_docker_next']) && station_docker_enabled()) {
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 
 $redirectUrl = !empty($_POST['configure_docker_next']) && station_docker_enabled()
-    ? 'docker-config.php?project=' . urlencode($slug)
+    ? 'project-settings.php?project=' . urlencode($slug) . '#docker'
     : 'viewer.php?project=' . urlencode($slug);
 if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfrastructure'] ?? 'apache')) === 'nginx') {
     $nr = station_write_nginx_projects_conf();

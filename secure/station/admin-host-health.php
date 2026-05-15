@@ -154,7 +154,7 @@ TXT;
         <div>
           <p class="dashboard-kicker">Owner · Mission control</p>
           <h1 class="dashboard-heading">Host health &amp; routing</h1>
-          <p class="dashboard-subheading">Graphical gauges and live container stats — technical logs and routing are tucked under <strong>Technical details</strong> below.</p>
+          <p class="dashboard-subheading">Conic overview rings and container load — routing, shell output, and maintenance live under <strong>Technical details</strong> below.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -172,13 +172,19 @@ TXT;
         <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
       <?php endif; ?>
 
-      <div class="settings-panel mc-visual-wrap" style="margin-top: 16px; border: none; padding: 0; background: transparent; box-shadow: none;">
-        <?= station_host_health_mission_visual_html(
+      <div class="settings-panel mc-cockpit-wrap" style="margin-top: 16px; border: none; padding: 0; background: transparent; box-shadow: none;">
+        <?= station_host_health_mission_cockpit_html(
             $snapshot,
             $missionPayload,
             $routing,
             $upstreamMatrix,
             $missionSlugs
+        ) ?>
+        <?= station_mission_fleet_markup(
+            $missionPayload,
+            $missionSlugs,
+            'Live container load',
+            'CPU and memory bars scale to the busiest container on this host.'
         ) ?>
       </div>
 
@@ -205,7 +211,10 @@ TXT;
           Secure path prefix: <code><?= station_h($secureBase !== '' ? $secureBase : '(empty)') ?></code>.
         </p>
         <p class="setting-description">Generated include path (nginx): <code><?= station_h($includePath) ?></code></p>
-        <pre class="host-routing-pre" aria-label="Routing diagram"><?= station_h($diagram) ?></pre>
+        <details class="mc-tech-diagram">
+          <summary>Routing diagram (ASCII)</summary>
+          <pre class="host-routing-pre" aria-label="Routing diagram"><?= station_h($diagram) ?></pre>
+        </details>
 
         <?php if ($infra === 'nginx'): ?>
           <p class="setting-description" style="margin-top:12px;">Snippet to merge into your server block is under <a href="admin-settings.php?tab=project-defaults">Admin → Projects</a> (nginx project route snippet). Ensure <code>include <?= station_h($includePath) ?>;</code> appears <em>before</em> a catch-all <code>location /</code>.</p>
@@ -318,11 +327,13 @@ TXT;
                 $meta .= ' — ' . (string) $block['message'];
             }
             ?>
-          <div class="host-health-card">
-            <h3><?= station_h($label) ?></h3>
-            <div class="host-health-meta"><?= station_h($meta) ?> · <?= !empty($block['ok']) ? 'ok' : 'error' ?></div>
-            <pre><?= station_h($out !== '' ? $out : '(no output)') ?></pre>
-          </div>
+          <details class="host-health-card mc-tech-snapshot">
+            <summary>
+              <span class="host-health-card-title"><?= station_h($label) ?></span>
+              <span class="host-health-meta"><?= station_h($meta) ?> · <?= !empty($block['ok']) ? 'ok' : 'error' ?></span>
+            </summary>
+            <pre class="host-health-output"><?= station_h($out !== '' ? $out : '(no output)') ?></pre>
+          </details>
         <?php endforeach; ?>
       </div>
 
@@ -351,7 +362,6 @@ TXT;
     </main>
   </div>
   <?= station_pwa_register_html() ?>
-  <script src="assets/mission-control.js?v=20260515"></script>
   <script>
 (function () {
   var cb = document.getElementById('hostHealthAutoRefresh');

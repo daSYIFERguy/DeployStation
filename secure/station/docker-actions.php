@@ -111,7 +111,7 @@ if ($dockerConfig === [] && !is_file($composeAbs)) {
     station_docker_action_respond(
         false,
         'Configure Docker for this project first.',
-        'docker-config.php?project=' . urlencode($project),
+        'project-settings.php?project=' . urlencode($project) . '#docker',
         [],
         $wantsJson
     );

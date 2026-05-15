@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/project-launch.php';
+require_once __DIR__ . '/lib/openai.php';
 
 station_require_setup();
 
@@ -159,59 +161,22 @@ if ($isContainerized) {
         'unconfigured' => ['label' => 'Not Configured', 'tone' => 'warn'],
     ];
     $stateMeta = $stateLabels[$status['state'] ?? 'unknown'] ?? $stateLabels['unknown'];
-    $canBuild = station_can_build($user);
-    ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <?= station_pwa_head_html('Launch ' . $slug, 'Container deployment status for ' . $slug . '.') ?>
-</head>
-<body class="station-body">
-  <main class="station-shell narrow" style="padding-top: 32px;">
-    <section class="card form-grid">
-      <p class="kicker">Container deployment</p>
-      <h1><?= station_h($slug) ?></h1>
-      <p>This project is configured to run in Docker. Current status:</p>
-      <p>
-        <span class="status-pill <?= $stateMeta['tone'] === 'ok' ? 'is-public' : 'is-private' ?>" style="font-size:12px;padding:6px 14px;">
-          ● <?= station_h($stateMeta['label']) ?>
-        </span>
-      </p>
+    if (($status['state'] ?? '') !== 'running') {
+        $launchProfile = station_project_launch_profile($slug);
+        station_render_app_explorer_page($slug, $launchProfile, $user, [
+            'dockerStopped' => true,
+            'dockerStateLabel' => (string) $stateMeta['label'],
+            'friendlyUrl' => $usesNginx ? $friendlyTarget : $directTarget,
+        ]);
+        exit;
+    }
+}
 
-      <?php if (($status['state'] ?? '') !== 'running'): ?>
-        <p>The container is not running. Use the controls below to start it.</p>
-        <?php if ($usesNginx): ?>
-          <p class="topbar-sub">After start, reload nginx if you use friendly URLs and automatic reload is off in Admin → Projects. Put <code>include …/projects.conf</code> <strong>before</strong> <code>location /</code> in your server block, then <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>. Friendly URL: <code><?= station_h($friendlyTarget) ?></code></p>
-        <?php else: ?>
-          <p class="topbar-sub">Direct access (when running): <code><?= station_h($directTarget) ?></code>. Switch the production web server to Nginx in Admin Settings to also expose a friendly <code>/p/<?= station_h($slug) ?>/</code> URL.</p>
-        <?php endif; ?>
-        <div class="action-row">
-          <?php if ($canBuild): ?>
-            <form method="post" action="docker-actions.php">
-              <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-              <input type="hidden" name="action" value="start">
-              <input type="hidden" name="return" value="launch.php?project=<?= urlencode($slug) ?>">
-              <button type="submit" class="btn-primary">Start container</button>
-            </form>
-            <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>">Configure Docker</a>
-          <?php endif; ?>
-          <a class="quick-link" href="station.php">Back to dashboard</a>
-        </div>
-        <?php if (!empty($status['output'])): ?>
-          <details>
-            <summary class="mini-link">Show diagnostic output</summary>
-            <pre class="code-block"><?= station_h((string) $status['output']) ?></pre>
-          </details>
-        <?php endif; ?>
-      <?php endif; ?>
-    </section>
-  </main>
-  <?= station_pwa_register_html() ?>
-</body>
-</html>
-    <?php
+$launchProfile = station_project_launch_profile($slug);
+if (!empty($launchProfile['launchable']) && $launchProfile['launchKind'] === 'web') {
+    header('Location: ' . station_project_serve_path($slug));
     exit;
 }
 
-header('Location: ' . station_project_serve_path($slug));
+station_render_app_explorer_page($slug, $launchProfile, $user);
 exit;

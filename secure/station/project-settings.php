@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/github-sync.php';
+require_once __DIR__ . '/lib/project-launch.php';
 
 station_require_builder();
 
@@ -53,46 +55,117 @@ function station_env_text(array $env): string
     return implode("\n", $lines);
 }
 
+function station_project_github_from_post(array $existingGithub): array
+{
+    $gh = is_array($existingGithub) ? $existingGithub : [];
+
+    return array_merge($gh, [
+        'repoOwner' => trim((string) ($_POST['repo_owner'] ?? '')),
+        'repoName' => trim((string) ($_POST['repo_name'] ?? '')),
+        'visibility' => ((string) ($_POST['repo_visibility'] ?? 'private')) === 'public' ? 'public' : 'private',
+        'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
+        'releaseWorkflow' => !empty($_POST['release_workflow']),
+    ]);
+}
+
+$username = station_current_username();
+$profile = station_user_profile($username);
+$ghProfile = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
+    ? $profile['integrations']['github']
+    : [];
+$githubToken = trim((string) ($ghProfile['token'] ?? ''));
+$githubUserEnabled = !empty($ghProfile['enabled']);
+$stationGithubOn = !empty(station_admin_settings()['githubEnabled']);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? 'save_settings');
 
-    if ($action === 'save_settings') {
-        $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
-        $settings['notes'] = trim((string) ($_POST['notes'] ?? ''));
-        $settings['github'] = [
-            'repoOwner' => trim((string) ($_POST['repo_owner'] ?? '')),
-            'repoName' => trim((string) ($_POST['repo_name'] ?? '')),
-            'visibility' => ((string) ($_POST['repo_visibility'] ?? 'private')) === 'public' ? 'public' : 'private',
-            'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
-            'releaseWorkflow' => isset($_POST['release_workflow'])
-        ];
+    if ($action === 'github_sync' && $stationGithubOn && $githubUserEnabled && $githubToken !== '') {
+        $syncAct = (string) ($_POST['github_sync_action'] ?? '');
+        $redirect = 'project-settings.php?project=' . urlencode($project) . '#github';
+        $run = static function (string $message, bool $ok = true) use ($redirect): void {
+            station_flash_set($ok ? 'ok' : 'error', $message);
+            header('Location: ' . $redirect);
+            exit;
+        };
+        if ($syncAct === 'pull') {
+            $r = station_github_project_git_pull($project, $githubToken);
+            $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
+        }
+        if ($syncAct === 'push') {
+            $r = station_github_project_git_push($project, $githubToken);
+            $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
+        }
+        if ($syncAct === 'init_link') {
+            if (!station_git_available()) {
+                $run('Git is not available on this host.', false);
+            }
+            $r = station_github_project_init_and_link($project, $githubToken);
+            $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
+        }
+        if ($syncAct === 'create_repo_and_link') {
+            if (!station_git_available()) {
+                $run('Git is not available on this host.', false);
+            }
+            $gh = $settings['github'] ?? [];
+            $owner = trim((string) ($gh['repoOwner'] ?? ''));
+            $name = trim((string) ($gh['repoName'] ?? ''));
+            if ($owner === '' || $name === '') {
+                $run('Set repo owner and name below, save, then try again.', false);
+            }
+            $cr = station_github_create_private_repo($githubToken, $owner, $name, 'Private mirror: ' . $project);
+            if (empty($cr['ok'])) {
+                $run((string) ($cr['message'] ?? 'Create repo failed'), false);
+            }
+            $il = station_github_project_init_and_link($project, $githubToken);
+            $run('Repository created, then: ' . ($il['message'] ?? ''), !empty($il['ok']));
+        }
+        if ($syncAct === 'pull_redeploy') {
+            $pull = station_github_project_git_pull($project, $githubToken);
+            if (empty($pull['ok'])) {
+                $run((string) ($pull['message'] ?? 'Pull failed'), false);
+            }
+            $rd = station_github_project_redeploy_after_pull($project);
+            $run(($pull['message'] ?? 'Pulled.') . ' ' . ($rd['message'] ?? ''), !empty($rd['ok']));
+        }
+        $run('Unknown GitHub action.', false);
+    }
 
-        if (station_save_project_settings($project, $settings) && station_write_env_file($project, $settings['environment'])) {
+    if ($action === 'save_settings' || $action === 'save_github') {
+        if ($action === 'save_settings') {
+            $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
+            $settings['notes'] = trim((string) ($_POST['notes'] ?? ''));
+        }
+        $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
+
+        $settingsSaved = station_save_project_settings($project, $settings);
+        $envSaved = $action === 'save_github' || station_write_env_file($project, $settings['environment']);
+        if ($settingsSaved && $envSaved) {
             station_log_event('project.settings.saved', ['project' => $project]);
-            station_flash_set('ok', 'Project settings saved.');
-            header('Location: project-settings.php?project=' . urlencode($project));
+            $msg = $action === 'save_github' ? 'GitHub metadata saved.' : 'Project settings saved.';
+            station_flash_set('ok', $msg);
+            header('Location: project-settings.php?project=' . urlencode($project) . '#github');
             exit;
         }
-        $error = 'Could not save project settings.';
+        $error = $action === 'save_github'
+            ? 'Could not save GitHub metadata (check data directory permissions).'
+            : 'Could not save project settings.';
     }
 
     if ($action === 'generate_github') {
-        $settings['github'] = [
-            'repoOwner' => trim((string) ($_POST['repo_owner'] ?? '')),
-            'repoName' => trim((string) ($_POST['repo_name'] ?? '')),
-            'visibility' => ((string) ($_POST['repo_visibility'] ?? 'private')) === 'public' ? 'public' : 'private',
-            'defaultBranch' => trim((string) ($_POST['default_branch'] ?? 'main')) ?: 'main',
-            'releaseWorkflow' => isset($_POST['release_workflow'])
-        ];
-        station_save_project_settings($project, $settings);
-        $result = station_generate_github_bootstrap_files($project, $settings);
-        if (!empty($result['ok'])) {
-            station_log_event('github.bootstrap.generated', ['project' => $project]);
-            station_flash_set('ok', (string) ($result['message'] ?? 'GitHub files generated.'));
-            header('Location: project-settings.php?project=' . urlencode($project));
-            exit;
+        $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
+        if (!station_save_project_settings($project, $settings)) {
+            $error = 'Could not save GitHub metadata before generating files.';
+        } else {
+            $result = station_generate_github_bootstrap_files($project, $settings);
+            if (!empty($result['ok'])) {
+                station_log_event('github.bootstrap.generated', ['project' => $project]);
+                station_flash_set('ok', (string) ($result['message'] ?? 'GitHub files generated.'));
+                header('Location: project-settings.php?project=' . urlencode($project) . '#github');
+                exit;
+            }
+            $error = (string) ($result['message'] ?? 'GitHub generation failed.');
         }
-        $error = (string) ($result['message'] ?? 'GitHub generation failed.');
     }
 }
 
@@ -110,6 +183,11 @@ foreach (station_list_projects() as $p) {
 $pAccess = (string) ($projectMeta['accessMode'] ?? 'admin');
 $pOwner = (string) ($projectMeta['owner'] ?? 'unknown');
 $isStationOwner = station_is_owner($user);
+$launchProfile = station_project_launch_profile($project);
+$githubSyncRow = ($stationGithubOn && $githubUserEnabled && $githubToken !== '')
+    ? station_github_project_sync_row($project, $githubToken)
+    : null;
+$canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project($user, $project);
 ?>
 <!doctype html>
 <html lang="en">
@@ -124,15 +202,12 @@ $isStationOwner = station_is_owner($user);
         <div>
           <p class="dashboard-kicker">Project</p>
           <h1 class="dashboard-heading"><?= station_h($project) ?></h1>
-          <p class="dashboard-subheading">Configuration for this deployment: environment, GitHub metadata, and where to manage containers.</p>
+          <p class="dashboard-subheading">Environment, GitHub, Docker, and administration for this deployment.</p>
         </div>
         <nav class="nav-pills">
           <a href="station.php">Dashboard</a>
           <a href="viewer.php?project=<?= urlencode($project) ?>">Files</a>
           <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
-          <?php if (station_docker_enabled()): ?>
-            <a href="docker-config.php?project=<?= urlencode($project) ?>">Docker</a>
-          <?php endif; ?>
           <?php if (station_is_admin($user)): ?>
             <a href="template-manager.php">Templates</a>
           <?php endif; ?>
@@ -147,7 +222,9 @@ $isStationOwner = station_is_owner($user);
         <nav class="settings-nav" aria-label="Project settings sections">
           <a class="settings-nav-item active" href="#general"><span class="settings-nav-icon">⚙</span><span>General</span></a>
           <a class="settings-nav-item" href="#github"><span class="settings-nav-icon">🐙</span><span>GitHub</span></a>
-          <a class="settings-nav-item" href="#runtime"><span class="settings-nav-icon">🐳</span><span>Runtime</span></a>
+          <?php if (station_docker_enabled()): ?>
+          <a class="settings-nav-item" href="#docker"><span class="settings-nav-icon">🐳</span><span>Docker</span></a>
+          <?php endif; ?>
           <a class="settings-nav-item" href="#administration"><span class="settings-nav-icon">🛡</span><span>Administration</span></a>
         </nav>
 
@@ -204,7 +281,7 @@ $isStationOwner = station_is_owner($user);
             </div>
 
             <label class="feature-toggle">
-              <input type="checkbox" name="release_workflow" <?= !empty($settings['github']['releaseWorkflow']) ? 'checked' : '' ?>>
+              <input type="checkbox" name="release_workflow" value="1" <?= !empty($settings['github']['releaseWorkflow']) ? 'checked' : '' ?>>
               <div class="feature-toggle-content">
                 <span class="feature-toggle-title">Generate release workflow</span>
                 <span class="feature-toggle-desc">Adds a GitHub Actions workflow file tailored to this repo name when you click generate below.</span>
@@ -212,8 +289,55 @@ $isStationOwner = station_is_owner($user);
             </label>
 
             <div class="settings-form-actions" style="margin-top: 20px;">
-              <button type="submit" class="btn-primary" name="action" value="save_settings">Save GitHub metadata</button>
+              <button type="submit" class="btn-primary" name="action" value="save_github">Save GitHub metadata</button>
             </div>
+
+
+            <?php if ($canGithubSync && is_array($githubSyncRow)): ?>
+            <div class="settings-panel-divider"></div>
+            <h3 class="settings-subheading">Repository sync</h3>
+            <?php
+              $linked = trim((string) ($githubSyncRow['repoOwner'] ?? '')) !== '' && trim((string) ($githubSyncRow['repoName'] ?? '')) !== '';
+              $behind = (int) ($githubSyncRow['behind'] ?? 0);
+              $ahead = (int) ($githubSyncRow['ahead'] ?? 0);
+            ?>
+            <div class="gh-sync-status-card">
+              <p class="setting-description">
+                <?php if ($linked): ?>
+                  Linked to <strong><?= station_h($githubSyncRow['repoOwner'] . '/' . $githubSyncRow['repoName']) ?></strong>
+                  on branch <code><?= station_h((string) ($githubSyncRow['branch'] ?? 'main')) ?></code>.
+                  <?php if (!empty($githubSyncRow['has_git'])): ?>
+                    <?php if ($behind > 0): ?><span class="gh-sync-pill gh-pill-warn"><?= $behind ?> behind GitHub</span><?php endif; ?>
+                    <?php if ($ahead > 0): ?><span class="gh-sync-pill gh-pill-ok"><?= $ahead ?> ahead (push)</span><?php endif; ?>
+                    <?php if (!empty($githubSyncRow['dirty'])): ?><span class="gh-sync-pill gh-pill-warn">Uncommitted changes</span><?php endif; ?>
+                    <?php if ($behind === 0 && $ahead === 0 && empty($githubSyncRow['dirty'])): ?><span class="gh-sync-pill gh-pill-ok">In sync</span><?php endif; ?>
+                  <?php else: ?>
+                    <span class="gh-sync-pill gh-pill-warn">No local git — init &amp; link below</span>
+                  <?php endif; ?>
+                <?php else: ?>
+                  Set owner and repository above, then save.
+                <?php endif; ?>
+              </p>
+              <?php if ((string) ($githubSyncRow['error'] ?? '') !== ''): ?>
+                <p class="gh-sync-err"><?= station_h((string) $githubSyncRow['error']) ?></p>
+              <?php endif; ?>
+              <?php if ($linked): ?>
+              <div class="gh-sync-toolbar" style="margin-top: 12px;">
+                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull"><button type="submit" class="secondary-btn">Pull</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="push"><button type="submit" class="secondary-btn">Push</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull_redeploy"><button type="submit" class="secondary-btn">Pull &amp; redeploy</button></form>
+                <?php if (empty($githubSyncRow['has_git'])): ?>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="init_link"><button type="submit" class="btn-primary">Init &amp; link</button></form>
+                <?php endif; ?>
+                <form method="post" class="gh-sync-form" onsubmit="return confirm('Create private repo and push?');"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="create_repo_and_link"><button type="submit" class="secondary-btn">Create private repo &amp; push</button></form>
+              </div>
+              <?php endif; ?>
+            </div>
+            <?php elseif ($stationGithubOn && !$githubUserEnabled): ?>
+              <p class="setting-description" style="margin-top:12px;">Enable GitHub in <a href="user-settings.php">User Settings</a>.</p>
+            <?php elseif ($stationGithubOn && $githubToken === ''): ?>
+              <p class="setting-description" style="margin-top:12px;">Connect GitHub in <a href="user-settings.php">User Settings</a>.</p>
+            <?php endif; ?>
 
             <div class="settings-panel-divider"></div>
 
@@ -223,46 +347,28 @@ $isStationOwner = station_is_owner($user);
               <button type="submit" class="secondary-btn" name="action" value="generate_github" onclick="return confirm('Generate or overwrite bootstrap files in this project?');">Generate GitHub files</button>
             </div>
           </section>
+        </div>
+      </form>
 
-          <section id="runtime" class="settings-panel">
+          <?php if (station_docker_enabled()): ?>
+          <section id="docker" class="settings-panel project-docker-embed">
             <div class="settings-panel-head">
-              <h2 class="settings-panel-heading">Containers &amp; templates</h2>
-              <p class="settings-panel-subtitle">Docker is configured per project on a dedicated page. Starting templates and legacy scaffolds (for example scraper-builder) are managed under Templates.</p>
+              <h2 class="settings-panel-heading">Docker</h2>
+              <p class="settings-panel-subtitle">Docker settings and status for this app.</p>
             </div>
-
-            <?php if (station_docker_enabled()): ?>
-              <div class="project-runtime-card">
-                <div>
-                  <strong>Docker</strong>
-                  <p class="setting-description" style="margin: 6px 0 0;">
-                    <?php if ($dockerContainerized): ?>
-                      This project is set to run in a container. Open the Docker page to change services, ports, or lifecycle actions.
-                    <?php else: ?>
-                      Container deployment is available but not enabled for this project yet.
-                    <?php endif; ?>
-                  </p>
-                </div>
-                <a class="btn-primary" href="docker-config.php?project=<?= urlencode($project) ?>"><?= $dockerContainerized ? 'Open Docker' : 'Enable containers' ?></a>
-              </div>
-            <?php else: ?>
-              <p class="setting-description">Docker deployment is disabled station-wide. An owner can enable it under Admin Settings → Docker.</p>
-              <?php if (station_is_owner($user)): ?>
-                <a class="quick-link" href="admin-settings.php?tab=docker">Admin → Docker</a>
-              <?php endif; ?>
-            <?php endif; ?>
-
-            <?php if (station_is_admin($user)): ?>
-              <div class="project-runtime-card" style="margin-top: 16px;">
-                <div>
-                  <strong>Templates</strong>
-                  <p class="setting-description" style="margin: 6px 0 0;">Create projects from stacks, edit built-in scaffolds, and duplicate custom templates — including the legacy scraper-builder layout and prompts.</p>
-                </div>
-                <a class="secondary-btn" href="template-manager.php">Open Templates</a>
-              </div>
-            <?php endif; ?>
+            <?php
+              $_GET['embedded'] = '1';
+              $_REQUEST['embedded'] = '1';
+              $_GET['project'] = $project;
+              $projectSlug = $project;
+              require __DIR__ . '/docker-config.php';
+            ?>
           </section>
+          <?php endif; ?>
 
-          <section id="administration" class="settings-panel">
+      <form method="post" class="settings-shell project-settings-admin-shell" id="project-settings-admin-form">
+        
+          <section id="administration" class="settings-panel" style="margin-top:20px">
             <div class="settings-panel-head">
               <h2 class="settings-panel-heading">Administration</h2>
               <p class="settings-panel-subtitle">Rename, access, backups, and lifecycle actions for <strong><?= station_h($project) ?></strong> (owner: <?= station_h($pOwner) ?>).</p>
@@ -334,16 +440,14 @@ $isStationOwner = station_is_owner($user);
             </form>
             <?php endif; ?>
           </section>
-        </div>
       </form>
     </main>
   </div>
   <?= station_dashboard_nav_script_html() ?>
   <script>
     (function () {
-      var shell = document.querySelector('.project-settings-shell');
-      if (!shell) return;
-      var navLinks = shell.querySelectorAll('.settings-nav-item');
+      var navLinks = document.querySelectorAll('.project-settings-shell .settings-nav-item, .project-docker-embed .settings-nav-item');
+      if (!navLinks.length) return;
       navLinks.forEach(function (link) {
         link.addEventListener('click', function (event) {
           event.preventDefault();

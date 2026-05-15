@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
 require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/project-launch.php';
 
 station_require_login();
 
@@ -130,7 +131,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260515b') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260516b') ?>
   <style>
     .station-body {
       margin: 0;
@@ -149,194 +150,6 @@ $statsCards = !$canBuild
     .station-body select,
     .station-body textarea {
       font: inherit;
-    }
-
-    .dashboard-shell {
-      display: grid;
-      grid-template-columns: 104px minmax(0, 1fr);
-      min-height: 100vh;
-    }
-
-    .dashboard-nav {
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      padding: 14px 12px 18px;
-      background: linear-gradient(180deg, var(--nav-bg) 0%, var(--nav-dark) 100%);
-      box-shadow: inset -1px 0 0 rgba(255,255,255,.08);
-    }
-
-    .dashboard-nav-inner {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-
-    .dashboard-brand {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .dashboard-mobile-bar {
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .dashboard-mobile-toggle {
-      display: none;
-      width: 46px;
-      height: 46px;
-      align-items: center;
-      justify-content: center;
-      border: 0;
-      border-radius: 14px;
-      background: rgba(255,255,255,.14);
-      color: #fff;
-      cursor: pointer;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
-    }
-
-    .dashboard-mobile-toggle-lines {
-      display: grid;
-      gap: 4px;
-    }
-
-    .dashboard-mobile-toggle-lines span {
-      display: block;
-      width: 18px;
-      height: 2px;
-      border-radius: 999px;
-      background: currentColor;
-    }
-
-    .dashboard-mobile-user {
-      display: none;
-    }
-
-    .dashboard-brand-mark {
-      width: 48px;
-      height: 48px;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      border-radius: 16px;
-      background: rgba(255,255,255,.16);
-      color: #fff;
-      font-family: "Google Sans", sans-serif;
-      font-size: 26px;
-      font-weight: 700;
-    }
-
-    .dashboard-brand-mark img {
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .dashboard-brand-copy {
-      display: grid;
-      justify-items: center;
-      gap: 2px;
-    }
-
-    .dashboard-brand-kicker {
-      font-size: 10px;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,.58);
-    }
-
-    .dashboard-brand-name {
-      font-size: 12px;
-      font-weight: 700;
-      color: #fff;
-      text-align: center;
-    }
-
-    .dashboard-menu {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .dashboard-menu-link {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      padding: 12px 6px;
-      border-radius: 16px;
-      color: rgba(255,255,255,.82);
-      font-size: 11px;
-      font-weight: 600;
-      transition: background .15s ease, transform .15s ease;
-    }
-
-    .dashboard-menu-link:hover,
-    .dashboard-menu-link.active {
-      background: rgba(255,255,255,.15);
-      color: #fff;
-      transform: translateY(-1px);
-    }
-
-    .menu-icon {
-      width: 38px;
-      height: 38px;
-      display: grid;
-      place-items: center;
-      border-radius: 12px;
-      background: rgba(255,255,255,.16);
-      color: #fff;
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
-    }
-
-    .dashboard-account {
-      margin-top: auto;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 8px;
-      border-radius: 18px;
-      background: rgba(255,255,255,.08);
-    }
-
-    .dashboard-avatar {
-      width: 42px;
-      height: 42px;
-      display: grid;
-      place-items: center;
-      border-radius: 999px;
-      background: rgba(255,255,255,.18);
-      color: #fff;
-      font-family: "Google Sans", sans-serif;
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .dashboard-account-copy {
-      display: grid;
-      gap: 2px;
-      justify-items: center;
-    }
-
-    .dashboard-account-copy strong {
-      font-size: 11px;
-      color: #fff;
-    }
-
-    .dashboard-account-copy span {
-      font-size: 10px;
-      color: rgba(255,255,255,.68);
     }
 
     .dashboard-main {
@@ -983,50 +796,6 @@ $statsCards = !$canBuild
     }
 
     @media (max-width: 760px) {
-      .dashboard-shell {
-        grid-template-columns: 1fr;
-      }
-
-      .dashboard-nav {
-        position: sticky;
-        top: 0;
-        z-index: 30;
-        padding: 12px 14px;
-        height: auto;
-        box-shadow: 0 10px 24px rgba(19,35,63,.14);
-      }
-
-      .dashboard-nav-inner {
-        gap: 12px;
-        height: auto;
-      }
-
-      .dashboard-mobile-bar {
-        display: flex;
-      }
-
-      .dashboard-mobile-toggle {
-        display: inline-flex;
-      }
-
-      .dashboard-nav-inner > .dashboard-brand,
-      .dashboard-nav-inner > .dashboard-account {
-        display: none;
-      }
-
-      .dashboard-nav-inner > .dashboard-menu {
-        display: none;
-        grid-template-columns: 1fr;
-        gap: 6px;
-        padding: 12px;
-        border-radius: 18px;
-        background: rgba(255,255,255,.08);
-      }
-
-      .dashboard-nav.is-open .dashboard-nav-inner > .dashboard-menu {
-        display: grid;
-      }
-
       .dashboard-main {
         padding: 18px 14px 36px;
       }
@@ -1297,10 +1066,12 @@ $statsCards = !$canBuild
                   : '';
               $dockerConfig = isset($ps['docker']) && is_array($ps['docker']) ? $ps['docker'] : [];
               $dockerContainerized = !empty($dockerConfig['containerized']);
+              $launchProfile = station_project_launch_profile($slug);
+              $launchLedTone = !empty($launchProfile['launchable']) ? 'ok' : 'warn';
             ?>
-            <article class="project-card project-card-v2" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>" data-project-slug="<?= station_h($slug) ?>"<?= ($canBuild && station_docker_enabled() && $dockerContainerized) ? ' data-docker-containerized="1"' : '' ?>>
+            <article class="project-card project-card-v2" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>" data-project-slug="<?= station_h($slug) ?>" data-launch-tone="<?= station_h($launchLedTone) ?>"<?= ($canBuild && station_docker_enabled() && $dockerContainerized) ? ' data-docker-containerized="1"' : '' ?>>
               <div class="project-card-top">
-                <span class="project-status-led" data-status-led aria-hidden="true"></span>
+                <span class="project-status-led" data-status-led data-launch-tone="<?= station_h($launchLedTone) ?>" aria-hidden="true" title="<?= station_h($launchProfile['summary']) ?>"></span>
                 <div class="project-card-heading">
                   <div class="proj-name-row">
                     <strong class="proj-slug"><?= station_h($slug) ?></strong>
@@ -1320,8 +1091,8 @@ $statsCards = !$canBuild
               </div>
 
               <?php if ($canBuild && station_docker_enabled()): ?>
-              <div class="project-runtime-bar" data-proj-power data-project-slug="<?= station_h($slug) ?>">
-                <span class="runtime-state-text" data-runtime-label>Checking…</span>
+              <div class="project-runtime-bar" data-proj-power data-project-slug="<?= station_h($slug) ?>"<?= $dockerContainerized ? ' data-docker-poll="1"' : '' ?>>
+                <span class="runtime-state-text" data-runtime-label><?= $dockerContainerized ? 'Checking…' : 'On host' ?></span>
                 <?php if ($dockerContainerized): ?>
                 <div class="runtime-btn-group">
                   <form class="runtime-form" method="post" action="docker-actions.php" data-power-form data-power-when="stopped">
@@ -1341,7 +1112,7 @@ $statsCards = !$canBuild
                   </form>
                 </div>
                 <?php else: ?>
-                  <a class="btn-runtime btn-runtime-setup" href="docker-config.php?project=<?= urlencode($slug) ?>">Enable containers</a>
+                  <a class="btn-runtime btn-runtime-setup" href="project-settings.php?project=<?= urlencode($slug) ?>#docker">Enable containers</a>
                 <?php endif; ?>
               </div>
               <?php endif; ?>
@@ -1352,7 +1123,6 @@ $statsCards = !$canBuild
                 <button class="btn-action btn-action-ghost share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
               </div>
             </article>
-                      </article>
           <?php endforeach; ?>
         </div>
 
@@ -2119,7 +1889,7 @@ $statsCards = !$canBuild
         const led = card ? card.querySelector('[data-status-led]') : null;
         if (label) { label.textContent = meta.label; }
         if (card) { card.dataset.runtimeState = state; }
-        if (led) { led.dataset.tone = meta.tone; }
+        if (led) { led.dataset.tone = meta.tone; led.dataset.runtimeTone = meta.tone; }
         bar.querySelectorAll('[data-power-form][data-power-when]').forEach((form) => {
           const when = form.dataset.powerWhen;
           let show = false;
@@ -2162,6 +1932,13 @@ $statsCards = !$canBuild
         });
       });
     }
+
+    document.querySelectorAll('[data-status-led][data-launch-tone]').forEach((led) => {
+      const card = led.closest('.project-card');
+      if (card && !card.hasAttribute('data-docker-containerized')) {
+        led.dataset.tone = led.dataset.launchTone || 'warn';
+      }
+    });
 
     /* ── Share buttons ── */
     document.querySelectorAll('.share-btn').forEach((btn) => {

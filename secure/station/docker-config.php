@@ -43,7 +43,14 @@ if (!station_is_owner($user) && !station_is_admin($user) && !$isProjectOwner) {
 
 if (!station_docker_enabled()) {
     station_flash_set('error', 'Docker deployment is disabled. Enable it in Admin Settings first.');
-    header('Location: project-settings.php?project=' . urlencode($projectSlug));
+    header('Location: project-settings.php?project=' . urlencode($projectSlug) . '#docker');
+    exit;
+}
+
+$stationDockerReturnUrl = 'project-settings.php?project=' . urlencode($projectSlug) . '#docker';
+$stationDockerEmbedded = ((string) ($_GET['embedded'] ?? '')) === '1';
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !$stationDockerEmbedded) {
+    header('Location: ' . $stationDockerReturnUrl);
     exit;
 }
 
@@ -146,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'Docker settings saved. Your project’s own compose file on disk was not modified.',
                 $includeResult
             );
-            header('Location: docker-config.php?project=' . urlencode($projectSlug));
+            header('Location: ' . $stationDockerReturnUrl);
             exit;
         }
 
@@ -173,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'Docker configuration saved. Generated docker-compose.yml.',
                     $includeResult
                 );
-                header('Location: docker-config.php?project=' . urlencode($projectSlug));
+                header('Location: ' . $stationDockerReturnUrl);
                 exit;
             }
             $error = 'Could not write docker-compose.yml.';
@@ -187,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
             }
             station_flash_nginx_include_outcome('Docker configuration saved.', $includeResult);
-            header('Location: docker-config.php?project=' . urlencode($projectSlug));
+            header('Location: ' . $stationDockerReturnUrl);
             exit;
         }
     } else {
@@ -231,6 +238,7 @@ $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
 ?>
+<?php if (!$stationDockerEmbedded): ?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -261,6 +269,14 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
         </div>
       <?php endif; ?>
 
+<?php else: ?>
+      <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
+      <?php if (!empty($projectConfig['nativeCompose'])): ?>
+        <div class="alert ok" style="border-left:4px solid #0ea5e9;">
+          <strong>Native compose</strong> — stack from repo compose file on disk.
+        </div>
+      <?php endif; ?>
+<?php endif; ?>
       <section class="docker-status-grid">
         <div class="docker-status-card status-<?= station_h($stateMeta['tone']) ?>">
           <span class="docker-status-label">Container state</span>
@@ -329,31 +345,32 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="start">
-            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="btn-primary">Start</button>
           </form>
+<?php if (!$stationDockerEmbedded): ?>
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="rebuild">
-            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="secondary-btn">Rebuild image</button>
           </form>
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="restart">
-            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="secondary-btn">Restart</button>
           </form>
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="stop">
-            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="secondary-btn">Stop</button>
           </form>
           <form method="post" action="docker-actions.php" data-docker-action onsubmit="return confirm('Destroy containers and start fresh? Data in named volumes is preserved.')">
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="down">
-            <input type="hidden" name="return" value="docker-config.php?project=<?= urlencode($projectSlug) ?>">
+            <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="danger-btn">Tear down</button>
           </form>
           <a class="quick-link" href="launch.php?project=<?= urlencode($projectSlug) ?>" target="_blank" rel="noreferrer">Open app ↗</a>
@@ -583,6 +600,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
         </div>
       </form>
     </main>
+<?php endif; ?>
   </div>
 
   <script>
@@ -633,8 +651,10 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
     })();
   </script>
 
+<?php if (!$stationDockerEmbedded): ?>
   <?= station_dashboard_nav_script_html() ?>
   <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>
 </html>
+<?php endif; ?>

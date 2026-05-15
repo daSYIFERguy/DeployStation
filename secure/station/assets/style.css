@@ -250,6 +250,26 @@ a:hover { text-decoration: underline; }
   gap: 12px;
 }
 
+.dashboard-mobile-bar .dashboard-brand {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-mobile-bar .dashboard-brand-copy {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  text-align: left;
+}
+
+.dashboard-mobile-bar .dashboard-brand-name {
+  text-align: left;
+}
+
 .dashboard-mobile-toggle {
   display: none;
   width: 46px;
@@ -1633,6 +1653,10 @@ tr:last-child td { border-bottom: none; }
   .dashboard-menu-link span:last-child,
   .dashboard-brand-copy {
     display: inline;
+  }
+
+  .dashboard-mobile-bar .dashboard-brand-copy {
+    display: grid;
   }
 
   .menu-icon {
@@ -3336,11 +3360,36 @@ tr:last-child td { border-bottom: none; }
   border-radius: 10px;
   padding: 14px 16px;
 }
+.host-health-card.mc-tech-snapshot > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.host-health-card.mc-tech-snapshot > summary::-webkit-details-marker {
+  display: none;
+}
+.host-health-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink, #13233f);
+}
+.mc-tech-diagram > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand, #2f7de2);
+  margin: 8px 0;
+}
 .host-health-card h3 {
   margin: 0 0 8px;
   font-size: 15px;
 }
-.host-health-card pre {
+.host-health-card pre,
+.host-health-card .host-health-output {
   margin: 0;
   font-size: 12px;
   line-height: 1.35;
@@ -4082,4 +4131,127 @@ tr:last-child td { border-bottom: none; }
     color: var(--soft);
     margin-bottom: 4px;
   }
+}
+
+/* Launch readiness LED (dashboard) */
+.project-status-led[data-launch-tone="ok"],
+.project-status-led[data-tone="ok"] {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+}
+.project-status-led[data-launch-tone="warn"]:not([data-tone="ok"]):not([data-tone="bad"]),
+.project-status-led[data-tone="warn"] {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22);
+}
+.project-status-led[data-tone="bad"] {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+.project-status-led[data-tone="idle"] {
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.25);
+}
+
+/* App explorer (launch splash) */
+.app-explorer-body {
+  background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 45%, #0f172a 100%);
+  min-height: 100vh;
+}
+.app-explorer-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 20px 60px;
+}
+.app-explorer-card {
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.app-explorer-hero {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.app-explorer-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+.app-explorer-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.app-explorer-hero h1 {
+  margin: 6px 0 0;
+  font-size: 26px;
+}
+.app-explorer-slug {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.app-explorer-launch-pill {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.app-explorer-launch-pill-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+.app-explorer-launch-pill-warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+.app-explorer-docker-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.app-explorer-inline-form { margin: 0; }
+.app-explorer-description {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.app-explorer-steps {
+  margin: 14px 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.5;
+}
+.app-explorer-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.app-explorer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+.project-docker-embed .docker-status-grid {
+  margin-top: 0;
+}
+.project-docker-embed .docker-config-shell {
+  margin-top: 12px;
+}
+.gh-sync-status-card {
+  margin-top: 8px;
 }

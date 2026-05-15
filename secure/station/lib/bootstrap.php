@@ -502,6 +502,8 @@ function station_admin_settings(): array
         'nginxDockerUpstreamHostMode' => 'preserve',
         'githubOAuthClientId' => '',
         'githubOAuthClientSecret' => '',
+        'openaiApiKey' => '',
+        'openaiModel' => 'gpt-4o-mini',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
@@ -594,6 +596,16 @@ function station_admin_merge_mega_form_post_into_settings(
         if ($sec !== '') {
             $settings['githubOAuthClientSecret'] = $sec;
         }
+    }
+
+    if (isset($post['openaiApiKey'])) {
+        $okey = trim((string) $post['openaiApiKey']);
+        if ($okey !== '') {
+            $settings['openaiApiKey'] = $okey;
+        }
+    }
+    if (isset($post['openaiModel'])) {
+        $settings['openaiModel'] = trim((string) $post['openaiModel']) ?: 'gpt-4o-mini';
     }
 
     $settings['onboardingRequired'] = isset($post['onboardingRequired']);

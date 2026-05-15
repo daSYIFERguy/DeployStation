@@ -39,6 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'authMode' => $authMode,
             'oauthConnectedAt' => (string) ($prevGh['oauthConnectedAt'] ?? ''),
         ];
+        $prevOai = isset($profile['integrations']['openai']) && is_array($profile['integrations']['openai'])
+            ? $profile['integrations']['openai']
+            : [];
+        $oaiIn = trim((string) ($_POST['openai_api_key'] ?? ''));
+        $profile['integrations']['openai'] = [
+            'apiKey' => $oaiIn !== '' ? $oaiIn : trim((string) ($prevOai['apiKey'] ?? '')),
+        ];
         unset(
             $profile['integrations']['vscode'],
             $profile['integrations']['chatgpt'],
@@ -58,6 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $gh = isset($profile['integrations']['github']) && is_array($profile['integrations']['github'])
     ? $profile['integrations']['github']
     : [];
+$oai = isset($profile['integrations']['openai']) && is_array($profile['integrations']['openai'])
+    ? $profile['integrations']['openai']
+    : [];
+$adminOpenaiConfigured = trim((string) ($adminForGithub['openaiApiKey'] ?? '')) !== '';
 ?>
 <!doctype html>
 <html lang="en">
@@ -142,6 +153,18 @@ $gh = isset($profile['integrations']['github']) && is_array($profile['integratio
                             </label>
                             <p class="mission-help-link"><a href="integration-help.php#github">How tokens and scopes work</a></p>
                             <p class="mission-help-link"><a href="github-sync.php">GitHub sync dashboard</a> — pull, push, private repos, and redeploy after pull.</p>
+                        </div>
+
+                        <div class="mission-user-card mission-user-card-openai">
+                            <h2 class="mission-user-card-title">OpenAI</h2>
+                            <p class="mission-user-card-desc">Optional personal API key for App explorer summaries on Launch. Overrides the station-wide key when set.</p>
+                            <?php if ($adminOpenaiConfigured): ?>
+                              <p class="mission-help-link" style="margin-bottom:10px;">Station default key is configured in Admin → GitHub / Integrations.</p>
+                            <?php endif; ?>
+                            <label class="mission-field">
+                                <span class="mission-field-label">Your API key</span>
+                                <input type="password" name="openai_api_key" value="" placeholder="<?= trim((string) ($oai['apiKey'] ?? '')) !== '' ? 'Saved — leave blank to keep' : ($adminOpenaiConfigured ? 'Optional — uses station key' : 'sk-…') ?>" autocomplete="new-password">
+                            </label>
                         </div>
                         <?php endif; ?>
                     </div>

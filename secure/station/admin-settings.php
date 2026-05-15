@@ -620,7 +620,7 @@ sudo systemctl restart php*-fpm
                       <?php foreach ($fleetRows as $row): ?>
                         <tr style="border-bottom:1px solid var(--border,#f1f5f9);">
                           <td style="padding:8px 6px;">
-                            <a href="docker-config.php?project=<?= urlencode($row['slug']) ?>"><?= station_h($row['slug']) ?></a>
+                            <a href="project-settings.php?project=<?= urlencode($row['slug']) ?>"><?= station_h($row['slug']) ?></a>
                           </td>
                           <td style="padding:8px 6px;"><code><?= station_h($row['state']) ?></code></td>
                           <td style="padding:8px 6px;"><code>127.0.0.1:<?= (int) $row['hostPort'] ?> → :<?= (int) $row['appPort'] ?></code></td>
@@ -776,6 +776,13 @@ sudo systemctl restart php*-fpm
             <input type="password" name="githubOAuthClientSecret" value="" placeholder="<?= trim((string) ($settings['githubOAuthClientSecret'] ?? '')) !== '' ? 'Leave blank to keep existing secret' : 'Paste client secret' ?>" autocomplete="new-password" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
 
             <p class="setting-description" style="margin-top: 16px;">Per-user tokens and default repository live under <a href="user-settings.php">User Settings</a> for each builder account.</p>
+
+            <h3 style="font-size: 15px; margin: 32px 0 10px;">OpenAI (App explorer)</h3>
+            <p class="setting-description">Optional station-wide API key for the graphical <strong>App explorer</strong> on Launch (project descriptions and run steps). Users can override with their own key in User Settings.</p>
+            <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OpenAI API key (optional)</label>
+            <input type="password" name="openaiApiKey" value="" placeholder="<?= trim((string) ($settings['openaiApiKey'] ?? '')) !== '' ? 'Leave blank to keep existing key' : 'sk-…' ?>" autocomplete="new-password" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
+            <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">Model</label>
+            <input type="text" name="openaiModel" value="<?= station_h((string) ($settings['openaiModel'] ?? 'gpt-4o-mini')) ?>" placeholder="gpt-4o-mini" style="width:100%;max-width:320px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
 
             <button type="submit" name="admin_save_section" value="github" style="margin-top: 24px;">Save GitHub settings</button>
           </div>

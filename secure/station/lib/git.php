@@ -32,7 +32,14 @@ function station_run_git_command(array $command, string $token = ''): array
 
     if ($token !== '') {
         $askPassPath = station_data_dir() . '/github-askpass-' . bin2hex(random_bytes(6)) . '.sh';
-        $askPassScript = "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s\\n' 'x-access-token' ;;\n*Password*) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n*) printf '\\n' ;;\nesac\n";
+        $askPassScript = <<<'BASH'
+#!/bin/sh
+case "$1" in
+*Username*) printf '%s\n' 'x-access-token' ;;
+*Password*) printf '%s\n' "$GITHUB_TOKEN" ;;
+*) printf '\n' ;;
+esac
+BASH;
         if (@file_put_contents($askPassPath, $askPassScript, LOCK_EX) === false || !@chmod($askPassPath, 0700)) {
             return ['ok' => false, 'code' => -1, 'output' => 'Could not prepare GitHub credentials.'];
         }
