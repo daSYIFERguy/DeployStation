@@ -152,6 +152,98 @@ function station_openai_chat(array $messages, ?string $username = null, int $max
 }
 
 /**
+ * Chat completion with optional OpenAI tools (function calling).
+ *
+ * @param list<array<string, mixed>> $messages
+ * @param list<array<string, mixed>> $tools
+ * @return array{
+ *   ok: bool,
+ *   text: string,
+ *   message: string,
+ *   assistantMessage?: array<string, mixed>,
+ *   tool_calls?: list<array<string, mixed>>
+ * }
+ */
+function station_openai_chat_with_tools(
+    array $messages,
+    array $tools = [],
+    ?string $username = null,
+    int $maxTokens = 1400
+): array {
+    $key = station_openai_resolve_api_key($username);
+    if ($key === '') {
+        return ['ok' => false, 'text' => '', 'message' => 'No OpenAI API key configured.'];
+    }
+
+    $admin = station_admin_settings();
+    $model = trim((string) ($admin['openaiModel'] ?? ''));
+    if ($model === '') {
+        $model = 'gpt-4o-mini';
+    }
+
+    $payload = [
+        'model' => $model,
+        'max_tokens' => max(64, min(4096, $maxTokens)),
+        'messages' => $messages,
+    ];
+    if ($tools !== []) {
+        $payload['tools'] = $tools;
+        $payload['tool_choice'] = 'auto';
+    }
+
+    $encoded = json_encode($payload, JSON_UNESCAPED_SLASHES);
+    if ($encoded === false) {
+        return ['ok' => false, 'text' => '', 'message' => 'Could not encode OpenAI request.'];
+    }
+
+    $ch = curl_init('https://api.openai.com/v1/chat/completions');
+    if ($ch === false) {
+        return ['ok' => false, 'text' => '', 'message' => 'curl_init failed.'];
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $key,
+        ],
+        CURLOPT_POSTFIELDS => $encoded,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 90,
+    ]);
+    $body = (string) curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === '' && $err !== '') {
+        return ['ok' => false, 'text' => '', 'message' => 'OpenAI request failed: ' . $err];
+    }
+
+    $data = json_decode($body, true);
+    if ($code < 200 || $code >= 300 || !is_array($data)) {
+        $msg = is_array($data) && isset($data['error']['message'])
+            ? (string) $data['error']['message']
+            : mb_substr($body, 0, 300);
+
+        return ['ok' => false, 'text' => '', 'message' => 'OpenAI HTTP ' . $code . ': ' . $msg];
+    }
+
+    $assistant = is_array($data['choices'][0]['message'] ?? null) ? $data['choices'][0]['message'] : [];
+    $text = trim((string) ($assistant['content'] ?? ''));
+    $toolCalls = isset($assistant['tool_calls']) && is_array($assistant['tool_calls'])
+        ? $assistant['tool_calls']
+        : [];
+
+    return [
+        'ok' => true,
+        'text' => $text,
+        'message' => '',
+        'assistantMessage' => $assistant,
+        'tool_calls' => $toolCalls,
+    ];
+}
+
+/**
  * Build a short app explorer blurb for the launch splash (uses OpenAI when configured).
  *
  * @return array{ok: bool, description: string, steps: list<string>, source: string, message: string}

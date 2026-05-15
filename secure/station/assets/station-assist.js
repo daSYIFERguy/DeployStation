@@ -1,6 +1,9 @@
 (function (global) {
   'use strict';
 
+  var STORAGE_OPEN = 'stationAssistOpen';
+  var STORAGE_DOCKED = 'stationAssistDocked';
+
   function apiUrl(path) {
     var base = (global.STATION_WEB_BASE || '').replace(/\/$/, '');
     var rel = String(path || '').replace(/^\//, '');
@@ -34,6 +37,10 @@
       if (m) { return m[1]; }
     } catch (_) {}
     return '';
+  }
+
+  function isDesktopDock() {
+    return window.matchMedia('(min-width: 761px)').matches;
   }
 
   global.stationFetchJson = function (url, options) {
@@ -75,19 +82,37 @@
     var clipFab = document.getElementById('stationClipboardFab');
     var clipPanel = document.getElementById('stationClipboardFabPanel');
     var clipToggle = document.getElementById('stationClipboardFabToggle');
+    var historyLoaded = false;
+
+    function readStorage(key) {
+      try { return sessionStorage.getItem(key); } catch (_) { return null; }
+    }
+
+    function writeStorage(key, val) {
+      try { sessionStorage.setItem(key, val); } catch (_) {}
+    }
 
     function syncBodyOverlay() {
       var assistOn = panel.classList.contains('assist-fab-panel--open');
       var clipOn = clipPanel && clipPanel.classList.contains('clip-fab-panel--open');
-      document.body.classList.toggle('station-overlay-open', assistOn || clipOn);
+      document.body.classList.toggle('station-overlay-open', (assistOn && !isDesktopDock()) || clipOn);
     }
 
-    function setOpen(open) {
+    function syncDockedLayout() {
+      var open = panel.classList.contains('assist-fab-panel--open');
+      var docked = open && isDesktopDock() && readStorage(STORAGE_DOCKED) !== '0';
+      document.body.classList.toggle('station-assist-docked', docked);
+    }
+
+    function setOpen(open, options) {
+      options = options || {};
       var o = !!open;
+
       if (!o && panel.contains(document.activeElement)) {
         try { document.activeElement.blur(); } catch (_) {}
         try { toggle.focus({ preventScroll: true }); } catch (_) { try { toggle.focus(); } catch (__) {} }
       }
+
       dock.classList.toggle('assist-open', o);
       panel.classList.toggle('assist-fab-panel--open', o);
       panel.setAttribute('aria-hidden', o ? 'false' : 'true');
@@ -96,6 +121,13 @@
       }
       toggle.setAttribute('aria-expanded', o ? 'true' : 'false');
       panel.style.display = o ? 'flex' : 'none';
+
+      writeStorage(STORAGE_OPEN, o ? '1' : '0');
+      if (o && isDesktopDock() && readStorage(STORAGE_DOCKED) === null) {
+        writeStorage(STORAGE_DOCKED, '1');
+      }
+      syncDockedLayout();
+
       if (o) {
         if (clipFab && clipPanel) {
           clipFab.classList.remove('is-open');
@@ -105,7 +137,12 @@
           if (clipToggle) { clipToggle.setAttribute('aria-expanded', 'false'); }
         }
         refreshContext();
-        window.setTimeout(function () { input.focus(); }, 60);
+        if (!historyLoaded) {
+          loadChatHistory();
+        }
+        if (!options.skipFocus) {
+          window.setTimeout(function () { input.focus(); }, 60);
+        }
       }
       syncBodyOverlay();
     }
@@ -136,6 +173,54 @@
       }
     }
 
+    function appendMsg(role, text) {
+      if (!log || !text) { return; }
+      var div = document.createElement('div');
+      div.className = 'assist-chat-msg assist-chat-msg-' + role;
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function appendPageContextNote() {
+      var slug = detectProjectFromUrl(window.location.href);
+      var label = document.title || 'this page';
+      if (slug) {
+        label += ' · project ' + slug;
+      }
+      appendMsg('system', 'Now viewing: ' + label);
+    }
+
+    function loadChatHistory() {
+      var qs = 'pageUrl=' + encodeURIComponent(window.location.href) +
+        '&pageTitle=' + encodeURIComponent(document.title || '');
+      var slug = detectProjectFromUrl(window.location.href);
+      if (slug) { qs += '&project=' + encodeURIComponent(slug); }
+      global.stationFetchJson(apiUrl('station-assist-api.php?' + qs))
+        .then(function (data) {
+          historyLoaded = true;
+          if (!data || !data.ok) { return; }
+          if (sendBtn) { sendBtn.disabled = !data.openaiConfigured; }
+          if (Array.isArray(data.chatHistory) && data.chatHistory.length > 0) {
+            var hasUser = log.querySelector('.assist-chat-msg-user, .assist-chat-msg-assistant');
+            if (!hasUser) {
+              log.innerHTML = '';
+              data.chatHistory.forEach(function (turn) {
+                if (!turn || !turn.role || !turn.content) { return; }
+                var role = turn.role === 'assistant' ? 'assistant' : (turn.role === 'user' ? 'user' : 'system');
+                appendMsg(role, turn.content);
+              });
+            }
+          }
+          if (statusEl && !data.openaiConfigured) {
+            statusEl.textContent = 'Add OpenAI under Admin → Integrations or User Settings.';
+          }
+        })
+        .catch(function () {
+          historyLoaded = true;
+        });
+    }
+
     function refreshContext() {
       updateContextLabel();
       syncProjectChip();
@@ -154,13 +239,17 @@
         .catch(function () {});
     }
 
-    function appendMsg(role, text) {
-      if (!log || !text) { return; }
-      var div = document.createElement('div');
-      div.className = 'assist-chat-msg assist-chat-msg-' + role;
-      div.textContent = text;
-      log.appendChild(div);
-      log.scrollTop = log.scrollHeight;
+    function runClientActions(actions) {
+      if (!Array.isArray(actions)) { return; }
+      actions.forEach(function (action) {
+        if (!action || action.type !== 'navigate' || !action.url) { return; }
+        var url = String(action.url);
+        if (global.__stationShellNavLoad) {
+          global.__stationShellNavLoad(url, true);
+          return;
+        }
+        window.location.href = url;
+      });
     }
 
     function sendChat() {
@@ -193,6 +282,7 @@
             return;
           }
           appendMsg('assistant', data.reply || '(empty reply)');
+          runClientActions(data.clientActions);
         })
         .catch(function (err) {
           sendBtn.disabled = false;
@@ -221,18 +311,34 @@
       }
     });
     document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape' && panel.classList.contains('assist-fab-panel--open')) {
+      if (event.key === 'Escape' && panel.classList.contains('assist-fab-panel--open') && !isDesktopDock()) {
         setOpen(false);
       }
     });
     document.addEventListener('click', function (ev) {
       if (!panel.classList.contains('assist-fab-panel--open')) { return; }
+      if (isDesktopDock()) { return; }
       if (dock.contains(ev.target)) { return; }
       setOpen(false);
     });
 
+    window.addEventListener('station:page-change', function () {
+      updateContextLabel();
+      syncProjectChip();
+      refreshContext();
+      if (panel.classList.contains('assist-fab-panel--open')) {
+        appendPageContextNote();
+      }
+    });
+
+    window.matchMedia('(min-width: 761px)').addEventListener('change', syncDockedLayout);
+
     updateContextLabel();
     syncProjectChip();
+
+    if (readStorage(STORAGE_OPEN) === '1') {
+      setOpen(true, { skipFocus: true });
+    }
   }
 
   if (document.readyState === 'loading') {

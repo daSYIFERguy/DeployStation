@@ -932,7 +932,7 @@ function station_nav_icon_svg(string $key): string
     return station_nav_icon($key);
 }
 
-function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260520d'): string
+function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260521b'): string
 {
     $uiConfig = station_ui_config();
     $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
@@ -1158,6 +1158,7 @@ HTML;
 function station_dashboard_page_footer_html(): string
 {
     return station_dashboard_nav_script_html()
+        . '<script src="assets/station-shell-nav.js?v=20260521b"></script>'
         . station_clipboard_fab_html()
         . station_pwa_register_html();
 }
@@ -1167,6 +1168,11 @@ function station_dashboard_nav_script_html(): string
     return <<<'HTML'
 <script>
 (function () {
+  if (window.__stationNavToggleInit) {
+    return;
+  }
+  window.__stationNavToggleInit = true;
+
   var mobileNav = document.querySelector('.dashboard-nav');
   var mobileToggle = document.getElementById('dashboardMobileToggle');
 
@@ -1174,7 +1180,9 @@ function station_dashboard_nav_script_html(): string
     return;
   }
 
-  mobileToggle.addEventListener('click', function () {
+  mobileToggle.addEventListener('click', function (event) {
+    event.preventDefault();
+    event.stopPropagation();
     var isOpen = mobileNav.classList.toggle('is-open');
     mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     mobileToggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
@@ -1287,7 +1295,7 @@ function station_clipboard_fab_html(): string
 </aside>
   </div>
 </aside>
-<script src="assets/station-assist.js?v=20260520d"></script>
+<script src="assets/station-assist.js?v=20260521b"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {

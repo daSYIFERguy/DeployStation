@@ -1658,8 +1658,15 @@ tr:last-child td { border-bottom: none; }
   }
 
   .dashboard-nav-inner {
+    height: auto;
+    max-height: none;
     gap: 12px;
     overflow: visible;
+  }
+
+  .dashboard-nav-inner > .dashboard-menu {
+    flex: none;
+    min-height: auto;
   }
 
   .dashboard-account {
@@ -1703,10 +1710,6 @@ tr:last-child td { border-bottom: none; }
 
   .workspace-mini-stats { grid-template-columns: 1fr; }
 
-  .dashboard-menu-link .menu-label {
-    display: none;
-  }
-
   .dashboard-nav-inner > .dashboard-brand .dashboard-brand-copy {
     display: none;
   }
@@ -1714,20 +1717,6 @@ tr:last-child td { border-bottom: none; }
   .dashboard-account-copy {
     display: grid;
     justify-items: start;
-  }
-
-  .dashboard-menu-link {
-    padding: 10px 6px;
-  }
-
-  .menu-icon {
-    width: 30px;
-    height: 30px;
-  }
-
-  .dashboard-brand-mark {
-    width: 40px;
-    height: 40px;
   }
 
   .modal-dialog {
@@ -1860,12 +1849,16 @@ tr:last-child td { border-bottom: none; }
   .dashboard-nav {
     position: sticky;
     top: 0;
-    z-index: 30;
+    z-index: 40;
+    height: auto;
+    max-height: none;
     overflow: visible;
     box-shadow: 0 10px 24px rgba(19,35,63,.14);
   }
 
   .dashboard-nav-inner {
+    height: auto;
+    max-height: none;
     overflow: visible;
   }
 
@@ -1884,7 +1877,10 @@ tr:last-child td { border-bottom: none; }
 
   .dashboard-nav-inner > .dashboard-menu {
     display: none;
+    flex: none;
     flex-direction: column;
+    align-items: stretch;
+    width: 100%;
     gap: 4px;
     margin-top: 10px;
     padding: 10px 10px 12px;
@@ -1893,6 +1889,7 @@ tr:last-child td { border-bottom: none; }
     background: rgba(255,255,255,.08);
     box-shadow: 0 12px 28px rgba(8, 24, 48, .22);
     max-height: min(72vh, calc(100dvh - 88px));
+    min-height: auto;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -2995,6 +2992,58 @@ body.station-overlay-open {
 
 .page-tools-dock.assist-open .assist-fab-button {
   box-shadow: 0 8px 18px rgba(91, 33, 182, 0.28);
+}
+
+/* Desktop: docked AI Assist column (shell stays mounted; main content swaps) */
+@media (min-width: 761px) {
+  :root {
+    --assist-dock-w: min(380px, 30vw);
+  }
+
+  body.station-assist-docked:has(.dashboard-shell) .dashboard-main {
+    margin-left: var(--assist-dock-w);
+    transition: margin-left 0.15s ease;
+  }
+
+  body.station-assist-docked .page-tools-slot--assist .assist-fab-panel.assist-fab-panel--open {
+    position: fixed;
+    left: var(--rail-w);
+    top: 0;
+    bottom: 0;
+    width: var(--assist-dock-w);
+    max-height: none;
+    height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    border-top: 0;
+    border-bottom: 0;
+    box-shadow: 12px 0 40px rgba(19, 35, 63, 0.1);
+    z-index: 35;
+  }
+
+  body.station-assist-docked .page-tools-dock.assist-open::before {
+    display: none;
+  }
+
+  body.station-assist-docked .page-tools-slot--assist .assist-fab-button {
+    opacity: 0.92;
+  }
+}
+
+body.station-shell-loading main.dashboard-main {
+  opacity: 0.72;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.assist-chat-msg-system {
+  color: var(--soft);
+  font-size: 12px;
+  font-style: italic;
+  background: var(--panel-soft);
+  border: 1px dashed var(--line);
 }
 
 .assist-fab-head {

@@ -135,7 +135,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260520c') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260520e') ?>
   <style>
     .station-body {
       margin: 0;
@@ -1483,17 +1483,6 @@ $statsCards = !$canBuild
   <script>
   (function () {
     'use strict';
-
-    const mobileNav = document.querySelector('.dashboard-nav');
-    const mobileToggle = document.getElementById('dashboardMobileToggle');
-
-    if (mobileNav && mobileToggle) {
-      mobileToggle.addEventListener('click', function () {
-        const isOpen = mobileNav.classList.toggle('is-open');
-        mobileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        mobileToggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
-      });
-    }
 
     document.querySelectorAll('.project-source-input').forEach((input) => {
       input.addEventListener('change', function () {

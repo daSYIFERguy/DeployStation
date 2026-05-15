@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/openai.php';
 require_once __DIR__ . '/docker.php';
+require_once __DIR__ . '/station-assist-actions.php';
 
 /**
  * Resolve project slug from query string or common DeployStation URLs.
@@ -55,6 +56,13 @@ function station_assist_page_context(string $pageUrl, string $pageTitle, string 
     $ui = station_ui_config();
     $slug = $projectSlug !== '' ? station_safe_name($projectSlug) : station_assist_detect_project_slug($pageUrl);
 
+    $templateHints = [];
+    if ($user && station_can_build($user)) {
+        foreach (station_template_catalog() as $key => $label) {
+            $templateHints[] = $key . ' (' . $label . ')';
+        }
+    }
+
     $ctx = [
         'station' => [
             'product' => 'DeployStation (Deployment Station)',
@@ -64,17 +72,20 @@ function station_assist_page_context(string $pageUrl, string $pageTitle, string 
                 'username' => $username,
                 'role' => $role,
                 'canBuild' => station_can_build($user),
+                'canUseAssistTools' => station_can_build($user),
             ],
             'urls' => [
                 'dashboard' => station_station_url('station.php'),
                 'userSettings' => station_station_url('user-settings.php'),
                 'adminIntegrations' => station_station_url('admin-settings.php?tab=github'),
+                'githubSync' => station_station_url('github-sync.php'),
             ],
             'features' => [
                 'dockerEnabled' => station_docker_enabled(),
                 'githubEnabled' => !empty(station_admin_settings()['githubEnabled']),
                 'openai' => station_openai_user_key_status($username),
             ],
+            'templates' => $templateHints,
         ],
         'page' => [
             'title' => mb_substr(trim($pageTitle), 0, 200),
@@ -107,13 +118,16 @@ function station_assist_page_context(string $pageUrl, string $pageTitle, string 
 /**
  * @param array<string, mixed> $pageContext
  * @param array<string, mixed>|null $projectContext
+ * @param list<array{role: string, content: string}> $conversationHistory
+ * @return array{ok: bool, text: string, message: string, clientActions?: list<array<string, mixed>>}
  */
 function station_assist_chat_reply(
     string $message,
     array $pageContext,
     ?array $projectContext,
     string $extraContext = '',
-    bool $includeProjectContext = true
+    bool $includeProjectContext = true,
+    array $conversationHistory = []
 ): array {
     $message = trim($message);
     if ($message === '') {
@@ -128,12 +142,23 @@ function station_assist_chat_reply(
         ];
     }
 
+    $user = station_current_user();
+    $tools = station_assist_openai_tools($user);
+    $clientActions = [];
+
     $blocks = [
         'You are DeployStation AI Assist — an expert on this self-hosted Deployment Station.',
-        'You help the signed-in operator use the product: projects, /p/{slug}/ public URLs, nginx routing, Docker under Manage → Docker, GitHub sync, templates, users/roles, clipboard, and workspace files.',
-        'Answer for the current page and project when context is provided. Be concise; use bullets for steps.',
-        'If you lack data, say what to open in the UI (Manage, Files, Admin → Integrations) rather than guessing secrets.',
+        'You help the signed-in operator use the product: projects, /p/{slug}/ public URLs, nginx routing, Docker, GitHub sync, templates, users/roles, and workspace files.',
+        'When the operator wants to build something new, ask for a project name if they have not given one, pick a sensible template_type, then call create_project (private GitHub repo + git push when GitHub is connected).',
+        'Use navigate to send them to the right page after actions (viewer, project settings, github-sync, user settings).',
+        'Use list_templates when you need to see available starter keys.',
+        'Never invent secrets or tokens. If GitHub is not connected, explain they must connect under User Settings before create_project can push to GitHub.',
+        'Answer concisely; use bullets for steps.',
     ];
+
+    if ($tools === []) {
+        $blocks[] = 'This operator cannot use station tools (viewer/builder access only). Give UI directions only.';
+    }
 
     $pageJson = json_encode($pageContext, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     if (!is_string($pageJson)) {
@@ -155,13 +180,104 @@ function station_assist_chat_reply(
         }
     }
 
-    $userBlock .= "\n\nOperator question:\n" . $message;
+    $userBlock .= "\n\nOperator message:\n" . $message;
     if (trim($extraContext) !== '') {
         $userBlock .= "\n\nAdditional notes:\n" . mb_substr(trim($extraContext), 0, 4000);
     }
 
-    return station_openai_chat([
-        ['role' => 'system', 'content' => implode(' ', $blocks)],
-        ['role' => 'user', 'content' => $userBlock],
-    ], null, 1400);
+    $messages = [
+        ['role' => 'system', 'content' => implode("\n", $blocks)],
+    ];
+
+    foreach ($conversationHistory as $turn) {
+        if (!is_array($turn)) {
+            continue;
+        }
+        $role = (string) ($turn['role'] ?? '');
+        $content = trim((string) ($turn['content'] ?? ''));
+        if ($content === '' || !in_array($role, ['user', 'assistant'], true)) {
+            continue;
+        }
+        $messages[] = ['role' => $role, 'content' => $content];
+    }
+
+    $messages[] = ['role' => 'user', 'content' => $userBlock];
+
+    $maxRounds = $tools !== [] ? 8 : 1;
+    for ($round = 0; $round < $maxRounds; $round++) {
+        $completion = station_openai_chat_with_tools($messages, $tools, null, 1800);
+        if (empty($completion['ok'])) {
+            return [
+                'ok' => false,
+                'text' => '',
+                'message' => (string) ($completion['message'] ?? 'OpenAI request failed.'),
+                'clientActions' => $clientActions,
+            ];
+        }
+
+        $toolCalls = $completion['tool_calls'] ?? [];
+        $assistantMessage = $completion['assistantMessage'] ?? null;
+
+        if ($toolCalls === [] || !is_array($toolCalls)) {
+            return [
+                'ok' => true,
+                'text' => (string) ($completion['text'] ?? ''),
+                'message' => 'OK',
+                'clientActions' => $clientActions,
+            ];
+        }
+
+        if (is_array($assistantMessage) && $assistantMessage !== []) {
+            $messages[] = $assistantMessage;
+        } else {
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => (string) ($completion['text'] ?? ''),
+                'tool_calls' => $toolCalls,
+            ];
+        }
+
+        foreach ($toolCalls as $toolCall) {
+            if (!is_array($toolCall)) {
+                continue;
+            }
+            $fn = is_array($toolCall['function'] ?? null) ? $toolCall['function'] : [];
+            $toolName = (string) ($fn['name'] ?? '');
+            $argsRaw = (string) ($fn['arguments'] ?? '{}');
+            $args = json_decode($argsRaw, true);
+            if (!is_array($args)) {
+                $args = [];
+            }
+
+            $executed = station_assist_execute_tool($user, $toolName, $args);
+            if (!empty($executed['clientActions']) && is_array($executed['clientActions'])) {
+                foreach ($executed['clientActions'] as $action) {
+                    if (is_array($action)) {
+                        $clientActions[] = $action;
+                    }
+                }
+            }
+
+            $toolPayload = json_encode(
+                $executed['result'] ?? ['ok' => !empty($executed['ok']), 'message' => $executed['message'] ?? ''],
+                JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+            if (!is_string($toolPayload)) {
+                $toolPayload = '{"ok":false}';
+            }
+
+            $messages[] = [
+                'role' => 'tool',
+                'tool_call_id' => (string) ($toolCall['id'] ?? ''),
+                'content' => $toolPayload,
+            ];
+        }
+    }
+
+    return [
+        'ok' => true,
+        'text' => 'I completed the requested actions. Check the station UI for results.',
+        'message' => 'OK',
+        'clientActions' => $clientActions,
+    ];
 }

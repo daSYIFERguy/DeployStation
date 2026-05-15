@@ -465,51 +465,7 @@ function station_maybe_promote_single_upload_to_index(string $projectPath, strin
 
 function station_handle_template_create(string $projectPath, string $templateType, string $projectName): array
 {
-    $definition = station_template_definition($templateType);
-    if ($definition === null) {
-        return ['ok' => false, 'message' => 'That template is not available.'];
-    }
-
-    $files = station_template_render_files($definition, $projectName);
-    if ($files === []) {
-        return ['ok' => false, 'message' => 'This template ships zero files — refusing to create an empty project.'];
-    }
-
-    $hasDockerfile = false;
-    foreach ($files as $relative => $content) {
-        if (!station_is_safe_relative_path($relative)) {
-            return ['ok' => false, 'message' => 'The template contains an invalid file path.'];
-        }
-
-        $target = $projectPath . '/' . $relative;
-        $parent = dirname($target);
-        if (!is_dir($parent) && !mkdir($parent, 0755, true) && !is_dir($parent)) {
-            return ['ok' => false, 'message' => 'Could not prepare folder for ' . $relative];
-        }
-        if (file_put_contents($target, $content, LOCK_EX) === false) {
-            return ['ok' => false, 'message' => 'Could not write one of the template files.'];
-        }
-
-        $normalized = strtolower(trim(str_replace('\\', '/', $relative)));
-        if ($normalized === 'dockerfile' || str_ends_with($normalized, '/dockerfile')) {
-            $hasDockerfile = true;
-        }
-    }
-
-    return [
-        'ok' => true,
-        'message' => 'Template created.',
-        'template' => [
-            'key' => (string) ($definition['key'] ?? $templateType),
-            'stack' => (string) ($definition['stack'] ?? 'other'),
-            'appPort' => (int) ($definition['appPort'] ?? 80),
-            'recommendedServices' => array_values(array_filter(
-                (array) ($definition['recommendedServices'] ?? []),
-                static fn ($svc): bool => is_string($svc) && $svc !== ''
-            )),
-            'hasDockerfile' => $hasDockerfile,
-        ],
-    ];
+    return station_deploy_template_to_project_path($projectPath, $templateType, $projectName);
 }
 
 function station_handle_github_import(string $projectPath, string $projectName, string $username): array

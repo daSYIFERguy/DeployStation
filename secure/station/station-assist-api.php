@@ -61,8 +61,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['station_assist_chat'] = [];
     }
     $sessionKey = $username !== '' ? $username : 'default';
+    $history = $_SESSION['station_assist_chat'][$sessionKey] ?? [];
+    if (!is_array($history)) {
+        $history = [];
+    }
 
-    $reply = station_assist_chat_reply($message, $pageContext, $projectContext, $extra, $includeProject);
+    $reply = station_assist_chat_reply($message, $pageContext, $projectContext, $extra, $includeProject, $history);
+    $clientActions = isset($reply['clientActions']) && is_array($reply['clientActions']) ? $reply['clientActions'] : [];
 
     if (!empty($reply['ok'])) {
         $history = $_SESSION['station_assist_chat'][$sessionKey] ?? [];
@@ -80,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'message' => (string) ($reply['message'] ?? ''),
         'openaiConfigured' => station_openai_configured(),
         'projectSlug' => $projectSlug,
+        'clientActions' => $clientActions,
     ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 
     if ($encoded === false) {
@@ -99,6 +105,12 @@ if ($projectSlug === '') {
 
 $pageContext = station_assist_page_context($pageUrl, $pageTitle, $projectSlug);
 
+$sessionKey = $username !== '' ? $username : 'default';
+$chatHistory = $_SESSION['station_assist_chat'][$sessionKey] ?? [];
+if (!is_array($chatHistory)) {
+    $chatHistory = [];
+}
+
 echo json_encode([
     'ok' => true,
     'openaiConfigured' => station_openai_configured(),
@@ -106,4 +118,5 @@ echo json_encode([
     'pageContext' => $pageContext,
     'projectSlug' => $projectSlug,
     'apiBase' => station_station_url(''),
+    'chatHistory' => $chatHistory,
 ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
