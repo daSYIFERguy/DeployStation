@@ -150,6 +150,13 @@
           return;
         }
 
+        /* viewer.php loads CSS + config scripts outside <main>; copying only innerHTML breaks the IDE */
+        if (nextMain.classList.contains('workspace-ide-main')) {
+          window.location.href = url;
+          return;
+        }
+
+        currentMain.className = nextMain.className;
         currentMain.innerHTML = nextMain.innerHTML;
         runScripts(currentMain);
 

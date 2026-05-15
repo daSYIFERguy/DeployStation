@@ -45,12 +45,16 @@ $ideConfig = [
     'initialFile' => $file,
     'publicWebPath' => station_project_public_web_path($project),
 ];
+
+header('Cache-Control: private, no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+
 ?>
 <!doctype html>
 <html lang="en">
 <head>
   <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.') ?>
-  <link rel="stylesheet" href="assets/project-workspace.css?v=20260515f">
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260516c">
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -143,7 +147,7 @@ $ideConfig = [
   <script>
   window.STATION_WORKSPACE_IDE = <?= json_encode($ideConfig, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) ?>;
   </script>
-  <script src="assets/project-workspace.js?v=20260515f"></script>
+  <script src="assets/project-workspace.js?v=20260516c"></script>
   <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

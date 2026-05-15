@@ -67,6 +67,36 @@ function station_current_user(): ?array
     return null;
 }
 
+/**
+ * Load one active user record from station config by username.
+ */
+function station_lookup_user(string $username): ?array
+{
+    $username = station_safe_name($username);
+    if ($username === '') {
+        return null;
+    }
+
+    $cfg = station_config();
+    $users = isset($cfg['users']) && is_array($cfg['users']) ? $cfg['users'] : [];
+    foreach ($users as $user) {
+        if (!is_array($user)) {
+            continue;
+        }
+        if ((string) ($user['username'] ?? '') !== $username) {
+            continue;
+        }
+        $active = !isset($user['active']) || (bool) $user['active'];
+        if (!$active) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    return null;
+}
+
 function station_is_owner(?array $user): bool
 {
     if (!$user) {

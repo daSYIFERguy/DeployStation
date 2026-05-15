@@ -24,7 +24,7 @@
   var tabFiles = document.getElementById('wsTabFiles');
   var tabEditor = document.getElementById('wsTabEditor');
   var backToFiles = document.getElementById('wsBackToFiles');
-  var mobileMq = window.matchMedia('(max-width: 760px)');
+  var mobileMq = window.matchMedia('(max-width: 599px)');
 
   function isMobileWorkspace() {
     return mobileMq.matches;
@@ -108,8 +108,21 @@
         q += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
       });
     }
-    return fetch(q, { credentials: 'same-origin' }).then(function (r) {
-      return r.json();
+    return fetch(q, { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) {
+      return r.text().then(function (text) {
+        var trimmed = (text || '').trim();
+        if (!trimmed) {
+          return { ok: false, message: 'Empty response from server (HTTP ' + r.status + ').' };
+        }
+        try {
+          return JSON.parse(trimmed);
+        } catch (e) {
+          return {
+            ok: false,
+            message: 'Invalid JSON from server (HTTP ' + r.status + '): ' + trimmed.replace(/\s+/g, ' ').slice(0, 180),
+          };
+        }
+      });
     });
   }
 
@@ -120,7 +133,20 @@
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(Object.assign({ project: project }, body)),
     }).then(function (r) {
-      return r.json();
+      return r.text().then(function (text) {
+        var trimmed = (text || '').trim();
+        if (!trimmed) {
+          return { ok: false, error: 'Empty response (HTTP ' + r.status + ').' };
+        }
+        try {
+          return JSON.parse(trimmed);
+        } catch (e) {
+          return {
+            ok: false,
+            error: 'Invalid JSON (HTTP ' + r.status + '): ' + trimmed.replace(/\s+/g, ' ').slice(0, 180),
+          };
+        }
+      });
     });
   }
 
@@ -181,7 +207,15 @@
       }
       treeEl.innerHTML = '';
       if (!data || !data.ok) {
-        treeEl.innerHTML = '<p class="workspace-ide-empty">' + (data && data.message ? data.message : 'Could not list folder.') + '</p>';
+        var msg = data && data.message ? data.message : 'Could not list folder.';
+        var errP = document.createElement('p');
+        errP.className = 'workspace-ide-empty';
+        errP.textContent = msg;
+        treeEl.appendChild(errP);
+        setStatus(msg, true);
+        if (isMobileWorkspace()) {
+          setMobilePanel('files');
+        }
         return;
       }
       if (data.parent !== undefined && browseDir !== '') {
@@ -219,6 +253,19 @@
       });
       if (!(data.entries || []).length) {
         treeEl.innerHTML = '<p class="workspace-ide-empty">Empty folder</p>';
+      }
+    }).catch(function (err) {
+      if (!treeEl) {
+        return;
+      }
+      treeEl.innerHTML = '';
+      var errP = document.createElement('p');
+      errP.className = 'workspace-ide-empty';
+      errP.textContent = err && err.message ? err.message : 'Network error loading files.';
+      treeEl.appendChild(errP);
+      setStatus('Could not load file list.', true);
+      if (isMobileWorkspace()) {
+        setMobilePanel('files');
       }
     });
   }

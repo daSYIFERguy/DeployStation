@@ -103,6 +103,30 @@ if ($purpose === 'login') {
     }
 
     station_link_github_to_user($stationUser, $githubLogin);
+
+    $stationRow = station_lookup_user($stationUser);
+    $oauthScope = trim((string) ($ex['scope'] ?? ''));
+    if ($stationRow !== null && station_can_build($stationRow)) {
+        $loginWarnings = [];
+        if ($oauthScope !== '' && !preg_match('/\brepo\b/', $oauthScope)) {
+            $loginWarnings[] = 'GitHub did not grant repository access (scopes: ' . $oauthScope . '). Sync and pushes stay disabled until you open User Settings → GitHub, disconnect if needed, then authorize again and approve every permission.';
+        } else {
+            $verify = station_github_verify_repo_access($accessToken, 'oauth');
+            if (!empty($verify['ok'])) {
+                station_link_github_to_user($stationUser, $githubLogin, $accessToken);
+                station_log_event('github.oauth.login_token_saved', ['username' => $stationUser, 'github_login' => $githubLogin, 'scope' => $oauthScope]);
+            } else {
+                $loginWarnings[] = (string) ($verify['message'] ?? 'Could not verify GitHub repository access.') . ' Open User Settings → GitHub to reconnect.';
+            }
+        }
+        if ($oauthScope !== '' && preg_match('/\brepo\b/', $oauthScope) && !preg_match('/\bworkflow\b/', $oauthScope)) {
+            $loginWarnings[] = 'GitHub did not grant the workflow scope (' . $oauthScope . '). Pushes that change files under .github/workflows may fail until you revoke this OAuth app under GitHub → Settings → Applications and sign in again, accepting all requested permissions.';
+        }
+        if ($loginWarnings !== []) {
+            station_flash_set('warning', implode(' ', $loginWarnings));
+        }
+    }
+
     if (!station_login_as_user($stationUser)) {
         station_flash_set('error', 'Could not sign you in.');
         header('Location: index.php');
@@ -114,7 +138,7 @@ if ($purpose === 'login') {
         exit;
     }
 
-    station_flash_set('ok', 'Signed in with GitHub.');
+    station_flash_set('ok', 'Signed in with GitHub. Builders get the same repository and Actions permissions as when connecting under User Settings—approve every checkbox on GitHub’s screen.');
     header('Location: station.php');
     exit;
 }
@@ -148,7 +172,18 @@ if (empty($verify['ok'])) {
 }
 
 station_log_event('github.oauth.connected', ['username' => $username, 'github_login' => $githubLogin, 'scope' => $oauthScope]);
-station_flash_set('ok', 'GitHub connected with repo and workflow access (for Actions files).');
+
+station_flash_set(
+    'ok',
+    'GitHub connected with repository, Actions workflow, and org read access. Approve every permission on GitHub’s screen so pushes and sync match a full repo token.'
+);
+
+if ($oauthScope !== '' && !preg_match('/\bworkflow\b/', $oauthScope)) {
+    station_flash_set(
+        'warning',
+        'GitHub did not grant the workflow scope (' . $oauthScope . '). Pushes that add or change files under .github/workflows may fail. Under GitHub → Settings → Applications → Authorized OAuth Apps, revoke this app, then use Sign in with GitHub on User Settings again and accept all requested permissions.'
+    );
+}
 
 $after = basename($redirectAfter);
 $allowedAfter = ['user-settings.php', 'station.php', 'github-sync.php', 'index.php'];

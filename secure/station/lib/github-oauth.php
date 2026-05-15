@@ -5,6 +5,15 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
 /**
+ * Scopes for builders who connect GitHub under User Settings (repo sync, pushes, Actions, org repos).
+ * Aligns with typical classic PAT coverage: full repo + workflow files + org membership + email visibility.
+ */
+function station_github_oauth_connect_scope_string(): string
+{
+    return 'repo workflow read:user read:org user:email';
+}
+
+/**
  * OAuth redirect URI registered in the GitHub OAuth App must match this exactly.
  */
 function station_github_oauth_redirect_uri(): string
@@ -17,9 +26,13 @@ function station_github_oauth_redirect_uri(): string
 function station_github_oauth_authorize_url(
     string $clientId,
     string $state,
-    string $scope = 'repo workflow read:user',
+    string $scope,
     bool $forceConsent = false
 ): string {
+    $scope = trim($scope);
+    if ($scope === '') {
+        $scope = 'read:user';
+    }
     $redirect = station_github_oauth_redirect_uri();
     if ($redirect === '') {
         return '';
@@ -28,7 +41,7 @@ function station_github_oauth_authorize_url(
     $params = [
         'client_id' => $clientId,
         'redirect_uri' => $redirect,
-        'scope' => trim($scope) !== '' ? trim($scope) : 'read:user',
+        'scope' => $scope,
         'state' => $state,
     ];
     if ($forceConsent) {

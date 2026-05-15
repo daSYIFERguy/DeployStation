@@ -294,7 +294,7 @@
 @media (max-width: 1100px) {
   .workspace-ide-body {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(180px, 32vh) minmax(320px, 1fr);
+    grid-template-rows: minmax(220px, min(40vh, 360px)) minmax(340px, 1fr);
   }
 
   .workspace-ide-sidebar {
@@ -303,8 +303,8 @@
   }
 }
 
-/* Phone: Files | Editor tabs, one panel at a time */
-@media (max-width: 760px) {
+/* Phone-only: Files | Editor tabs (viewports ≤599px) */
+@media (max-width: 599px) {
   .workspace-ide-main {
     display: flex;
     flex-direction: column;

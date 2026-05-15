@@ -801,7 +801,7 @@ sudo systemctl restart php*-fpm
             <?php else: ?>
             <p class="setting-description" style="color:#b45309;">Open this page in the browser over HTTP(S) so the callback URL can be shown (host was not detected).</p>
             <?php endif; ?>
-            <p class="setting-description" style="margin-top:8px;">The login page uses this app for <strong>Sign in with GitHub</strong> and <strong>Request access</strong> (<code>read:user</code> only). Logged-in builders connecting GitHub in User Settings request <code>repo read:user</code>. Users can still paste a personal token in User Settings.</p>
+            <p class="setting-description" style="margin-top:8px;"><strong>Sign in with GitHub</strong> and User Settings → Connect use the same scopes: <code>repo</code>, <code>workflow</code>, <code>read:user</code>, <code>read:org</code>, <code>user:email</code> so pushes (including <code>.github/workflows</code>) and org-visible repos work without a second authorization. <strong>Request access</strong> uses <code>read:user</code> only. Users can still paste a personal token in User Settings.</p>
             <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client ID</label>
             <input type="text" name="githubOAuthClientId" value="<?= station_h((string) ($settings['githubOAuthClientId'] ?? '')) ?>" placeholder="Iv1.…" autocomplete="off" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
             <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client Secret</label>

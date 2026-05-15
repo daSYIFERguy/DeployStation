@@ -12,8 +12,8 @@ require_once __DIR__ . '/github-sync.php';
 function station_github_oauth_scopes_for_purpose(string $purpose): string
 {
     return match ($purpose) {
-        'connect' => 'repo workflow read:user',
-        'login', 'request_access' => 'read:user',
+        'connect', 'login' => station_github_oauth_connect_scope_string(),
+        'request_access' => 'read:user',
         default => 'read:user',
     };
 }
@@ -72,7 +72,7 @@ function station_github_oauth_begin(string $purpose, string $redirectAfter = 'in
     $_SESSION['github_oauth_redirect_after'] = $redirectAfter;
 
     $scopes = station_github_oauth_scopes_for_purpose($purpose);
-    $forceConsent = $purpose === 'connect';
+    $forceConsent = $purpose === 'connect' || $purpose === 'login';
     $url = station_github_oauth_authorize_url($clientId, $state, $scopes, $forceConsent);
     if ($url === '') {
         return ['ok' => false, 'message' => 'Could not start GitHub authorization.'];

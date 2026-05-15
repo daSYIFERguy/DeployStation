@@ -971,7 +971,7 @@ function station_pwa_register_html(): string
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('service-worker.php', { scope: './' }).catch(function () {});
+    navigator.serviceWorker.register('service-worker.php', { scope: './', updateViaCache: 'none' }).catch(function () {});
   });
 }
 </script>
@@ -1158,7 +1158,7 @@ HTML;
 function station_dashboard_page_footer_html(): string
 {
     return station_dashboard_nav_script_html()
-        . '<script src="assets/station-shell-nav.js?v=20260522a"></script>'
+        . '<script src="assets/station-shell-nav.js?v=20260522b"></script>'
         . station_clipboard_fab_html()
         . station_pwa_register_html();
 }
