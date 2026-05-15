@@ -207,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.') ?>
+  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.', 'assets/style.css?v=20260519d') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -793,15 +793,15 @@ sudo systemctl restart php*-fpm
               </label>
             </div>
 
-            <h3 style="font-size: 15px; margin: 24px 0 10px;">OAuth login (optional)</h3>
-            <p class="setting-description">Create a <a href="https://github.com/settings/developers" target="_blank" rel="noreferrer">GitHub OAuth App</a> (type: Web). Set the authorization callback URL to exactly:</p>
+            <h3 style="font-size: 15px; margin: 24px 0 10px;">OAuth (sign-in, access requests &amp; user connect)</h3>
+            <p class="setting-description">Create a <a href="https://github.com/settings/developers" target="_blank" rel="noreferrer">GitHub OAuth App</a> (type: Web). Set the authorization callback URL to exactly (one app for all flows):</p>
             <?php $oauthCb = station_github_oauth_redirect_uri(); ?>
             <?php if ($oauthCb !== ''): ?>
             <pre style="background:var(--panel-soft,#f1f5f9);padding:10px 12px;border-radius:8px;font-size:12px;overflow:auto;"><?= station_h($oauthCb) ?></pre>
             <?php else: ?>
             <p class="setting-description" style="color:#b45309;">Open this page in the browser over HTTP(S) so the callback URL can be shown (host was not detected).</p>
             <?php endif; ?>
-            <p class="setting-description" style="margin-top:8px;">Scopes for the OAuth App are not configured in GitHub’s UI for classic OAuth apps; Station requests <code>repo</code> and <code>read:user</code> at authorize time. Users can still paste a personal token instead.</p>
+            <p class="setting-description" style="margin-top:8px;">The login page uses this app for <strong>Sign in with GitHub</strong> and <strong>Request access</strong> (<code>read:user</code> only). Logged-in builders connecting GitHub in User Settings request <code>repo read:user</code>. Users can still paste a personal token in User Settings.</p>
             <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client ID</label>
             <input type="text" name="githubOAuthClientId" value="<?= station_h((string) ($settings['githubOAuthClientId'] ?? '')) ?>" placeholder="Iv1.…" autocomplete="off" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
             <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">OAuth Client Secret</label>
@@ -855,6 +855,24 @@ sudo systemctl restart php*-fpm
           <form id="admin-docker-recreate-all-form" method="post" action="admin-settings.php?tab=docker" style="display:none;" aria-hidden="true">
             <input type="hidden" name="action" value="admin_docker_recreate_all">
           </form>
+          <form id="admin-docker-prune-stopped-form" method="post" action="admin-settings.php?tab=docker" style="display:none;" aria-hidden="true">
+            <input type="hidden" name="action" value="admin_docker_prune_stopped">
+          </form>
+          <?php if (!empty($globalContainers) && is_array($globalContainers)): ?>
+            <?php foreach ($globalContainers as $cRow): ?>
+              <?php
+                $cName = (string) ($cRow['name'] ?? '');
+                if ($cName === '') {
+                    continue;
+                }
+                $formId = 'admin-docker-remove-' . trim(strtolower(preg_replace('/[^a-z0-9]+/i', '-', $cName) ?? ''), '-') . '-' . substr(md5($cName), 0, 8);
+              ?>
+              <form id="<?= station_h($formId) ?>" method="post" action="admin-settings.php?tab=docker" style="display:none;" aria-hidden="true">
+                <input type="hidden" name="action" value="admin_docker_remove_container">
+                <input type="hidden" name="container_name" value="<?= station_h($cName) ?>">
+              </form>
+            <?php endforeach; ?>
+          <?php endif; ?>
 
           <!-- Tiny side-forms for station identity (kept out of the multipart
                icon form so file uploads can't accidentally affect them, and

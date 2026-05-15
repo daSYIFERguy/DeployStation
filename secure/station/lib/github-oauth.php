@@ -14,7 +14,7 @@ function station_github_oauth_redirect_uri(): string
     return $base === '' ? '' : $base . '/github-oauth-callback.php';
 }
 
-function station_github_oauth_authorize_url(string $clientId, string $state): string
+function station_github_oauth_authorize_url(string $clientId, string $state, string $scope = 'repo read:user'): string
 {
     $redirect = station_github_oauth_redirect_uri();
     if ($redirect === '') {
@@ -24,7 +24,7 @@ function station_github_oauth_authorize_url(string $clientId, string $state): st
     return 'https://github.com/login/oauth/authorize?' . http_build_query([
         'client_id' => $clientId,
         'redirect_uri' => $redirect,
-        'scope' => 'repo read:user',
+        'scope' => trim($scope) !== '' ? trim($scope) : 'read:user',
         'state' => $state,
     ]);
 }

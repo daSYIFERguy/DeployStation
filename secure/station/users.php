@@ -19,11 +19,27 @@ if (!$isAdmin) {
 $cfg = station_config();
 $users = isset($cfg['users']) && is_array($cfg['users']) ? $cfg['users'] : [];
 $error = '';
-$roleOptions = [
-    'admin' => 'Admin - All Access',
-    'builder' => 'Builder - Can See and Create',
-    'viewer' => 'Viewer - Can Only See'
+$roleOptionsAssignable = [
+    'admin' => 'Admin — manage users and projects',
+    'builder' => 'Builder — create and deploy projects',
+    'viewer' => 'Viewer — read-only',
 ];
+$roleOptionsOwner = [
+    'owner' => 'Owner — full station control (Settings, host health, factory reset)',
+] + $roleOptionsAssignable;
+
+/**
+ * @param array<string, string> $allowed
+ */
+function station_users_normalize_role(string $role, array $allowed, string $fallback = 'viewer'): string
+{
+    return isset($allowed[$role]) ? $role : $fallback;
+}
+
+function station_users_is_protected_owner_account(array $user): bool
+{
+    return (string) ($user['role'] ?? '') === 'owner';
+}
 
 $editUsername = station_safe_name((string) ($_GET['edit'] ?? ''));
 $editingUser = null;
@@ -68,8 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add_user') {
         $username = station_safe_name((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
-        $role = (string) ($_POST['role'] ?? 'viewer');
-        $role = isset($roleOptions[$role]) ? $role : 'viewer';
+        $role = station_users_normalize_role((string) ($_POST['role'] ?? 'viewer'), $roleOptionsAssignable, 'viewer');
+        if ($role === 'owner') {
+            $role = 'admin';
+        }
 
         if ($username === '' || strlen($password) < 8) {
             $error = 'Username required and password must be at least 8 chars.';
@@ -103,9 +121,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'update_user') {
         $target = station_safe_name((string) ($_POST['target_username'] ?? ''));
-        $newRole = (string) ($_POST['role'] ?? 'viewer');
-        $newRole = isset($roleOptions[$newRole]) ? $newRole : 'viewer';
         $newPassword = (string) ($_POST['new_password'] ?? '');
+        $postedRole = (string) ($_POST['role'] ?? '');
 
         if (!station_can_manage_target($isOwner, $target)) {
             $error = 'You are not allowed to edit that user.';
@@ -116,7 +133,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                $users[$idx]['role'] = $newRole;
+                $existingRole = (string) ($u['role'] ?? 'viewer');
+                if (station_users_is_protected_owner_account($u)) {
+                    $users[$idx]['role'] = 'owner';
+                } elseif ($isOwner) {
+                    $users[$idx]['role'] = station_users_normalize_role($postedRole, $roleOptionsOwner, $existingRole);
+                } else {
+                    $users[$idx]['role'] = station_users_normalize_role($postedRole, $roleOptionsAssignable, $existingRole);
+                }
+                $newRole = (string) ($users[$idx]['role'] ?? $existingRole);
                 if ($newPassword !== '') {
                     if (strlen($newPassword) < 8) {
                         $error = 'New password must be at least 8 chars.';
@@ -195,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <div>
         <p class="kicker"><?= $isOwner ? 'Owner Console' : 'Admin Console' ?></p>
         <h1>User Admin</h1>
-        <p>Click a user to edit role and password. Admins can manage all users except root.</p>
+        <p>Click a user to edit role and password. The setup account keeps the <strong>owner</strong> role (Settings, host health). Admins cannot edit owner accounts.</p>
       </div>
       <nav class="nav-pills">
         <a href="station.php">Dashboard</a>
@@ -218,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </label>
         <label>Role
           <select name="role">
-            <?php foreach ($roleOptions as $value => $label): ?>
+            <?php foreach ($roleOptionsAssignable as $value => $label): ?>
               <option value="<?= station_h($value) ?>"><?= station_h($label) ?></option>
             <?php endforeach; ?>
           </select>
@@ -232,13 +257,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label>Selected User
           <input type="text" name="target_username" value="<?= station_h((string) ($editingUser['username'] ?? '')) ?>" readonly required>
         </label>
+        <?php
+          $editingIsOwner = is_array($editingUser) && station_users_is_protected_owner_account($editingUser);
+          $editRoleOptions = $isOwner ? $roleOptionsOwner : $roleOptionsAssignable;
+          $selectedRole = (string) ($editingUser['role'] ?? 'viewer');
+        ?>
         <label>Role
-          <select name="role">
-            <?php $selectedRole = (string) ($editingUser['role'] ?? 'viewer'); ?>
-            <?php foreach ($roleOptions as $value => $label): ?>
-              <option value="<?= station_h($value) ?>" <?= $selectedRole === $value ? 'selected' : '' ?>><?= station_h($label) ?></option>
-            <?php endforeach; ?>
-          </select>
+          <?php if ($editingIsOwner): ?>
+            <input type="hidden" name="role" value="owner">
+            <p class="setting-description" style="margin:8px 0 0;"><strong>Owner</strong> — full station control. Role cannot be lowered when changing password.</p>
+          <?php else: ?>
+            <select name="role">
+              <?php foreach ($editRoleOptions as $value => $label): ?>
+                <option value="<?= station_h($value) ?>" <?= $selectedRole === $value ? 'selected' : '' ?>><?= station_h($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          <?php endif; ?>
         </label>
         <label>New Password (optional)
           <input type="password" name="new_password" placeholder="Leave blank to keep current password">
@@ -261,7 +295,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ?>
             <tr>
               <td><?= station_h($username) ?></td>
-              <td><?= station_h((string) ($u['role'] ?? 'admin')) ?></td>
+              <td><?= station_h(match ((string) ($u['role'] ?? 'admin')) {
+                  'owner' => 'owner (superuser)',
+                  'admin' => 'admin',
+                  'builder' => 'builder',
+                  'viewer' => 'viewer',
+                  default => (string) ($u['role'] ?? 'admin'),
+              }) ?></td>
               <td><?= station_h((string) ($u['createdAt'] ?? '')) ?></td>
               <td><?= station_h($lastLogin !== '' ? $lastLogin : 'never') ?></td>
               <td><?= station_h((string) ($u['createdBy'] ?? '')) ?></td>

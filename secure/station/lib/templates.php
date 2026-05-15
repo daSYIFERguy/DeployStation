@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/docker.php';
+require_once __DIR__ . '/template-scaffold.php';
+require_once __DIR__ . '/templates-extra.php';
 
 /**
  * Structured starter template definitions.
@@ -528,58 +530,7 @@ DOCKER,
         ],
     ];
 
-    // ───────── chrome-extension (preserved) ─────────
-    $manifestJson = json_encode([
-        'manifest_version' => 3,
-        'name' => '{{PROJECT_NAME}}',
-        'version' => '1.0.0',
-        'action' => ['default_popup' => 'popup.html'],
-        'permissions' => ['storage', 'activeTab', 'scripting'],
-        'background' => ['service_worker' => 'background.js'],
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}';
-    $templates['chrome-extension'] = [
-        'key' => 'chrome-extension',
-        'label' => 'Chrome Extension (MV3)',
-        'description' => 'Manifest V3 starter for a Chrome extension. Loadable as an unpacked extension.',
-        'icon' => '🧩',
-        'stack' => 'other',
-        'appPort' => 80,
-        'recommendedServices' => [],
-        'files' => [
-            'manifest.json' => $manifestJson . "\n",
-            'popup.html' => <<<'HTML'
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>{{PROJECT_NAME}}</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <main>
-    <h1>{{PROJECT_NAME}}</h1>
-    <p>Load unpacked in Chrome → Extensions.</p>
-    <button id="inspectBtn">Inspect Page</button>
-    <script src="popup.js"></script>
-  </main>
-</body>
-</html>
-HTML,
-            'popup.css' => "body{font-family:system-ui,sans-serif;min-width:280px;padding:1rem}\nbutton{padding:.6rem .9rem;border:none;border-radius:999px;background:#1a73e8;color:#fff;cursor:pointer}\n",
-            'popup.js' => "document.getElementById('inspectBtn').addEventListener('click', async () => {\n  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });\n  console.log('active tab', tab && tab.url);\n});\n",
-            'background.js' => "chrome.runtime.onInstalled.addListener(() => {\n  console.log('{{PROJECT_NAME}} installed');\n});\n",
-            'README.md' => "# {{PROJECT_NAME}}\n\nManifest V3 Chrome extension starter.\n\n1. Open Chrome → Extensions → Developer Mode.\n2. Click Load unpacked.\n3. Select this folder.\n\nThis project is hosted by the deployment station as a downloadable bundle. It does not need to run inside a container.\n",
-            '.gitignore' => "*.crx\n*.pem\n.DS_Store\n",
-            'Dockerfile' => <<<'DOCKER'
-# Chrome extensions are downloaded and loaded into the browser locally —
-# this image just serves the source files for inspection.
-FROM nginx:alpine
-COPY . /usr/share/nginx/html
-EXPOSE 80
-DOCKER,
-            '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\n.DS_Store\n",
-        ],
-    ];
+    // chrome-extension: see lib/templates-extra.php (install splash + distro packaging)
 
     // ───────── Legacy aliases (kept so existing projects keep launching) ─────────
     $templates['pwa'] = [
@@ -714,6 +665,10 @@ DOCKER,
             '.dockerignore' => "Dockerfile\n.dockerignore\n.htaccess\n.git\n.gitignore\nbin\nobj\n*.user\n.DS_Store\n",
         ],
     ];
+
+    foreach (station_extra_template_definitions() as $key => $template) {
+        $templates[$key] = $template;
+    }
 
     $cached = $templates;
     return $cached;
@@ -859,7 +814,8 @@ function station_template_render_files(array $template, string $projectName): ar
         );
         $rendered[$path] = $body;
     }
-    return $rendered;
+
+    return station_template_merge_scaffold($rendered, $template);
 }
 
 /**

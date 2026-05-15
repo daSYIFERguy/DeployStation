@@ -904,24 +904,32 @@ function station_js_config_html(): string
 }
 
 /**
- * Inline SVG icons for the left navigation rail.
+ * Emoji icons for the left navigation rail (readable at small sizes).
  */
-function station_nav_icon_svg(string $key): string
+function station_nav_icon(string $key): string
 {
-    $stroke = 'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" fill="none"';
     $icons = [
-        'dashboard' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"/></svg>',
-        'users' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle ' . $stroke . ' cx="9" cy="7" r="3"/><path ' . $stroke . ' d="M22 19v-1a3 3 0 0 0-2-2.83M16 3.13a3 3 0 0 1 0 5.74"/></svg>',
-        'templates' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect ' . $stroke . ' x="3" y="3" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="14" y="3" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="3" y="14" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="14" y="14" width="7" height="7" rx="1"/></svg>',
-        'settings' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle ' . $stroke . ' cx="12" cy="12" r="3"/><path ' . $stroke . ' d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
-        'host_health' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
-        'github_sync' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M6 3v12M18 9V3M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12-6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>',
-        'user-settings' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle ' . $stroke . ' cx="12" cy="8" r="4"/><path ' . $stroke . ' d="M4 20v-1a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v1"/></svg>',
-        'logout' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
-        'assist' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M12 3a7 7 0 0 0-4 12.7V19a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3.3A7 7 0 0 0 12 3z"/><path ' . $stroke . ' d="M9 22h6"/></svg>',
+        'dashboard' => '🏠',
+        'users' => '👥',
+        'templates' => '🧩',
+        'settings' => '⚙️',
+        'host_health' => '📡',
+        'github_sync' => '🐙',
+        'user-settings' => '👤',
+        'logout' => '🚪',
+        'assist' => '✨',
+        'access_requests' => '📩',
     ];
 
-    return $icons[$key] ?? '';
+    $emoji = $icons[$key] ?? '•';
+
+    return '<span class="menu-emoji" aria-hidden="true">' . $emoji . '</span>';
+}
+
+/** @deprecated Use station_nav_icon() — kept for callers that still use the old name. */
+function station_nav_icon_svg(string $key): string
+{
+    return station_nav_icon($key);
 }
 
 function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css'): string
@@ -970,10 +978,23 @@ if ('serviceWorker' in navigator) {
 HTML;
 }
 
+/**
+ * Scale sidebar brand text so long app names stay on one line inside the rail.
+ */
+function station_brand_copy_font_sizes(string $appName, string $heading): array
+{
+    $nameLen = max(1, mb_strlen($appName));
+    $headLen = max(1, mb_strlen($heading));
+    $namePx = max(8, min(12, (int) floor(78 / $nameLen)));
+    $headPx = max(7, min(10, (int) floor(64 / $headLen)));
+
+    return ['name' => $namePx, 'kicker' => $headPx];
+}
+
 function station_dashboard_nav_link(string $active, string $key, string $href, string $iconKey, string $label, string $extraClass = ''): string
 {
     $classes = trim('dashboard-menu-link ' . ($active === $key ? 'active ' : '') . $extraClass);
-    $icon = station_nav_icon_svg($iconKey);
+    $icon = station_nav_icon($iconKey);
 
     return '<a href="' . station_h($href) . '" class="' . station_h($classes) . '">' .
         '<span class="menu-icon">' . $icon . '</span>' .
@@ -997,6 +1018,10 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     $brandMark = $brandIconUrl !== ''
         ? '<img src="' . station_h($brandIconUrl) . '" alt="' . station_h($appName) . ' icon">'
         : station_h($brandInitial);
+    $stationHeading = trim((string) ($uiConfig['heading'] ?? 'Deployment Station'));
+    $brandFonts = station_brand_copy_font_sizes($appName, $stationHeading);
+    $brandKickerStyle = ' style="font-size:' . (int) $brandFonts['kicker'] . 'px"';
+    $brandNameStyle = ' style="font-size:' . (int) $brandFonts['name'] . 'px"';
 
     $links = [
         station_dashboard_nav_link($active, 'dashboard', 'station.php', 'dashboard', 'Dashboard'),
@@ -1008,6 +1033,15 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     }
 
     if ($isOwner) {
+        require_once __DIR__ . '/access-requests.php';
+        $accessReqLabel = 'Requests';
+        $unseen = function_exists('station_access_requests_unseen_count')
+            ? station_access_requests_unseen_count()
+            : 0;
+        if ($unseen > 0) {
+            $accessReqLabel = 'Requests (' . $unseen . ')';
+        }
+        $links[] = station_dashboard_nav_link($active, 'access_requests', 'access-requests.php', 'access_requests', $accessReqLabel);
         $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Settings');
         $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
     }
@@ -1027,8 +1061,8 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
             '<a class="dashboard-brand" href="station.php">' .
                 '<span class="dashboard-brand-mark">' . $brandMark . '</span>' .
                 '<span class="dashboard-brand-copy">' .
-                    '<span class="dashboard-brand-kicker">' . station_h((string) ($uiConfig['heading'] ?? 'Deployment Station')) . '</span>' .
-                    '<span class="dashboard-brand-name">' . station_h($appName) . '</span>' .
+                    '<span class="dashboard-brand-kicker"' . $brandKickerStyle . '>' . station_h($stationHeading) . '</span>' .
+                    '<span class="dashboard-brand-name"' . $brandNameStyle . '>' . station_h($appName) . '</span>' .
                 '</span>' .
             '</a>' .
             '<button type="button" class="dashboard-mobile-toggle" id="dashboardMobileToggle" aria-label="Open navigation" aria-controls="dashboardMenu" aria-expanded="false">' .
@@ -1039,8 +1073,8 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
             '<a class="dashboard-brand" href="station.php">' .
                 '<span class="dashboard-brand-mark">' . $brandMark . '</span>' .
                 '<span class="dashboard-brand-copy">' .
-                    '<span class="dashboard-brand-kicker">' . station_h((string) ($uiConfig['heading'] ?? 'Deployment Station')) . '</span>' .
-                    '<span class="dashboard-brand-name">' . station_h($appName) . '</span>' .
+                    '<span class="dashboard-brand-kicker"' . $brandKickerStyle . '>' . station_h($stationHeading) . '</span>' .
+                    '<span class="dashboard-brand-name"' . $brandNameStyle . '>' . station_h($appName) . '</span>' .
                 '</span>' .
             '</a>' .
             '<nav class="dashboard-menu" id="dashboardMenu" aria-label="Primary navigation">' .
@@ -1089,7 +1123,7 @@ function station_clipboard_fab_html(): string
         require_once __DIR__ . '/openai.php';
     }
 
-    $assistIcon = station_nav_icon_svg('assist');
+    $assistIcon = station_nav_icon('assist');
     $openaiOn = station_openai_configured();
     $assistDisabled = $openaiOn ? '' : ' disabled title="Add OpenAI under Admin → Integrations or User Settings"';
 
@@ -1098,45 +1132,8 @@ function station_clipboard_fab_html(): string
         . '<span class="assist-fab-label">AI Assist</span></button>';
 
     return '<aside class="page-tools-dock" id="stationPageToolsDock" aria-live="polite">'
-        . '<div class="page-tools-fabs">' . $assistBtn
-        . '<aside class="clip-fab" id="stationClipboardFab">'
+        . '<div class="page-tools-slot page-tools-slot--assist">' . $assistBtn
         . <<<'HTML'
-  <button class="clip-fab-button" type="button" id="stationClipboardFabToggle" aria-label="Open clipboard" aria-controls="stationClipboardFabPanel" aria-expanded="false">
-    <span class="clip-fab-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-        <rect x="8" y="2" width="8" height="4" rx="1"/>
-      </svg>
-    </span>
-    <span class="clip-fab-label">Clipboard</span>
-    <span class="clip-fab-badge" id="stationClipboardFabBadge" hidden>•</span>
-  </button>
-  <section class="clip-fab-panel" id="stationClipboardFabPanel" role="dialog" aria-label="Shared clipboard" aria-hidden="true">
-    <header class="clip-fab-head">
-      <div>
-        <p class="clip-fab-kicker">Shared clipboard</p>
-        <h3 class="clip-fab-title">Paste &amp; pick up anywhere</h3>
-        <p class="clip-fab-hint">Synced to your account. Open on another device to read it back.</p>
-      </div>
-      <button type="button" class="clip-fab-close" id="stationClipboardFabClose" aria-label="Close clipboard">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
-    </header>
-    <div class="clip-fab-toolbar">
-      <button type="button" class="clip-fab-action" data-clip-action="paste" title="Read from your device clipboard">⇩ Paste</button>
-      <button type="button" class="clip-fab-action" data-clip-action="copy" title="Copy to your device clipboard">⇧ Copy</button>
-      <label class="clip-fab-action clip-fab-upload" title="Attach a file">
-        <input type="file" id="stationClipboardFabFile" hidden>
-        ＋ File
-      </label>
-      <button type="button" class="clip-fab-action danger" data-clip-action="clear" title="Clear shared clipboard">🗑 Clear</button>
-    </div>
-    <textarea id="stationClipboardFabText" placeholder="Type or paste text here — it syncs to all your devices."></textarea>
-    <div class="clip-fab-files" id="stationClipboardFabFiles"></div>
-    <p class="clip-fab-status" id="stationClipboardFabStatus" aria-live="polite"></p>
-  </section>
-</aside>
-  </div>
   <section class="assist-fab-panel" id="stationAssistFabPanel" role="dialog" aria-label="DeployStation AI Assist" aria-hidden="true">
     <header class="assist-fab-head">
       <div>
@@ -1173,8 +1170,47 @@ function station_clipboard_fab_html(): string
     </div>
     <p class="assist-fab-status" id="stationAssistStatus" aria-live="polite"></p>
   </section>
+</div>
+<div class="page-tools-slot page-tools-slot--clip">
+<aside class="clip-fab" id="stationClipboardFab">
+  <button class="clip-fab-button" type="button" id="stationClipboardFabToggle" aria-label="Open clipboard" aria-controls="stationClipboardFabPanel" aria-expanded="false">
+    <span class="clip-fab-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+        <rect x="8" y="2" width="8" height="4" rx="1"/>
+      </svg>
+    </span>
+    <span class="clip-fab-label">Clipboard</span>
+    <span class="clip-fab-badge" id="stationClipboardFabBadge" hidden>•</span>
+  </button>
+  <section class="clip-fab-panel" id="stationClipboardFabPanel" role="dialog" aria-label="Shared clipboard" aria-hidden="true">
+    <header class="clip-fab-head">
+      <div>
+        <p class="clip-fab-kicker">Shared clipboard</p>
+        <h3 class="clip-fab-title">Paste &amp; pick up anywhere</h3>
+        <p class="clip-fab-hint">Synced to your account. Open on another device to read it back.</p>
+      </div>
+      <button type="button" class="clip-fab-close" id="stationClipboardFabClose" aria-label="Close clipboard">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <div class="clip-fab-toolbar">
+      <button type="button" class="clip-fab-action" data-clip-action="paste" title="Read from your device clipboard">⇩ Paste</button>
+      <button type="button" class="clip-fab-action" data-clip-action="copy" title="Copy to your device clipboard">⇧ Copy</button>
+      <label class="clip-fab-action clip-fab-upload" title="Attach a file">
+        <input type="file" id="stationClipboardFabFile" hidden>
+        ＋ File
+      </label>
+      <button type="button" class="clip-fab-action danger" data-clip-action="clear" title="Clear shared clipboard">🗑 Clear</button>
+    </div>
+    <textarea id="stationClipboardFabText" placeholder="Type or paste text here — it syncs to all your devices."></textarea>
+    <div class="clip-fab-files" id="stationClipboardFabFiles"></div>
+    <p class="clip-fab-status" id="stationClipboardFabStatus" aria-live="polite"></p>
+  </section>
 </aside>
-<script src="assets/station-assist.js?v=20260518a"></script>
+  </div>
+</aside>
+<script src="assets/station-assist.js?v=20260519a"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {
@@ -1182,9 +1218,11 @@ function station_clipboard_fab_html(): string
     window.__stationClipboardFabPoll = null;
   }
 
+  var dock = document.getElementById('stationPageToolsDock');
   var fab = document.getElementById('stationClipboardFab');
   var toggle = document.getElementById('stationClipboardFabToggle');
   var panel = document.getElementById('stationClipboardFabPanel');
+  var assistPanel = document.getElementById('stationAssistFabPanel');
   var closeBtn = document.getElementById('stationClipboardFabClose');
   var text = document.getElementById('stationClipboardFabText');
   var status = document.getElementById('stationClipboardFabStatus');
@@ -1221,6 +1259,9 @@ function station_clipboard_fab_html(): string
 
     fab.classList.toggle('is-open', o);
     panel.classList.toggle('clip-fab-panel--open', o);
+    if (dock) {
+      dock.classList.toggle('clip-open', o);
+    }
     panel.setAttribute('aria-hidden', o ? 'false' : 'true');
     if (typeof panel.toggleAttribute === 'function') {
       panel.toggleAttribute('inert', !o);
@@ -1230,6 +1271,8 @@ function station_clipboard_fab_html(): string
     // Some clients still have the old service-worker cache that doesn't
     // know about .clip-fab-panel--open, so we drive `display` inline.
     panel.style.display = o ? 'flex' : 'none';
+    var assistOn = assistPanel && assistPanel.classList.contains('assist-fab-panel--open');
+    document.body.classList.toggle('station-overlay-open', o || assistOn);
     if (o) {
       window.setTimeout(function () { text && text.focus(); }, 60);
       refresh();
@@ -1353,13 +1396,11 @@ function station_clipboard_fab_html(): string
   toggle.addEventListener('click', function (ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    var assistPanel = document.getElementById('stationAssistFabPanel');
-    var assistDock = document.getElementById('stationPageToolsDock');
+    var assistToggle = document.getElementById('stationAssistFabToggle');
     if (assistPanel && assistPanel.classList.contains('assist-fab-panel--open')) {
       assistPanel.classList.remove('assist-fab-panel--open');
       assistPanel.style.display = 'none';
-      if (assistDock) { assistDock.classList.remove('assist-open'); }
-      var assistToggle = document.getElementById('stationAssistFabToggle');
+      if (dock) { dock.classList.remove('assist-open'); }
       if (assistToggle) { assistToggle.setAttribute('aria-expanded', 'false'); }
     }
     setOpen(!panel.classList.contains('clip-fab-panel--open'));

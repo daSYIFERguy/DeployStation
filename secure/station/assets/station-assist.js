@@ -76,6 +76,12 @@
     var clipPanel = document.getElementById('stationClipboardFabPanel');
     var clipToggle = document.getElementById('stationClipboardFabToggle');
 
+    function syncBodyOverlay() {
+      var assistOn = panel.classList.contains('assist-fab-panel--open');
+      var clipOn = clipPanel && clipPanel.classList.contains('clip-fab-panel--open');
+      document.body.classList.toggle('station-overlay-open', assistOn || clipOn);
+    }
+
     function setOpen(open) {
       var o = !!open;
       if (!o && panel.contains(document.activeElement)) {
@@ -95,11 +101,13 @@
           clipFab.classList.remove('is-open');
           clipPanel.classList.remove('clip-fab-panel--open');
           clipPanel.style.display = 'none';
+          dock.classList.remove('clip-open');
           if (clipToggle) { clipToggle.setAttribute('aria-expanded', 'false'); }
         }
         refreshContext();
         window.setTimeout(function () { input.focus(); }, 60);
       }
+      syncBodyOverlay();
     }
 
     panel.style.display = 'none';

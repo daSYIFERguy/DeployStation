@@ -251,7 +251,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260518b') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260519d') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -504,8 +504,14 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 
             <div class="settings-panel-divider"></div>
 
-            <h3 class="settings-subheading">Backups &amp; archive</h3>
+            <h3 class="settings-subheading">Backups, export &amp; archive</h3>
+            <p class="setting-description">Portable export is a Docker-ready zip (source + compose hints) for redeploying on another host. Full backup includes everything under the project folder.</p>
             <div class="admin-action-buttons">
+              <form method="post" action="project-export.php" class="admin-action-form">
+                <input type="hidden" name="action" value="portable">
+                <input type="hidden" name="project" value="<?= station_h($project) ?>">
+                <button type="submit" class="secondary-btn">Export portable bundle</button>
+              </form>
               <form method="post" action="backups.php" class="admin-action-form">
                 <input type="hidden" name="action" value="backup_project">
                 <input type="hidden" name="project" value="<?= station_h($project) ?>">

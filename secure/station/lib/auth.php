@@ -124,6 +124,41 @@ function station_allowed_project_access_modes(): array
     ];
 }
 
+/**
+ * Establish a session for an existing user (passwordless — GitHub login, etc.).
+ */
+function station_login_as_user(string $username): bool
+{
+    $username = station_safe_name($username);
+    if ($username === '') {
+        return false;
+    }
+
+    $cfg = station_config();
+    $users = isset($cfg['users']) && is_array($cfg['users']) ? $cfg['users'] : [];
+
+    foreach ($users as $idx => $user) {
+        if (!is_array($user)) {
+            continue;
+        }
+        $candidate = (string) ($user['username'] ?? '');
+        $active = !isset($user['active']) || (bool) $user['active'];
+        if ($candidate !== $username || !$active) {
+            continue;
+        }
+
+        $_SESSION['station_user'] = $candidate;
+        $users[$idx]['lastLoginAt'] = gmdate('c');
+        $cfg['users'] = $users;
+        station_save_config($cfg);
+        station_log_event('user.login', ['username' => $candidate, 'method' => 'github']);
+
+        return true;
+    }
+
+    return false;
+}
+
 function station_login(string $username, string $password): bool
 {
     $cfg = station_config();

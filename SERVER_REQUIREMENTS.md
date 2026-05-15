@@ -1,6 +1,6 @@
 # Ubuntu/Debian Server Requirements
 
-DeployStation can keep PHP/Nginx/MariaDB for the current control panel while project apps move into Docker containers.
+DeployStation runs as a PHP control panel on the host; application projects are built and run in Docker containers behind your reverse proxy.
 
 ## Required host packages
 
