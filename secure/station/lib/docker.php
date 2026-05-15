@@ -352,6 +352,17 @@ function station_detect_project_container_port(string $projectSlug): int
 {
     $projectPath = station_projects_dir() . '/' . station_safe_name($projectSlug);
     if (is_file($projectPath . '/package.json')) {
+        $raw = (string) @file_get_contents($projectPath . '/package.json');
+        $pkg = $raw !== '' ? json_decode($raw, true) : null;
+        if (is_array($pkg)) {
+            $deps = array_merge(
+                is_array($pkg['dependencies'] ?? null) ? $pkg['dependencies'] : [],
+                is_array($pkg['devDependencies'] ?? null) ? $pkg['devDependencies'] : []
+            );
+            if (isset($deps['meshcentral']) || str_contains(strtolower((string) ($pkg['name'] ?? '')), 'meshcentral')) {
+                return 4430;
+            }
+        }
         return 3000;
     }
     if (is_file($projectPath . '/requirements.txt') || is_file($projectPath . '/pyproject.toml')) {
@@ -713,7 +724,9 @@ function station_generate_docker_compose(array $projectConfig, string $projectSl
             $services[$serviceKey] = station_build_service_compose_block(
                 $serviceKey,
                 $serviceConfig,
-                $projectConfig['credentials'][$serviceKey] ?? []
+                $projectConfig['credentials'][$serviceKey] ?? [],
+                $projectConfig,
+                $projectSlug
             );
             $enabledServiceKeys[] = $serviceKey;
         }
@@ -728,16 +741,24 @@ function station_generate_docker_compose(array $projectConfig, string $projectSl
         }
     }
 
+    $caddyFront = !empty($projectConfig['services']['caddy']);
+    $extraVolumeLines = station_parse_docker_volume_lines((string) ($projectConfig['extraVolumes'] ?? ''));
+    if ($extraVolumeLines !== []) {
+        $appVolumes = array_merge($appVolumes, $extraVolumeLines);
+    }
+
     $appService = [
         'build' => [
             'context' => '.',
             'dockerfile' => 'Dockerfile',
         ],
         'restart' => 'unless-stopped',
-        'ports' => ['127.0.0.1:' . $hostPort . ':' . $appPort],
         'environment' => array_merge(['PORT' => (string) $appPort], station_build_app_env_vars($projectConfig)),
         'networks' => ['app-network'],
     ];
+    if (!$caddyFront) {
+        $appService['ports'] = ['127.0.0.1:' . $hostPort . ':' . $appPort];
+    }
     if ($appVolumes !== []) {
         $appService['volumes'] = $appVolumes;
     }
@@ -754,6 +775,15 @@ function station_generate_docker_compose(array $projectConfig, string $projectSl
     }
 
     $services['app'] = $appService;
+
+    if ($caddyFront && isset($services['caddy'])) {
+        $services['caddy']['ports'] = ['127.0.0.1:' . $hostPort . ':80'];
+        $caddyDepends = isset($services['caddy']['depends_on']) && is_array($services['caddy']['depends_on'])
+            ? $services['caddy']['depends_on']
+            : [];
+        $caddyDepends['app'] = ['condition' => 'service_started'];
+        $services['caddy']['depends_on'] = $caddyDepends;
+    }
 
     $compose = [
         'services' => $services,
@@ -791,8 +821,13 @@ function station_generate_docker_compose(array $projectConfig, string $projectSl
 /**
  * Build a single Docker service block for docker-compose
  */
-function station_build_service_compose_block(string $serviceKey, array $serviceConfig, array $credentials = []): array
-{
+function station_build_service_compose_block(
+    string $serviceKey,
+    array $serviceConfig,
+    array $credentials = [],
+    array $projectConfig = [],
+    string $projectSlug = ''
+): array {
     $block = [
         'image' => station_docker_service_image($serviceKey, (string) ($credentials['version'] ?? $serviceConfig['defaultVersion'])),
         'restart' => 'unless-stopped',
@@ -809,7 +844,7 @@ function station_build_service_compose_block(string $serviceKey, array $serviceC
         $block['environment'] = $env;
     }
 
-    $ports = station_docker_service_host_ports($serviceKey);
+    $ports = station_docker_service_host_ports($serviceKey, $projectConfig, $projectSlug);
     if ($ports !== []) {
         $block['ports'] = $ports;
     }
@@ -849,19 +884,25 @@ function station_docker_service_command(string $serviceKey): array|string|null
  *
  * @return string[]
  */
-function station_docker_service_host_ports(string $serviceKey): array
+function station_docker_service_host_ports(string $serviceKey, array $projectConfig = [], string $projectSlug = ''): array
 {
+    // Caddy is wired as an internal reverse proxy; the project host port maps to
+    // caddy:80 in station_generate_docker_compose(). Never bind 0.0.0.0:80 here —
+    // it conflicts with nginx/Apache on the host and breaks multi-project hosts.
+    if ($serviceKey === 'caddy') {
+        return [];
+    }
+
     $ports = [
-        'mailpit' => ['8025:8025', '1025:1025'],
-        'minio' => ['9000:9000', '9001:9001'],
-        'adminer' => ['8080:8080'],
-        'mongo-express' => ['8081:8081'],
-        'pgadmin' => ['5050:80'],
-        'caddy' => ['80:80', '443:443'],
-        'neo4j' => ['7474:7474', '7687:7687'],
-        'prometheus' => ['9090:9090'],
-        'grafana' => ['3001:3000'],
-        'rabbitmq' => ['15672:15672'],
+        'mailpit' => ['127.0.0.1:8025:8025', '127.0.0.1:1025:1025'],
+        'minio' => ['127.0.0.1:9000:9000', '127.0.0.1:9001:9001'],
+        'adminer' => ['127.0.0.1:8080:8080'],
+        'mongo-express' => ['127.0.0.1:8081:8081'],
+        'pgadmin' => ['127.0.0.1:5050:80'],
+        'neo4j' => ['127.0.0.1:7474:7474', '127.0.0.1:7687:7687'],
+        'prometheus' => ['127.0.0.1:9090:9090'],
+        'grafana' => ['127.0.0.1:3001:3000'],
+        'rabbitmq' => ['127.0.0.1:15672:15672'],
     ];
 
     return $ports[$serviceKey] ?? [];
@@ -882,6 +923,9 @@ function station_docker_service_dependencies(string $serviceKey, array $enabledS
     if ($serviceKey === 'pgadmin' && !empty($enabledServices['postgres'])) {
         $deps[] = 'postgres';
     }
+    if ($serviceKey === 'caddy' && !empty($enabledServices['caddy'])) {
+        $deps[] = 'app';
+    }
     return $deps;
 }
 
@@ -894,7 +938,7 @@ function station_docker_service_dependencies(string $serviceKey, array $enabledS
  *   - prometheus → writes a no-op prometheus.yml if missing.
  *   - caddy      → writes a starter Caddyfile if missing.
  */
-function station_ensure_docker_service_stub_files(string $projectSlug, array $enabledServices): void
+function station_ensure_docker_service_stub_files(string $projectSlug, array $enabledServices, int $appPort = 80): void
 {
     $projectPath = station_projects_dir() . '/' . station_safe_name($projectSlug);
     if (!is_dir($projectPath)) {
@@ -923,13 +967,14 @@ YAML;
     if (!empty($enabledServices['caddy'])) {
         $caddyPath = $projectPath . '/Caddyfile';
         if (!is_file($caddyPath)) {
-            $stub = <<<'CADDY'
-# Auto-generated stub by Deployment Station — replace with real routes.
+            $appPort = max(1, min(65535, $appPort));
+            $stub = <<<CADDY
+# Auto-generated by Deployment Station — edit routes as needed.
+# Station nginx proxies to the project host port (not host :80).
 :80 {
-    respond "Caddy is running for {{slug}}." 200
+    reverse_proxy app:{$appPort}
 }
 CADDY;
-            $stub = str_replace('{{slug}}', station_safe_name($projectSlug), $stub);
             @file_put_contents($caddyPath, $stub, LOCK_EX);
         }
     }
@@ -1443,7 +1488,199 @@ function station_build_app_env_vars(array $projectConfig): array
         }
     }
 
+    foreach (station_parse_docker_env_lines((string) ($projectConfig['extraEnvironment'] ?? '')) as $key => $value) {
+        $env[$key] = $value;
+    }
+
     return $env;
+}
+
+/**
+ * Parse KEY=value lines for extra app container environment variables.
+ *
+ * @return array<string, string>
+ */
+function station_parse_docker_env_lines(string $text): array
+{
+    $result = [];
+    foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
+        $trimmed = trim((string) $line);
+        if ($trimmed === '' || str_starts_with($trimmed, '#') || !str_contains($trimmed, '=')) {
+            continue;
+        }
+        [$key, $value] = explode('=', $trimmed, 2);
+        $safeKey = strtoupper(trim($key));
+        if ($safeKey === '') {
+            continue;
+        }
+        $result[$safeKey] = trim($value);
+    }
+
+    return $result;
+}
+
+/**
+ * Parse docker-compose volume lines (host:container[:mode]).
+ *
+ * @return list<string>
+ */
+function station_parse_docker_volume_lines(string $text): array
+{
+    $volumes = [];
+    foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
+        $trimmed = trim((string) $line);
+        if ($trimmed === '' || str_starts_with($trimmed, '#') || !str_contains($trimmed, ':')) {
+            continue;
+        }
+        $volumes[] = $trimmed;
+    }
+
+    return $volumes;
+}
+
+/**
+ * Operator-facing hint when docker compose fails with common host errors.
+ */
+function station_docker_failure_hint(string $output): string
+{
+    $out = strtolower($output);
+    if (str_contains($out, 'address already in use') && (str_contains($out, ':80') || str_contains($out, '0.0.0.0:80'))) {
+        return ' Port 80 on the host is already in use (usually nginx or Apache). '
+            . 'Uncheck Caddy for this project and save — Station proxies via your project host port and /p/&lt;slug&gt;/ URL instead. '
+            . 'Then open Docker → Rebuild image.';
+    }
+    if (str_contains($out, 'address already in use')) {
+        return ' A host port in docker-compose is already taken. Change the project host port under Docker → Deployment, '
+            . 'or stop the other container using that port.';
+    }
+    if (str_contains($out, 'timed out') || str_contains($out, 'timeout')) {
+        return ' The build or start exceeded the server time limit (often Cloudflare or PHP). '
+            . 'Run Rebuild from the Docker panel again, or SSH and run docker compose in the project folder.';
+    }
+
+    return '';
+}
+
+/**
+ * Scan a cloned/uploaded workspace and suggest Docker services, stack, and app port.
+ *
+ * @return array{recommendedServices: list<string>, appPort: int, stack: string, notes: list<string>}
+ */
+function station_analyze_workspace_docker_hints(string $projectSlug): array
+{
+    $slug = station_safe_name($projectSlug);
+    $projectPath = station_projects_dir() . '/' . $slug;
+    $recommended = [];
+    $notes = [];
+    $stack = station_infer_docker_stack($slug);
+    $appPort = station_detect_project_container_port($slug);
+
+    if (!is_dir($projectPath)) {
+        return ['recommendedServices' => [], 'appPort' => 80, 'stack' => 'other', 'notes' => []];
+    }
+
+    $composePath = station_find_project_compose_path($projectPath);
+    if ($composePath !== null) {
+        $yaml = (string) @file_get_contents($composePath);
+        foreach (station_compose_yaml_collect_images($yaml) as $img) {
+            $key = station_compose_image_to_station_service_key($img);
+            if ($key !== null) {
+                $recommended[] = $key;
+            }
+        }
+        $notes[] = 'Found ' . basename($composePath) . ' in the repository.';
+    }
+
+    $haystack = '';
+    foreach (['README.md', 'readme.md', 'package.json', 'docker-compose.yml', 'compose.yaml'] as $file) {
+        $p = $projectPath . '/' . $file;
+        if (is_file($p)) {
+            $haystack .= "\n" . strtolower((string) @file_get_contents($p));
+        }
+    }
+    if (str_contains($haystack, 'meshcentral')) {
+        $recommended[] = 'mongodb';
+        $stack = 'node';
+        $appPort = 4430;
+        $notes[] = 'MeshCentral detected — MongoDB and app port 4430 are typical.';
+    }
+    if (str_contains($haystack, 'wordpress') || is_file($projectPath . '/wp-config.php')) {
+        $recommended[] = 'mysql';
+        $stack = 'php';
+        $notes[] = 'WordPress/PHP project — MySQL is a common pairing.';
+    }
+    if (str_contains($haystack, 'laravel') || is_file($projectPath . '/artisan')) {
+        $recommended[] = 'mysql';
+        $recommended[] = 'redis';
+        $stack = 'php';
+    }
+    if (str_contains($haystack, 'next.js') || str_contains($haystack, '"next"')) {
+        $stack = 'node';
+        $appPort = 3000;
+    }
+
+    $recommended = array_values(array_unique($recommended));
+
+    return [
+        'recommendedServices' => $recommended,
+        'appPort' => $appPort,
+        'stack' => $stack,
+        'notes' => array_values(array_unique($notes)),
+    ];
+}
+
+/**
+ * After GitHub clone or upload: enable Docker, pre-select services, write compose when appropriate.
+ */
+function station_bootstrap_docker_from_workspace(string $projectSlug): void
+{
+    if (!station_docker_enabled()) {
+        return;
+    }
+    $slug = station_safe_name($projectSlug);
+    if ($slug === '') {
+        return;
+    }
+
+    station_try_bootstrap_native_docker_from_workspace($slug);
+
+    $settings = station_project_settings($slug);
+    $docker = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
+    if (!empty($docker['nativeCompose'])) {
+        return;
+    }
+
+    $hints = station_analyze_workspace_docker_hints($slug);
+    $services = isset($docker['services']) && is_array($docker['services']) ? $docker['services'] : [];
+    foreach ($hints['recommendedServices'] as $svc) {
+        if (station_docker_service($svc) !== null) {
+            $services[$svc] = true;
+        }
+    }
+
+    $docker = array_merge($docker, [
+        'containerized' => true,
+        'services' => $services,
+        'credentials' => isset($docker['credentials']) && is_array($docker['credentials']) ? $docker['credentials'] : [],
+        'recommendedServices' => array_values(array_unique(array_merge(
+            (array) ($docker['recommendedServices'] ?? []),
+            $hints['recommendedServices']
+        ))),
+        'stack' => trim((string) ($docker['stack'] ?? '')) !== '' ? (string) $docker['stack'] : $hints['stack'],
+        'appPort' => (int) ($docker['appPort'] ?? 0) > 0 ? (int) $docker['appPort'] : $hints['appPort'],
+        'hostPort' => (int) ($docker['hostPort'] ?? 0) > 0 ? (int) $docker['hostPort'] : station_allocate_project_host_port($slug),
+        'workspaceDockerNotes' => $hints['notes'],
+    ]);
+
+    $settings['docker'] = $docker;
+    station_save_project_settings($slug, $settings);
+
+    if (!empty($docker['containerized']) || $services !== []) {
+        station_ensure_project_dockerfile($slug);
+        station_ensure_docker_service_stub_files($slug, $services, (int) $docker['appPort']);
+        $composePath = station_projects_dir() . '/' . $slug . '/docker-compose.yml';
+        @file_put_contents($composePath, station_generate_docker_compose($docker, $slug), LOCK_EX);
+    }
 }
 
 /**
@@ -2146,6 +2383,8 @@ function station_compose_image_to_station_service_key(string $image): ?string
         'mongo-express' => 'mongo-express',
         'pgadmin' => 'pgadmin',
         'caddy' => 'caddy',
+        'grafana' => 'grafana',
+        'prometheus' => 'prometheus',
     ];
     foreach ($pairs as $needle => $key) {
         if (str_contains($l, $needle)) {

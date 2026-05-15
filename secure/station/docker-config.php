@@ -119,6 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $newConfig['nativeCompose'] = !empty($prevDocker['nativeCompose']);
     $newConfig['composeFile'] = (string) ($prevDocker['composeFile'] ?? '');
+    $newConfig['extraEnvironment'] = trim((string) ($_POST['extra_environment'] ?? ''));
+    $newConfig['extraVolumes'] = trim((string) ($_POST['extra_volumes'] ?? ''));
 
     if (station_encrypt_credentials($newConfig['credentials'], $projectSlug)) {
         $projectSettings = station_project_settings($projectSlug);
@@ -150,7 +152,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($newConfig['containerized']) || !empty($newConfig['services'])) {
             station_ensure_project_dockerfile($projectSlug, !empty($newConfig['forceRebuildDockerfile']));
-            station_ensure_docker_service_stub_files($projectSlug, (array) ($newConfig['services'] ?? []));
+            station_ensure_docker_service_stub_files(
+                $projectSlug,
+                (array) ($newConfig['services'] ?? []),
+                (int) ($newConfig['appPort'] ?? 80)
+            );
             $composePath = station_projects_dir() . '/' . $projectSlug . '/docker-compose.yml';
             $composeContent = station_generate_docker_compose($newConfig, $projectSlug);
             if (@file_put_contents($composePath, $composeContent, LOCK_EX) !== false) {
@@ -416,6 +422,41 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
                   <span class="feature-toggle-desc">Overwrite the existing Dockerfile with a fresh one matching the detected stack on the next save.</span>
                 </div>
               </label>
+            </div>
+
+            <?php
+              $dockerNotes = isset($projectConfig['workspaceDockerNotes']) && is_array($projectConfig['workspaceDockerNotes'])
+                  ? array_values(array_filter($projectConfig['workspaceDockerNotes'], static fn ($n): bool => is_string($n) && $n !== ''))
+                  : [];
+            ?>
+            <?php if ($dockerNotes !== []): ?>
+              <div class="alert ok" style="margin-top: 16px;">
+                <strong>Detected from repository</strong>
+                <ul style="margin: 8px 0 0; padding-left: 1.2rem;">
+                  <?php foreach ($dockerNotes as $note): ?>
+                    <li><?= station_h($note) ?></li>
+                  <?php endforeach; ?>
+                </ul>
+              </div>
+            <?php endif; ?>
+
+            <?php if (!empty($projectConfig['services']['caddy'])): ?>
+              <p class="setting-description" style="margin-top: 14px;">
+                <strong>Caddy</strong> proxies to your app inside Docker. It does <em>not</em> bind host port 80 (that conflicts with nginx on this server). Station routes <code>/p/<?= station_h($projectSlug) ?>/</code> to your <strong>host port</strong> above.
+              </p>
+            <?php endif; ?>
+
+            <div class="settings-form-group" style="margin-top: 18px;">
+              <div class="setting-item">
+                <label class="setting-label" for="extra_environment">Extra environment variables (app container)</label>
+                <textarea id="extra_environment" name="extra_environment" class="project-settings-textarea" rows="6" placeholder="MESH_HOST=mongodb&#10;MESH_PORT=27017"><?= station_h((string) ($projectConfig['extraEnvironment'] ?? '')) ?></textarea>
+                <p class="setting-description">One <code>KEY=value</code> per line, merged into the app service when compose is generated.</p>
+              </div>
+              <div class="setting-item">
+                <label class="setting-label" for="extra_volumes">Extra bind mounts (app container)</label>
+                <textarea id="extra_volumes" name="extra_volumes" class="project-settings-textarea" rows="5" placeholder="./data:/app/data"><?= station_h((string) ($projectConfig['extraVolumes'] ?? '')) ?></textarea>
+                <p class="setting-description">One <code>host_path:container_path</code> per line (paths relative to the project folder).</p>
+              </div>
             </div>
           </section>
 

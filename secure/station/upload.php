@@ -161,6 +161,9 @@ if (is_array($templateBootstrap)) {
 if (!isset($templateBootstrap) || !is_array($templateBootstrap)) {
     station_try_bootstrap_native_docker_from_workspace($slug);
 }
+if (!empty($_POST['configure_docker_next']) && station_docker_enabled()) {
+    station_bootstrap_docker_from_workspace($slug);
+}
 
 station_log_event('project.deployed', ['slug' => $slug, 'sourceType' => $action, 'owner' => $owner]);
 

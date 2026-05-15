@@ -179,7 +179,11 @@ if (!empty($result['ok'])) {
 
 $output = trim((string) ($result['output'] ?? ''));
 $snippet = $output !== '' ? mb_substr($output, -800) : '';
+$hint = station_docker_failure_hint($output);
 $message = 'Docker ' . $action . ' failed for ' . $project . '. View full log from the Docker panel.';
+if ($hint !== '') {
+    $message .= $hint;
+}
 if ($snippet !== '') {
     $message .= ' Last output: ' . $snippet;
 }
