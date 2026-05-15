@@ -200,6 +200,316 @@ function station_upsert_project_meta(array $project): bool
     return station_save_projects_meta($meta);
 }
 
+/**
+ * @return list<string>
+ */
+function station_project_web_index_basenames(): array
+{
+    return ['index.html', 'index.htm', 'index.php'];
+}
+
+/**
+ * List one directory level for entrypoint picker (dirs + index files).
+ *
+ * @return array{ok: bool, message?: string, dir: string, entries: list<array{name: string, type: string}>, indexFiles: list<string>}
+ */
+function station_project_list_workspace_dir(string $slug, string $relativeDir = ''): array
+{
+    $projectPath = station_project_path($slug);
+    $relativeDir = trim(str_replace('\\', '/', $relativeDir), '/');
+    if ($relativeDir !== '' && !station_is_safe_relative_path($relativeDir)) {
+        return ['ok' => false, 'message' => 'Invalid path.', 'dir' => '', 'entries' => [], 'indexFiles' => []];
+    }
+
+    $target = $relativeDir === '' ? $projectPath : $projectPath . '/' . $relativeDir;
+    if (!is_dir($target) || !station_realpath_inside($projectPath, $target)) {
+        return ['ok' => false, 'message' => 'Directory not found.', 'dir' => $relativeDir, 'entries' => [], 'indexFiles' => []];
+    }
+
+    $indexNames = array_flip(array_map('strtolower', station_project_web_index_basenames()));
+    $entries = [];
+    $indexFiles = [];
+
+    foreach (@scandir($target) ?: [] as $name) {
+        if (!is_string($name) || $name === '.' || $name === '..') {
+            continue;
+        }
+        $full = $target . '/' . $name;
+        if (!station_realpath_inside($projectPath, $full)) {
+            continue;
+        }
+        if (is_dir($full)) {
+            $entries[] = ['name' => $name, 'type' => 'dir'];
+            continue;
+        }
+        if (is_file($full) && isset($indexNames[strtolower($name)])) {
+            $indexFiles[] = $name;
+            $entries[] = ['name' => $name, 'type' => 'index'];
+        }
+    }
+
+    usort($entries, static function (array $a, array $b): int {
+        $order = ['dir' => 0, 'index' => 1];
+        $ta = $order[$a['type']] ?? 2;
+        $tb = $order[$b['type']] ?? 2;
+        if ($ta !== $tb) {
+            return $ta <=> $tb;
+        }
+
+        return strcasecmp((string) $a['name'], (string) $b['name']);
+    });
+
+    return [
+        'ok' => true,
+        'dir' => $relativeDir,
+        'entries' => $entries,
+        'indexFiles' => $indexFiles,
+    ];
+}
+
+/**
+ * Public URL path segment for this project's web root (may be a subdirectory).
+ */
+/**
+ * Full directory listing for project workspace IDE (files + folders).
+ *
+ * @return array{ok: bool, message?: string, dir: string, parent: string, entries: list<array{name: string, type: string, size?: int, modifiedAt?: string}>}
+ */
+function station_project_explorer_browse(string $slug, string $relativeDir = ''): array
+{
+    $projectPath = station_project_path($slug);
+    $relativeDir = trim(str_replace('\\', '/', $relativeDir), '/');
+    if ($relativeDir !== '' && !station_is_safe_relative_path($relativeDir)) {
+        return ['ok' => false, 'message' => 'Invalid path.', 'dir' => '', 'parent' => '', 'entries' => []];
+    }
+
+    $target = $relativeDir === '' ? $projectPath : $projectPath . '/' . $relativeDir;
+    if (!is_dir($target) || !station_realpath_inside($projectPath, $target)) {
+        return ['ok' => false, 'message' => 'Directory not found.', 'dir' => $relativeDir, 'parent' => '', 'entries' => []];
+    }
+
+    $parent = '';
+    if ($relativeDir !== '') {
+        $parts = explode('/', $relativeDir);
+        array_pop($parts);
+        $parent = implode('/', $parts);
+    }
+
+    $entries = [];
+    foreach (@scandir($target) ?: [] as $name) {
+        if (!is_string($name) || $name === '.' || $name === '..') {
+            continue;
+        }
+        $full = $target . '/' . $name;
+        if (!station_realpath_inside($projectPath, $full)) {
+            continue;
+        }
+        if (is_dir($full)) {
+            $entries[] = [
+                'name' => $name,
+                'type' => 'dir',
+                'modifiedAt' => gmdate('c', (int) (@filemtime($full) ?: 0)),
+            ];
+            continue;
+        }
+        if (is_file($full)) {
+            $entries[] = [
+                'name' => $name,
+                'type' => 'file',
+                'size' => (int) (@filesize($full) ?: 0),
+                'modifiedAt' => gmdate('c', (int) (@filemtime($full) ?: 0)),
+            ];
+        }
+    }
+
+    usort($entries, static function (array $a, array $b): int {
+        $ta = ($a['type'] ?? '') === 'dir' ? 0 : 1;
+        $tb = ($b['type'] ?? '') === 'dir' ? 0 : 1;
+        if ($ta !== $tb) {
+            return $ta <=> $tb;
+        }
+
+        return strcasecmp((string) $a['name'], (string) $b['name']);
+    });
+
+    return [
+        'ok' => true,
+        'dir' => $relativeDir,
+        'parent' => $parent,
+        'entries' => $entries,
+    ];
+}
+
+/**
+ * @return array{ok: bool, message: string}
+ */
+function station_project_workspace_mkdir(string $slug, string $relativeDir): array
+{
+    $relativeDir = trim(str_replace('\\', '/', $relativeDir), '/');
+    if ($relativeDir === '' || !station_is_safe_relative_path($relativeDir)) {
+        return ['ok' => false, 'message' => 'Invalid folder path.'];
+    }
+
+    $projectPath = station_project_path($slug);
+    $target = $projectPath . '/' . $relativeDir;
+    if (is_dir($target)) {
+        return ['ok' => true, 'message' => 'Folder already exists.'];
+    }
+    if (is_file($target)) {
+        return ['ok' => false, 'message' => 'A file exists at that path.'];
+    }
+
+    $parent = dirname($target);
+    if (!is_dir($parent)) {
+        @mkdir($parent, 0755, true);
+    }
+    if (!is_dir($parent) || !station_realpath_inside($projectPath, $parent)) {
+        return ['ok' => false, 'message' => 'Could not create parent directories.'];
+    }
+
+    if (!@mkdir($target, 0755, false) && !is_dir($target)) {
+        return ['ok' => false, 'message' => 'Could not create folder.'];
+    }
+    if (!station_realpath_inside($projectPath, $target)) {
+        return ['ok' => false, 'message' => 'Path is outside the project.'];
+    }
+
+    return ['ok' => true, 'message' => 'Folder created.'];
+}
+
+/**
+ * @return array{ok: bool, message: string}
+ */
+function station_project_workspace_delete(string $slug, string $relativePath): array
+{
+    $relativePath = trim(str_replace('\\', '/', $relativePath), '/');
+    if ($relativePath === '' || !station_is_safe_relative_path($relativePath)) {
+        return ['ok' => false, 'message' => 'Invalid path.'];
+    }
+
+    $projectPath = station_project_path($slug);
+    $target = $projectPath . '/' . $relativePath;
+    if (!file_exists($target) || !station_realpath_inside($projectPath, $target)) {
+        return ['ok' => false, 'message' => 'Path not found.'];
+    }
+
+    if (is_dir($target)) {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($target, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($it as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        if (!@rmdir($target)) {
+            return ['ok' => false, 'message' => 'Could not delete folder (not empty or permission denied).'];
+        }
+
+        return ['ok' => true, 'message' => 'Folder deleted.'];
+    }
+
+    if (!@unlink($target)) {
+        return ['ok' => false, 'message' => 'Could not delete file.'];
+    }
+
+    return ['ok' => true, 'message' => 'File deleted.'];
+}
+
+/**
+ * @return array{ok: bool, message: string, path?: string}
+ */
+function station_project_workspace_rename(string $slug, string $from, string $to): array
+{
+    $from = trim(str_replace('\\', '/', $from), '/');
+    $to = trim(str_replace('\\', '/', $to), '/');
+    if ($from === '' || $to === '' || !station_is_safe_relative_path($from) || !station_is_safe_relative_path($to)) {
+        return ['ok' => false, 'message' => 'Invalid path.'];
+    }
+
+    $projectPath = station_project_path($slug);
+    $src = $projectPath . '/' . $from;
+    $dst = $projectPath . '/' . $to;
+    if (!file_exists($src) || !station_realpath_inside($projectPath, $src)) {
+        return ['ok' => false, 'message' => 'Source not found.'];
+    }
+    if (file_exists($dst)) {
+        return ['ok' => false, 'message' => 'Target already exists.'];
+    }
+
+    $dstParent = dirname($dst);
+    if (!is_dir($dstParent)) {
+        @mkdir($dstParent, 0755, true);
+    }
+    if (!station_realpath_inside($projectPath, $dstParent)) {
+        return ['ok' => false, 'message' => 'Target path is outside the project.'];
+    }
+
+    if (!@rename($src, $dst)) {
+        return ['ok' => false, 'message' => 'Rename failed.'];
+    }
+
+    return ['ok' => true, 'message' => 'Renamed.', 'path' => $to];
+}
+
+/**
+ * @param array{name?: string, tmp_name?: string, error?: int, size?: int} $uploaded
+ * @return array{ok: bool, message: string, path?: string}
+ */
+function station_project_workspace_upload(string $slug, string $relativeDir, array $uploaded): array
+{
+    $relativeDir = trim(str_replace('\\', '/', $relativeDir), '/');
+    if ($relativeDir !== '' && !station_is_safe_relative_path($relativeDir)) {
+        return ['ok' => false, 'message' => 'Invalid upload directory.'];
+    }
+
+    $error = (int) ($uploaded['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($error !== UPLOAD_ERR_OK) {
+        return ['ok' => false, 'message' => 'Upload failed (code ' . $error . ').'];
+    }
+
+    $tmp = (string) ($uploaded['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        return ['ok' => false, 'message' => 'Invalid upload payload.'];
+    }
+
+    $name = basename((string) ($uploaded['name'] ?? 'upload.bin'));
+    $name = preg_replace('/[^a-zA-Z0-9._\-]+/', '_', $name) ?: 'upload.bin';
+    $relPath = ($relativeDir !== '' ? $relativeDir . '/' : '') . $name;
+
+    $projectPath = station_project_path($slug);
+    $target = $projectPath . '/' . $relPath;
+    $parent = dirname($target);
+    if (!is_dir($parent)) {
+        @mkdir($parent, 0755, true);
+    }
+    if (!station_realpath_inside($projectPath, $parent)) {
+        return ['ok' => false, 'message' => 'Upload path is outside the project.'];
+    }
+
+    if (!@move_uploaded_file($tmp, $target)) {
+        return ['ok' => false, 'message' => 'Could not save uploaded file.'];
+    }
+
+    return ['ok' => true, 'message' => 'Uploaded.', 'path' => $relPath];
+}
+
+function station_project_public_web_path(string $slug): string
+{
+    if (!function_exists('station_project_resolve_web_entry')) {
+        require_once __DIR__ . '/project-launch.php';
+    }
+    $entry = station_project_resolve_web_entry($slug);
+    if ($entry !== null && ($entry['dir'] ?? '') !== '') {
+        return station_project_serve_path($slug, (string) $entry['dir']);
+    }
+
+    return station_project_serve_path($slug);
+}
+
 function station_scan_project_files(string $slug): array
 {
     $projectPath = station_project_path($slug);

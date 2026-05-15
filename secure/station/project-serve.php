@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/project-launch.php';
 
 station_require_setup();
 
@@ -34,6 +35,13 @@ if (!station_user_may_access_project($user, $slug)) {
 }
 
 $projectPath = station_project_path($slug);
+
+if ($relativePath === '') {
+    $entry = station_project_resolve_web_entry($slug);
+    if ($entry !== null && ($entry['dir'] ?? '') !== '') {
+        $relativePath = (string) $entry['dir'];
+    }
+}
 
 if ($relativePath !== '' && !station_is_safe_relative_path($relativePath)) {
     http_response_code(400);

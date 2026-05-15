@@ -143,6 +143,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $run('Unknown GitHub action.', false);
     }
 
+    if ($action === 'save_web_entrypoint') {
+        $dir = trim(str_replace('\\', '/', (string) ($_POST['web_entry_dir'] ?? '')), '/');
+        $file = trim((string) ($_POST['web_entry_file'] ?? '')) ?: 'index.html';
+        $check = station_project_validate_web_entry_input($project, $dir, $file);
+        if (empty($check['ok'])) {
+            station_flash_set('error', (string) ($check['message'] ?? 'Invalid entrypoint.'));
+        } else {
+            $settings['launch'] = [
+                'webEntryManual' => true,
+                'webEntryDir' => (string) ($check['dir'] ?? $dir),
+                'webEntryFile' => (string) ($check['file'] ?? $file),
+            ];
+            if (station_save_project_settings($project, $settings)) {
+                station_flash_set('ok', 'Web entrypoint saved: ' . ($settings['launch']['webEntryDir'] !== ''
+                    ? $settings['launch']['webEntryDir'] . '/'
+                    : '') . $settings['launch']['webEntryFile']);
+            } else {
+                station_flash_set('error', 'Could not save entrypoint settings.');
+            }
+        }
+        header('Location: project-settings.php?project=' . urlencode($project) . '#general');
+        exit;
+    }
+
+    if ($action === 'clear_web_entrypoint') {
+        $settings['launch'] = [
+            'webEntryManual' => false,
+            'webEntryDir' => '',
+            'webEntryFile' => 'index.html',
+        ];
+        if (station_save_project_settings($project, $settings)) {
+            station_flash_set('ok', 'Manual web entrypoint cleared — auto-detection is used again.');
+        } else {
+            station_flash_set('error', 'Could not clear entrypoint settings.');
+        }
+        header('Location: project-settings.php?project=' . urlencode($project) . '#general');
+        exit;
+    }
+
     if ($action === 'save_settings' || $action === 'save_github') {
         if ($action === 'save_settings') {
             $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
@@ -202,6 +241,8 @@ $pAccess = (string) ($projectMeta['accessMode'] ?? 'admin');
 $pOwner = (string) ($projectMeta['owner'] ?? 'unknown');
 $isStationOwner = station_is_owner($user);
 $launchProfile = station_project_launch_profile($project);
+$launchCfg = station_project_launch_config($settings);
+$webEntryResolved = station_project_resolve_web_entry($project);
 $githubSyncRow = ($stationGithubOn && $githubUserEnabled && $githubToken !== '')
     ? station_github_project_sync_row($project, $githubToken)
     : null;
@@ -210,7 +251,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260517b') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -264,6 +305,29 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
                 <label class="setting-label" for="notes">Internal notes</label>
                 <textarea id="notes" name="notes" class="project-settings-textarea" rows="8" placeholder="Runbooks, credentials location, staging URLs…"><?= station_h((string) ($settings['notes'] ?? '')) ?></textarea>
                 <p class="setting-description">Visible to everyone who can open this project’s settings. Do not store secrets here unless the project is appropriately restricted.</p>
+              </div>
+              <div class="setting-item web-entrypoint-block" id="web-entrypoint">
+                <h3 class="settings-subheading">Web entrypoint</h3>
+                <p class="setting-description">
+                  For repos where <code>index.html</code> lives in a subfolder (common with GitHub imports).
+                  Optional — set manually; DeployStation will not guess a subdirectory.
+                </p>
+                <?php if ($webEntryResolved !== null): ?>
+                  <p class="web-entrypoint-status web-entrypoint-status-ok">
+                    Active: <code><?= station_h((string) $webEntryResolved['relative']) ?></code>
+                    · <a href="<?= station_h(station_project_public_web_path($project)) ?>" target="_blank" rel="noreferrer">Open site ↗</a>
+                  </p>
+                <?php elseif ($launchCfg['webEntryManual']): ?>
+                  <p class="web-entrypoint-status web-entrypoint-status-warn">Saved path missing on disk — select again.</p>
+                <?php else: ?>
+                  <p class="web-entrypoint-status"><?= station_h((string) ($launchProfile['summary'] ?? 'Auto-detect only')) ?></p>
+                <?php endif; ?>
+                <div class="web-entrypoint-actions">
+                  <button type="button" class="btn-primary" id="openEntrypointPicker">Select entrypoint…</button>
+                  <?php if ($launchCfg['webEntryManual']): ?>
+                    <button type="submit" class="secondary-btn" name="action" value="clear_web_entrypoint" formnovalidate>Clear entrypoint</button>
+                  <?php endif; ?>
+                </div>
               </div>
             </div>
 
@@ -340,8 +404,15 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
                   <?php if (!empty($githubSyncRow['has_git'])): ?>
                     <?php if ($behind > 0): ?><span class="gh-sync-pill gh-pill-warn"><?= $behind ?> behind GitHub</span><?php endif; ?>
                     <?php if ($ahead > 0): ?><span class="gh-sync-pill gh-pill-ok"><?= $ahead ?> ahead (push)</span><?php endif; ?>
-                    <?php if (!empty($githubSyncRow['dirty'])): ?><span class="gh-sync-pill gh-pill-warn">Uncommitted changes</span><?php endif; ?>
-                    <?php if ($behind === 0 && $ahead === 0 && empty($githubSyncRow['dirty'])): ?><span class="gh-sync-pill gh-pill-ok">In sync</span><?php endif; ?>
+                    <?php if (!empty($githubSyncRow['dirty'])): ?>
+                      <span class="gh-sync-pill gh-pill-warn" title="<?= station_h((string) ($githubSyncRow['dirty_preview'] ?? '')) ?>">Modified tracked files (<?= (int) ($githubSyncRow['dirty_count'] ?? 0) ?>)</span>
+                    <?php elseif (!empty($githubSyncRow['has_untracked'])): ?>
+                      <span class="gh-sync-pill gh-pill-muted" title="<?= station_h((string) ($githubSyncRow['untracked_preview'] ?? '')) ?>"><?= (int) ($githubSyncRow['untracked_count'] ?? 0) ?> untracked file<?= ((int) ($githubSyncRow['untracked_count'] ?? 0)) === 1 ? '' : 's' ?> (not on GitHub yet)</span>
+                    <?php endif; ?>
+                    <?php if ((int) ($githubSyncRow['untracked_ignored_count'] ?? 0) > 0): ?>
+                      <span class="gh-sync-pill gh-pill-muted"><?= (int) $githubSyncRow['untracked_ignored_count'] ?> local-only (.env.local)</span>
+                    <?php endif; ?>
+                    <?php if ($behind === 0 && $ahead === 0 && empty($githubSyncRow['dirty'])): ?><span class="gh-sync-pill gh-pill-ok">In sync with GitHub</span><?php endif; ?>
                   <?php else: ?>
                     <span class="gh-sync-pill gh-pill-warn">No local git — init &amp; link below</span>
                   <?php endif; ?>
@@ -463,6 +534,31 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
       </div>
     </main>
   </div>
+
+  <div id="entrypointModal" class="entrypoint-modal" hidden aria-hidden="true">
+    <div class="entrypoint-modal-backdrop" data-entrypoint-close></div>
+    <div class="entrypoint-modal-dialog" role="dialog" aria-labelledby="entrypointModalTitle" aria-modal="true">
+      <header class="entrypoint-modal-head">
+        <h2 id="entrypointModalTitle">Select web entrypoint</h2>
+        <button type="button" class="entrypoint-modal-close" data-entrypoint-close aria-label="Close">×</button>
+      </header>
+      <p class="setting-description">Open a folder, then choose <code>index.html</code>, <code>index.htm</code>, or <code>index.php</code> in that folder.</p>
+      <nav class="entrypoint-breadcrumb" id="entrypointBreadcrumb" aria-label="Path"></nav>
+      <div class="entrypoint-list" id="entrypointList"></div>
+      <p class="entrypoint-picker-status" id="entrypointPickerStatus"></p>
+      <form method="post" class="entrypoint-modal-actions">
+        <input type="hidden" name="project" value="<?= station_h($project) ?>">
+        <input type="hidden" name="action" value="save_web_entrypoint">
+        <input type="hidden" name="web_entry_dir" id="webEntryDir" value="">
+        <input type="hidden" name="web_entry_file" id="webEntryFile" value="index.html">
+        <button type="button" class="secondary-btn" data-entrypoint-close>Cancel</button>
+        <button type="submit" class="btn-primary" id="entrypointSaveBtn" disabled>Use selected index</button>
+      </form>
+    </div>
+  </div>
+
+  <script>window.STATION_ENTRYPOINT_PICKER = <?= json_encode(['project' => $project], JSON_UNESCAPED_SLASHES) ?>;</script>
+  <script src="assets/project-entrypoint-picker.js?v=20260517b"></script>
   <?= station_dashboard_nav_script_html() ?>
   <script>
     (function () {

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/openai.php';
 
 station_require_login();
 
@@ -68,7 +69,10 @@ $gh = isset($profile['integrations']['github']) && is_array($profile['integratio
 $oai = isset($profile['integrations']['openai']) && is_array($profile['integrations']['openai'])
     ? $profile['integrations']['openai']
     : [];
-$adminOpenaiConfigured = trim((string) ($adminForGithub['openaiApiKey'] ?? '')) !== '';
+$openaiStatus = station_openai_user_key_status($username);
+$openaiSource = (string) ($openaiStatus['active'] ?? 'none');
+$openaiUserKeySaved = !empty($openaiStatus['userKeySaved']);
+$adminOpenaiConfigured = !empty($openaiStatus['globalConfigured']);
 ?>
 <!doctype html>
 <html lang="en">
@@ -157,13 +161,60 @@ $adminOpenaiConfigured = trim((string) ($adminForGithub['openaiApiKey'] ?? '')) 
 
                         <div class="mission-user-card mission-user-card-openai">
                             <h2 class="mission-user-card-title">OpenAI</h2>
-                            <p class="mission-user-card-desc">Optional personal API key for App explorer summaries on Launch. Overrides the station-wide key when set.</p>
-                            <?php if ($adminOpenaiConfigured): ?>
-                              <p class="mission-help-link" style="margin-bottom:10px;">Station default key is configured in Admin → GitHub / Integrations.</p>
-                            <?php endif; ?>
+                            <p class="mission-user-card-desc">Used by App explorer and the deploy assistant on Launch. A saved personal key overrides the station global key.</p>
+
+                            <div class="openai-key-status" role="status" aria-live="polite">
+                              <p class="openai-key-status-heading">
+                                Currently in use:
+                                <span class="gh-sync-pill <?= $openaiSource === 'none' ? 'gh-pill-warn' : ($openaiSource === 'user' ? 'gh-pill-ok' : 'gh-pill-muted') ?>">
+                                  <?php if ($openaiSource === 'user'): ?>
+                                    Your personal key
+                                  <?php elseif ($openaiSource === 'global'): ?>
+                                    Station global key
+                                  <?php else: ?>
+                                    None — features disabled
+                                  <?php endif; ?>
+                                </span>
+                              </p>
+                              <ul class="openai-key-status-list">
+                                <li>
+                                  <span>Your personal key</span>
+                                  <span class="gh-sync-pill <?= $openaiUserKeySaved ? 'gh-pill-ok' : 'gh-pill-muted' ?>"><?= $openaiUserKeySaved ? 'Saved' : 'Not set' ?></span>
+                                </li>
+                                <li>
+                                  <span>Station global key</span>
+                                  <span class="gh-sync-pill <?= $adminOpenaiConfigured ? 'gh-pill-ok' : 'gh-pill-muted' ?>"><?= $adminOpenaiConfigured ? 'Configured' : 'Not configured' ?></span>
+                                </li>
+                              </ul>
+                              <?php if ($openaiSource === 'global'): ?>
+                                <p class="mission-help-link">No personal key saved — using the admin key from <a href="admin-settings.php?tab=github">Admin → Integrations</a>.</p>
+                              <?php elseif ($openaiSource === 'user'): ?>
+                                <p class="mission-help-link">Your personal key is active. Clear this field and save to switch to the station global key<?= $adminOpenaiConfigured ? '' : ' (not configured yet)' ?>.</p>
+                              <?php else: ?>
+                                <p class="mission-help-link">Add a key below or configure the station default under <a href="admin-settings.php?tab=github">Admin → Integrations</a>.</p>
+                              <?php endif; ?>
+                            </div>
+
                             <label class="mission-field">
-                                <span class="mission-field-label">Your API key</span>
-                                <input type="password" name="openai_api_key" value="" placeholder="<?= trim((string) ($oai['apiKey'] ?? '')) !== '' ? 'Saved — leave blank to keep' : ($adminOpenaiConfigured ? 'Optional — uses station key' : 'sk-…') ?>" autocomplete="new-password">
+                                <span class="mission-field-label">Your API key <span class="mission-optional">optional</span></span>
+                                <input type="password" name="openai_api_key" value="" placeholder="<?php
+                                  if ($openaiUserKeySaved) {
+                                      echo 'Saved — leave blank to keep; clear + save to use global';
+                                  } elseif ($adminOpenaiConfigured) {
+                                      echo 'Optional — empty uses station global key';
+                                  } else {
+                                      echo 'sk-…';
+                                  }
+                                ?>" autocomplete="new-password">
+                                <p class="mission-field-hint"><?php
+                                  if ($openaiUserKeySaved && $openaiSource === 'user') {
+                                      echo 'In use: your personal key (this field).';
+                                  } elseif ($adminOpenaiConfigured && !$openaiUserKeySaved) {
+                                      echo 'In use: station global key. Enter a key here only for your own OpenAI billing.';
+                                  } else {
+                                      echo 'In use: none. Save a personal key or ask an admin to set the global key.';
+                                  }
+                                ?></p>
                             </label>
                         </div>
                         <?php endif; ?>

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
+require_once __DIR__ . '/lib/docker.php';
+require_once __DIR__ . '/lib/project-launch.php';
 
 station_require_login();
 $user = station_current_user();
@@ -15,83 +17,128 @@ if ($project === '' || !station_project_exists($project)) {
     exit;
 }
 
-  if (!station_user_may_access_project($user, $project)) {
+if (!station_user_may_access_project($user, $project)) {
     station_flash_set('error', 'You do not have access to that project.');
     header('Location: station.php');
     exit;
-  }
-
-$file = trim((string) ($_GET['file'] ?? ''));
-$files = station_scan_project_files($project);
-$content = null;
-if ($file !== '') {
-    $content = station_read_project_file($project, $file);
 }
 
+$file = trim(str_replace('\\', '/', (string) ($_GET['file'] ?? '')));
+if ($file !== '' && !station_is_safe_relative_path($file)) {
+    $file = '';
+}
+
+$canBuild = station_can_build($user);
+$settings = station_project_settings($project);
+$dockerPs = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
+$dockerContainerized = !empty($dockerPs['containerized']) && station_docker_enabled();
 $ghLinks = station_project_github_browser_links($project);
 
 station_log_event('project.viewer.opened', ['project' => $project, 'file' => $file]);
 
-$error = station_flash_get('error');
+$ideConfig = [
+    'project' => $project,
+    'canBuild' => $canBuild,
+    'terminalUrl' => station_terminal_embed_url(),
+    'dockerEnabled' => station_docker_enabled(),
+    'dockerContainerized' => $dockerContainerized,
+    'initialFile' => $file,
+    'publicWebPath' => station_project_public_web_path($project),
+];
 ?>
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Viewer', 'Browse project files from the deployment station.') ?>
+  <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.', 'assets/style.css?v=20260517a') ?>
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260517a">
 </head>
 <body class="station-body">
-  <main class="station-shell">
-    <header class="topbar card">
-      <div>
-        <p class="kicker">Project Viewer</p>
-        <h1><?= station_h($project) ?></h1>
-        <p>User: <?= station_h((string) ($user['username'] ?? '')) ?></p>
+  <div class="dashboard-shell">
+    <?= station_dashboard_nav_html('dashboard') ?>
+    <main class="dashboard-main workspace-ide-main">
+      <header class="dashboard-topbar">
+        <div>
+          <p class="dashboard-kicker">Workspace</p>
+          <h1 class="dashboard-heading"><?= station_h($project) ?></h1>
+          <p class="dashboard-subheading">Browse, edit, upload, and manage files<?= $canBuild ? ' — builder access' : ' — read-only' ?>.</p>
+        </div>
+        <nav class="nav-pills">
+          <a href="station.php">Dashboard</a>
+          <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
+          <a href="project-settings.php?project=<?= urlencode($project) ?>">Manage</a>
+          <?php if (is_array($ghLinks)): ?>
+            <a href="<?= station_h((string) $ghLinks['html']) ?>" target="_blank" rel="noreferrer">GitHub ↗</a>
+          <?php endif; ?>
+        </nav>
+      </header>
+
+      <?= station_flash_banners_html() ?>
+
+      <div class="workspace-ide-toolbar">
+        <div class="workspace-ide-toolbar-group">
+          <button type="button" class="secondary-btn" id="wsRefresh">Refresh</button>
+          <?php if ($canBuild): ?>
+            <button type="button" class="secondary-btn" id="wsNewFile">New file</button>
+            <button type="button" class="secondary-btn" id="wsMkdir">New folder</button>
+            <label class="secondary-btn" style="cursor:pointer;margin:0;">
+              Upload
+              <input type="file" id="wsUploadInput" multiple hidden>
+            </label>
+            <button type="button" class="secondary-btn" id="wsDelete">Delete</button>
+            <button type="button" class="btn-primary" id="wsSave">Save</button>
+          <?php endif; ?>
+        </div>
+        <div class="workspace-ide-toolbar-group">
+          <a class="secondary-btn" href="<?= station_h(station_project_public_web_path($project)) ?>" target="_blank" rel="noreferrer">Open site ↗</a>
+          <button type="button" class="secondary-btn" id="wsToggleTerminal">Show terminal</button>
+          <?php if (station_is_owner($user)): ?>
+            <a class="secondary-btn" href="admin-host-health.php">Host nginx / PHP / Docker</a>
+          <?php endif; ?>
+        </div>
+        <?php if ($canBuild && $dockerContainerized): ?>
+        <div class="workspace-ide-toolbar-group">
+          <button type="button" class="secondary-btn" id="wsDockerStart" data-docker-action="start">Docker start</button>
+          <button type="button" class="secondary-btn" id="wsDockerStop" data-docker-action="stop">Stop</button>
+          <button type="button" class="secondary-btn" id="wsDockerRestart" data-docker-action="restart">Restart</button>
+        </div>
+        <?php endif; ?>
       </div>
-      <nav class="nav-pills">
-        <a href="station.php">Dashboard</a>
-        <a href="launch.php?project=<?= urlencode($project) ?>" target="_blank" rel="noreferrer">Launch Site</a>
-        <?php if (is_array($ghLinks)): ?>
-          <a href="<?= station_h($ghLinks['html']) ?>" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="<?= station_h($ghLinks['github_dev']) ?>" target="_blank" rel="noreferrer">github.dev</a>
-          <a href="<?= station_h($ghLinks['vscode_vfs']) ?>">Open in VS Code</a>
-          <a href="<?= station_h($ghLinks['cursor_vfs']) ?>">Open in Cursor</a>
-        <?php endif; ?>
-        <?php if (station_can_build($user)): ?>
-          <a href="integration-help.php#workspace-api">Workspace API</a>
-        <?php endif; ?>
-        <a href="logout.php">Logout</a>
-      </nav>
-    </header>
 
-    <?= station_flash_banners_html() ?>
+      <div class="workspace-ide-body">
+        <aside class="workspace-ide-sidebar">
+          <div class="workspace-ide-sidebar-head">
+            <nav class="workspace-ide-breadcrumb" id="wsBreadcrumb" aria-label="Folder path"></nav>
+          </div>
+          <div class="workspace-ide-tree" id="wsTree"></div>
+        </aside>
+        <section class="workspace-ide-editor">
+          <div class="workspace-ide-editor-head">
+            <span>File: <code id="wsOpenPath"><?= $file !== '' ? station_h($file) : '—' ?></code></span>
+          </div>
+          <?php if ($canBuild): ?>
+            <textarea id="wsEditor" class="workspace-ide-textarea" spellcheck="false" placeholder="Select a file from the tree…"></textarea>
+          <?php else: ?>
+            <textarea id="wsEditor" class="workspace-ide-textarea" spellcheck="false" readonly placeholder="Select a file to view (read-only)…"></textarea>
+          <?php endif; ?>
+          <p class="workspace-ide-status" id="wsStatus"></p>
+        </section>
+      </div>
 
-    <section class="grid-split">
-      <aside class="card list-panel">
-        <h2>Files</h2>
-        <ul class="file-list">
-          <?php foreach ($files as $entry): ?>
-            <?php $path = (string) ($entry['path'] ?? ''); ?>
-            <li>
-              <a class="file-item <?= $path === $file ? 'active' : '' ?>" href="viewer.php?project=<?= urlencode($project) ?>&file=<?= urlencode($path) ?>"><?= station_h($path) ?></a>
-              <a class="mini-link" href="editor.php?project=<?= urlencode($project) ?>&file=<?= urlencode($path) ?>">Edit</a>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      </aside>
+      <div class="workspace-ide-terminal" id="wsTerminal" hidden>
+        <div class="workspace-ide-terminal-head">
+          <span>SSH terminal — <?= station_h(station_terminal_embed_url()) ?> (sign in when prompted)</span>
+          <button type="button" class="secondary-btn" id="wsTerminalClose">Hide</button>
+        </div>
+        <iframe id="wsTerminalFrame" title="SSH terminal" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+      </div>
+    </main>
+  </div>
 
-      <section class="card editor-panel">
-        <h2>Content</h2>
-        <?php if ($file === ''): ?>
-          <p>Select a file to view content.</p>
-        <?php elseif ($content === null): ?>
-          <p>File is not text-previewable or inaccessible.</p>
-        <?php else: ?>
-          <p class="file-meta">Path: <?= station_h($file) ?></p>
-          <pre class="code-block"><?= station_h($content) ?></pre>
-        <?php endif; ?>
-      </section>
-    </section>
-  </main>
+  <script>
+  window.STATION_WORKSPACE_IDE = <?= json_encode($ideConfig, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) ?>;
+  </script>
+  <script src="assets/project-workspace.js?v=20260517a"></script>
+  <?= station_dashboard_nav_script_html() ?>
   <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>
 </body>

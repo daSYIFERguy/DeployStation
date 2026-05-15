@@ -479,6 +479,19 @@ function station_save_projects_meta(array $meta): bool
     return station_write_json(station_projects_meta_path(), $meta);
 }
 
+function station_terminal_embed_url(): string
+{
+    $url = trim((string) (station_admin_settings()['terminalEmbedUrl'] ?? ''));
+    if ($url === '') {
+        return 'https://syifer.dev/terminal/';
+    }
+    if (!preg_match('#^https?://#i', $url)) {
+        $url = 'https://' . ltrim($url, '/');
+    }
+
+    return str_ends_with($url, '/') ? $url : $url . '/';
+}
+
 function station_admin_settings(): array
 {
     $defaults = array_merge([
@@ -504,6 +517,7 @@ function station_admin_settings(): array
         'githubOAuthClientSecret' => '',
         'openaiApiKey' => '',
         'openaiModel' => 'gpt-4o-mini',
+        'terminalEmbedUrl' => 'https://syifer.dev/terminal/',
     ], station_admin_default_shell_commands());
     $stored = station_read_json(station_admin_settings_path(), []);
 
@@ -606,6 +620,9 @@ function station_admin_merge_mega_form_post_into_settings(
     }
     if (isset($post['openaiModel'])) {
         $settings['openaiModel'] = trim((string) $post['openaiModel']) ?: 'gpt-4o-mini';
+    }
+    if (isset($post['terminalEmbedUrl'])) {
+        $settings['terminalEmbedUrl'] = trim((string) $post['terminalEmbedUrl']);
     }
 
     $settings['onboardingRequired'] = isset($post['onboardingRequired']);
@@ -878,6 +895,35 @@ function station_theme_style_html(): string
     '}</style>';
 }
 
+function station_js_config_html(): string
+{
+    $base = station_station_url('');
+    $baseJs = json_encode(rtrim($base, '/') ?: '', JSON_THROW_ON_ERROR);
+
+    return '<script>window.STATION_WEB_BASE=' . $baseJs . ';</script>';
+}
+
+/**
+ * Inline SVG icons for the left navigation rail.
+ */
+function station_nav_icon_svg(string $key): string
+{
+    $stroke = 'stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" fill="none"';
+    $icons = [
+        'dashboard' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"/></svg>',
+        'users' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle ' . $stroke . ' cx="9" cy="7" r="3"/><path ' . $stroke . ' d="M22 19v-1a3 3 0 0 0-2-2.83M16 3.13a3 3 0 0 1 0 5.74"/></svg>',
+        'templates' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect ' . $stroke . ' x="3" y="3" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="14" y="3" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="3" y="14" width="7" height="7" rx="1"/><rect ' . $stroke . ' x="14" y="14" width="7" height="7" rx="1"/></svg>',
+        'settings' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle ' . $stroke . ' cx="12" cy="12" r="3"/><path ' . $stroke . ' d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
+        'host_health' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+        'github_sync' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M6 3v12M18 9V3M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm12-6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>',
+        'user-settings' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle ' . $stroke . ' cx="12" cy="8" r="4"/><path ' . $stroke . ' d="M4 20v-1a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v1"/></svg>',
+        'logout' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
+        'assist' => '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path ' . $stroke . ' d="M12 3a7 7 0 0 0-4 12.7V19a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3.3A7 7 0 0 0 12 3z"/><path ' . $stroke . ' d="M9 22h6"/></svg>',
+    ];
+
+    return $icons[$key] ?? '';
+}
+
 function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css'): string
 {
     $uiConfig = station_ui_config();
@@ -904,7 +950,8 @@ function station_pwa_head_html(string $title, string $description = '', string $
         station_favicon_html(),
         '<link rel="manifest" href="manifest.php">',
         '<link rel="stylesheet" href="' . station_h($stylesheetHref) . '">',
-        station_theme_style_html()
+        station_theme_style_html(),
+        station_js_config_html(),
     ];
 
     return implode("\n  ", array_values(array_filter($head, static fn ($line): bool => $line !== '')));
@@ -923,13 +970,14 @@ if ('serviceWorker' in navigator) {
 HTML;
 }
 
-function station_dashboard_nav_link(string $active, string $key, string $href, string $icon, string $label, string $extraClass = ''): string
+function station_dashboard_nav_link(string $active, string $key, string $href, string $iconKey, string $label, string $extraClass = ''): string
 {
     $classes = trim('dashboard-menu-link ' . ($active === $key ? 'active ' : '') . $extraClass);
+    $icon = station_nav_icon_svg($iconKey);
 
     return '<a href="' . station_h($href) . '" class="' . station_h($classes) . '">' .
-        '<span class="menu-icon">' . station_h($icon) . '</span>' .
-        '<span>' . station_h($label) . '</span>' .
+        '<span class="menu-icon">' . $icon . '</span>' .
+        '<span class="menu-label">' . station_h($label) . '</span>' .
     '</a>';
 }
 
@@ -946,35 +994,33 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
     $isAdmin = function_exists('station_is_admin') && station_is_admin($user);
     $isOwner = function_exists('station_is_owner') && station_is_owner($user);
     $role = $user ? (string) ($user['role'] ?? 'user') : 'user';
-    $userInitial = strtoupper(substr($username !== '' ? $username : 'U', 0, 1));
-
     $brandMark = $brandIconUrl !== ''
         ? '<img src="' . station_h($brandIconUrl) . '" alt="' . station_h($appName) . ' icon">'
         : station_h($brandInitial);
 
     $links = [
-        station_dashboard_nav_link($active, 'dashboard', 'station.php', '⌂', 'Dashboard'),
+        station_dashboard_nav_link($active, 'dashboard', 'station.php', 'dashboard', 'Dashboard'),
     ];
 
     if ($isAdmin) {
-        $links[] = station_dashboard_nav_link($active, 'users', 'users.php', '◎', 'Users');
-        $links[] = station_dashboard_nav_link($active, 'templates', 'template-manager.php', '⋔', 'Templates');
+        $links[] = station_dashboard_nav_link($active, 'users', 'users.php', 'users', 'Users');
+        $links[] = station_dashboard_nav_link($active, 'templates', 'template-manager.php', 'templates', 'Templates');
     }
 
     if ($isOwner) {
-        $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', '◫', 'Settings');
-        $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', '📡', 'Host health');
+        $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Settings');
+        $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
     }
 
     if (function_exists('station_can_build') && station_can_build($user)) {
         $adminGh = station_admin_settings();
         if (!empty($adminGh['githubEnabled'])) {
-            $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', '⚡', 'GitHub sync');
+            $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', 'github_sync', 'GitHub sync');
         }
     }
 
-    $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', '◌', 'User Settings');
-    $links[] = station_dashboard_nav_link($active, 'logout', 'logout.php', '↗', 'Sign out', 'logout-link');
+    $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', 'user-settings', 'User Settings');
+    $links[] = station_dashboard_nav_link($active, 'logout', 'logout.php', 'logout', 'Sign out', 'logout-link');
 
     return '<aside class="dashboard-nav">' .
         '<div class="dashboard-mobile-bar">' .
@@ -1001,10 +1047,6 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
                 '<div class="dashboard-mobile-user"><strong>' . station_h($username) . '</strong><span>' . station_h($role) . '</span></div>' .
                 implode('', $links) .
             '</nav>' .
-            '<a class="dashboard-account" href="user-settings.php">' .
-                '<span class="dashboard-avatar">' . station_h($userInitial) . '</span>' .
-                '<span class="dashboard-account-copy"><strong>' . station_h($username) . '</strong><span>' . station_h($role) . '</span></span>' .
-            '</a>' .
         '</div>' .
     '</aside>';
 }
@@ -1043,8 +1085,18 @@ function station_clipboard_fab_html(): string
         return '';
     }
 
-    return <<<'HTML'
-<aside class="clip-fab" id="stationClipboardFab" aria-live="polite">
+    $assistIcon = station_nav_icon_svg('assist');
+    $openaiOn = station_openai_configured();
+    $assistDisabled = $openaiOn ? '' : ' disabled title="Add OpenAI under Admin → Integrations or User Settings"';
+
+    $assistBtn = '<button class="assist-fab-button" type="button" id="stationAssistFabToggle" aria-label="Open AI Assist" aria-controls="stationAssistFabPanel" aria-expanded="false"' . $assistDisabled . '>'
+        . '<span class="assist-fab-icon" aria-hidden="true">' . $assistIcon . '</span>'
+        . '<span class="assist-fab-label">AI Assist</span></button>';
+
+    return '<aside class="page-tools-dock" id="stationPageToolsDock" aria-live="polite">'
+        . '<div class="page-tools-fabs">' . $assistBtn
+        . '<aside class="clip-fab" id="stationClipboardFab">'
+        . <<<'HTML'
   <button class="clip-fab-button" type="button" id="stationClipboardFabToggle" aria-label="Open clipboard" aria-controls="stationClipboardFabPanel" aria-expanded="false">
     <span class="clip-fab-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1080,6 +1132,45 @@ function station_clipboard_fab_html(): string
     <p class="clip-fab-status" id="stationClipboardFabStatus" aria-live="polite"></p>
   </section>
 </aside>
+  </div>
+  <section class="assist-fab-panel" id="stationAssistFabPanel" role="dialog" aria-label="DeployStation AI Assist" aria-hidden="true">
+    <header class="assist-fab-head">
+      <div>
+        <p class="assist-fab-kicker">AI Assist</p>
+        <h3 class="assist-fab-title">DeployStation copilot</h3>
+        <p class="assist-fab-hint" id="stationAssistContextLabel">This page</p>
+      </div>
+      <button type="button" class="assist-fab-close" id="stationAssistFabClose" aria-label="Close AI Assist">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <div class="assist-chat-log" id="stationAssistChatLog" aria-live="polite">
+      <div class="assist-chat-msg assist-chat-msg-system">Ask about this page, a project, Docker, GitHub sync, or how DeployStation works. Context is sent with each message when enabled below.</div>
+    </div>
+    <label class="feature-toggle assist-chat-opt">
+      <input type="checkbox" id="stationAssistIncludePage" checked>
+      <span class="feature-toggle-content">
+        <span class="feature-toggle-title">Include current page</span>
+        <span class="feature-toggle-desc">URL, title, and your role on the station.</span>
+      </span>
+    </label>
+    <label class="feature-toggle assist-chat-opt">
+      <input type="checkbox" id="stationAssistIncludeProject" checked>
+      <span class="feature-toggle-content">
+        <span class="feature-toggle-title">Include project workspace</span>
+        <span class="feature-toggle-desc">Files, Docker, and GitHub metadata when a project is detected.</span>
+      </span>
+    </label>
+    <label class="setting-label" for="stationAssistExtra">Extra context (optional)</label>
+    <textarea id="stationAssistExtra" class="assist-extra" rows="2" placeholder="Paste logs, errors, or notes…"></textarea>
+    <div class="assist-chat-compose">
+      <textarea id="stationAssistInput" class="assist-input" rows="2" placeholder="Ask anything about DeployStation…"></textarea>
+      <button type="button" class="btn-primary assist-send" id="stationAssistSend">Send</button>
+    </div>
+    <p class="assist-fab-status" id="stationAssistStatus" aria-live="polite"></p>
+  </section>
+</aside>
+<script src="assets/station-assist.js?v=20260518a"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {
@@ -1258,6 +1349,15 @@ function station_clipboard_fab_html(): string
   toggle.addEventListener('click', function (ev) {
     ev.preventDefault();
     ev.stopPropagation();
+    var assistPanel = document.getElementById('stationAssistFabPanel');
+    var assistDock = document.getElementById('stationPageToolsDock');
+    if (assistPanel && assistPanel.classList.contains('assist-fab-panel--open')) {
+      assistPanel.classList.remove('assist-fab-panel--open');
+      assistPanel.style.display = 'none';
+      if (assistDock) { assistDock.classList.remove('assist-open'); }
+      var assistToggle = document.getElementById('stationAssistFabToggle');
+      if (assistToggle) { assistToggle.setAttribute('aria-expanded', 'false'); }
+    }
     setOpen(!panel.classList.contains('clip-fab-panel--open'));
   });
   if (closeBtn) {
@@ -1597,7 +1697,12 @@ function station_project_settings(string $slug): array
             'useCase' => '',
             'presets' => []
         ],
-        'notes' => ''
+        'notes' => '',
+        'launch' => [
+            'webEntryManual' => false,
+            'webEntryDir' => '',
+            'webEntryFile' => 'index.html',
+        ],
     ]);
 }
 

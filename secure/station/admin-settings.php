@@ -784,6 +784,10 @@ sudo systemctl restart php*-fpm
             <label style="display:block;margin-top:14px;font-weight:600;font-size:13px;">Model</label>
             <input type="text" name="openaiModel" value="<?= station_h((string) ($settings['openaiModel'] ?? 'gpt-4o-mini')) ?>" placeholder="gpt-4o-mini" style="width:100%;max-width:320px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
 
+            <h3 style="font-size: 15px; margin: 32px 0 10px;">Workspace terminal (iframe)</h3>
+            <p class="setting-description" style="margin-bottom:10px;">Embedded SSH client URL shown in Project Viewer → Show terminal. Default: <code>https://syifer.dev/terminal/</code></p>
+            <input type="url" name="terminalEmbedUrl" value="<?= station_h((string) ($settings['terminalEmbedUrl'] ?? 'https://syifer.dev/terminal/')) ?>" placeholder="https://syifer.dev/terminal/" style="width:100%;max-width:520px;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e5e7eb);">
+
             <button type="submit" name="admin_save_section" value="github" style="margin-top: 24px;">Save GitHub settings</button>
           </div>
         </div>

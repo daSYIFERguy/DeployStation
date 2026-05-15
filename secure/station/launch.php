@@ -165,6 +165,7 @@ if ($isContainerized) {
         $launchProfile = station_project_launch_profile($slug);
         station_render_app_explorer_page($slug, $launchProfile, $user, [
             'dockerStopped' => true,
+            'dockerStateKey' => (string) ($status['state'] ?? ''),
             'dockerStateLabel' => (string) $stateMeta['label'],
             'friendlyUrl' => $usesNginx ? $friendlyTarget : $directTarget,
         ]);
@@ -173,10 +174,27 @@ if ($isContainerized) {
 }
 
 $launchProfile = station_project_launch_profile($slug);
-if (!empty($launchProfile['launchable']) && $launchProfile['launchKind'] === 'web') {
-    header('Location: ' . station_project_serve_path($slug));
+if (!empty($launchProfile['launchable']) && $launchProfile['launchKind'] === 'web' && !$isContainerized) {
+    header('Location: ' . station_project_public_web_path($slug));
     exit;
 }
 
-station_render_app_explorer_page($slug, $launchProfile, $user);
+$explorerOpts = [];
+if ($isContainerized) {
+    $status = station_project_docker_status($slug);
+    $stateLabels = [
+        'running' => 'Running',
+        'partial' => 'Partially Running',
+        'stopped' => 'Stopped',
+        'unknown' => 'Unknown',
+        'unavailable' => 'Docker Engine Unreachable',
+        'unconfigured' => 'Not Configured',
+    ];
+    $stateKey = (string) ($status['state'] ?? 'unknown');
+    $explorerOpts['dockerStateKey'] = $stateKey;
+    $explorerOpts['dockerStateLabel'] = $stateLabels[$stateKey] ?? 'Unknown';
+    $explorerOpts['dockerStopped'] = $stateKey !== 'running';
+}
+
+station_render_app_explorer_page($slug, $launchProfile, $user, $explorerOpts);
 exit;

@@ -79,3 +79,55 @@ BASH;
         'output' => trim($stdout . "\n" . $stderr),
     ];
 }
+
+/**
+ * Parse `git status --porcelain`. Tracked edits are "dirty"; untracked files are separate
+ * so local-only paths (.env.local) do not read as a dirty tree after a clean GitHub sync.
+ *
+ * @param list<string> $ignoredUntrackedBasenames Basenames ignored for untracked counts (station secrets)
+ * @return array{
+ *   dirty: bool,
+ *   dirty_count: int,
+ *   dirty_preview: string,
+ *   untracked_count: int,
+ *   untracked_preview: string,
+ *   untracked_ignored_count: int,
+ *   has_untracked: bool
+ * }
+ */
+function station_git_worktree_summary(string $porcelain, array $ignoredUntrackedBasenames = ['.env', '.env.local', '.env.production', '.env.development']): array
+{
+    $modified = [];
+    $untracked = [];
+    $ignoredUntracked = 0;
+
+    foreach (explode("\n", trim($porcelain)) as $line) {
+        if ($line === '') {
+            continue;
+        }
+        if (str_starts_with($line, '?? ')) {
+            $path = substr($line, 3);
+            $base = basename($path);
+            if (in_array($base, $ignoredUntrackedBasenames, true)) {
+                $ignoredUntracked++;
+                continue;
+            }
+            $untracked[] = $path;
+            continue;
+        }
+        if (str_starts_with($line, '!! ')) {
+            continue;
+        }
+        $modified[] = $line;
+    }
+
+    return [
+        'dirty' => $modified !== [],
+        'dirty_count' => count($modified),
+        'dirty_preview' => mb_substr(str_replace(["\r", "\n"], ' | ', implode("\n", $modified)), 0, 200),
+        'untracked_count' => count($untracked),
+        'untracked_preview' => mb_substr(str_replace(["\r", "\n"], ' | ', implode("\n", $untracked)), 0, 200),
+        'untracked_ignored_count' => $ignoredUntracked,
+        'has_untracked' => $untracked !== [],
+    ];
+}

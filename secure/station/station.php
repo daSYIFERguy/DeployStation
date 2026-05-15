@@ -7,6 +7,7 @@ require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/templates.php';
 require_once __DIR__ . '/lib/docker.php';
 require_once __DIR__ . '/lib/project-launch.php';
+require_once __DIR__ . '/lib/openai.php';
 
 station_require_login();
 
@@ -25,6 +26,9 @@ if (station_user_needs_onboarding(station_current_username())) {
 }
 
 $githubReady = !empty($adminSettings['githubEnabled']) && station_integration_ready($profile, 'github');
+$githubStationOn = !empty($adminSettings['githubEnabled']);
+$openaiSource = station_openai_key_source($username);
+$openaiActive = $openaiSource !== 'none';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
@@ -131,7 +135,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260516b') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260518a') ?>
   <style>
     .station-body {
       margin: 0;
@@ -140,9 +144,20 @@ $statsCards = !$canBuild
       font-family: "Google Sans Text", "Segoe UI", sans-serif;
     }
 
-    .station-body a {
+    .station-body .dashboard-main a,
+    .station-body .station-shell a {
       color: inherit;
       text-decoration: none;
+    }
+
+    .dashboard-nav .dashboard-menu-link,
+    .dashboard-nav .dashboard-brand {
+      color: rgba(255, 255, 255, 0.76);
+    }
+
+    .dashboard-nav .dashboard-menu-link:hover,
+    .dashboard-nav .dashboard-menu-link.active {
+      color: #fff;
     }
 
     .station-body button,
@@ -934,7 +949,7 @@ $statsCards = !$canBuild
         display: none;
       }
 
-      .dashboard-menu-link span:last-child {
+      .dashboard-menu-link .menu-label {
         display: inline;
       }
     }
@@ -1016,14 +1031,35 @@ $statsCards = !$canBuild
         <section class="workspace-card integrations-panel">
           <div class="section-head integrations-head">
             <div>
-              <h2>GitHub</h2>
-              <p class="section-note"><?= $githubReady ? 'Connected' : 'Not connected' ?></p>
+              <h2>Integrations</h2>
+              <p class="section-note">Your account tokens — not per-project sync status</p>
             </div>
             <a class="mini-link" href="user-settings.php">Configure</a>
           </div>
-          <div class="integration-grid integration-grid-single">
-            <a class="integration-chip <?= $githubReady ? 'chip-on' : 'chip-off' ?>" href="<?= $githubReady ? 'user-settings.php' : 'integration-help.php#github' ?>"><span>Account link</span><span><?= $githubReady ? '✓' : '○' ?></span></a>
+          <div class="integration-grid">
+            <a class="integration-chip <?= $githubReady ? 'chip-on' : 'chip-off' ?>" href="<?= $githubReady ? 'user-settings.php' : 'integration-help.php#github' ?>">
+              <span>GitHub account</span>
+              <span><?php if (!$githubStationOn): ?>Off<?php elseif ($githubReady): ?>Linked<?php else: ?>Setup<?php endif; ?></span>
+            </a>
+            <a class="integration-chip <?= $openaiActive ? 'chip-on' : 'chip-off' ?>" href="user-settings.php">
+              <span>OpenAI</span>
+              <span><?= $openaiActive ? ($openaiSource === 'user' ? 'Personal' : 'Global') : 'Off' ?></span>
+            </a>
           </div>
+          <p class="integration-status-detail">
+            <?php if ($githubReady): ?>
+              GitHub token saved — use <a href="github-sync.php">GitHub sync</a> for per-project pull/push.
+            <?php elseif ($githubStationOn): ?>
+              GitHub enabled on this station; add your token under User Settings.
+            <?php else: ?>
+              GitHub disabled in Admin → Integrations.
+            <?php endif; ?>
+            <?php if ($openaiActive): ?>
+              OpenAI: <?= station_h(station_openai_status_label($username)) ?>.
+            <?php else: ?>
+              OpenAI: add a key under User Settings or Admin → Integrations.
+            <?php endif; ?>
+          </p>
           <div class="workspace-mini-stats">
             <div class="mini-stat"><strong><?= $ownedProjectCount ?></strong><span>Projects</span></div>
             <div class="mini-stat"><strong><?= $ownedPublicCount ?></strong><span>Public</span></div>
@@ -1120,7 +1156,7 @@ $statsCards = !$canBuild
               <div class="project-actions-row">
                 <a class="btn-action btn-action-primary" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch</a>
                 <a class="btn-action" href="viewer.php?project=<?= urlencode($slug) ?>">Files</a>
-                <button class="btn-action btn-action-ghost share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
+                <button class="btn-action btn-action-ghost share-btn" type="button" data-share-url="<?= station_h(station_project_public_web_path($slug)) ?>">Share</button>
               </div>
             </article>
           <?php endforeach; ?>

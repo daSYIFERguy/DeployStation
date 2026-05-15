@@ -644,6 +644,9 @@ $serviceCount = count($status['services'] ?? []);
       }
 
       document.querySelectorAll('form[data-docker-action] button[type="submit"]').forEach(function (btn) {
+        if (!btn.form) {
+          return;
+        }
         btn.form.addEventListener('submit', function () {
           btn.disabled = true;
           btn.dataset.originalLabel = btn.textContent || '';

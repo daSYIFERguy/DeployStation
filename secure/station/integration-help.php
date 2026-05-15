@@ -36,10 +36,14 @@ if (!station_can_build(station_current_user())) {
 				<h2>Workspace API</h2>
 				<p>Session-authenticated JSON endpoints (same login cookie as the dashboard):</p>
 				<ul>
-					<li><code>GET project-workspace-api.php?project=SLUG&amp;action=list</code> — file index (paths, sizes, modified times).</li>
-					<li><code>GET project-workspace-api.php?project=SLUG&amp;action=file&amp;path=relative/file.php</code> — read text files Station already allows in the web editor.</li>
-					<li><code>POST</code> with JSON <code>{"path":"...","content":"..."}</code> (or form fields) — save a file; requires <strong>builder</strong> role or higher.</li>
+					<li><code>GET …&amp;action=browse&amp;dir=</code> — list one directory (folders + files).</li>
+					<li><code>GET …&amp;action=file&amp;path=</code> — read a text file.</li>
+					<li><code>GET …&amp;action=list</code> — flat recursive file index (legacy).</li>
+					<li><code>POST</code> JSON <code>{"action":"save","path":"…","content":"…"}</code> — save file (builder).</li>
+					<li><code>POST</code> JSON <code>mkdir</code>, <code>delete</code>, <code>rename</code> — folder/file ops (builder).</li>
+					<li><code>POST</code> multipart <code>action=upload&amp;dir=</code> + file field — upload (builder).</li>
 				</ul>
+				<p>The <strong>Project Viewer</strong> (<code>viewer.php</code>) is a full UI on top of this API, with optional embedded SSH terminal iframe.</p>
 			</article>
 		</section>
 		<section class="grid-two" style="margin-top: 20px;">

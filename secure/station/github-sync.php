@@ -175,6 +175,8 @@ if ($stationGithubOn && $githubUserEnabled && $token !== '') {
                       $ahead = (int) ($row['ahead'] ?? 0);
                       $behind = (int) ($row['behind'] ?? 0);
                       $dirty = !empty($row['dirty']);
+                      $untracked = (int) ($row['untracked_count'] ?? 0);
+                      $ignoredLocal = (int) ($row['untracked_ignored_count'] ?? 0);
                       ?>
                     <tr>
                       <td data-label="Project">
@@ -200,8 +202,22 @@ if ($stationGithubOn && $githubUserEnabled && $token !== '') {
                       </td>
                       <td data-label="Delta">
                         <?php if (!empty($row['has_git']) && $err === ''): ?>
-                          <span class="gh-sync-pill <?= $dirty ? 'gh-pill-warn' : 'gh-pill-ok' ?>"><?= $dirty ? 'dirty tree' : 'clean' ?></span>
+                          <?php if ($dirty): ?>
+                            <span class="gh-sync-pill gh-pill-warn" title="<?= station_h((string) ($row['dirty_preview'] ?? '')) ?>">modified (<?= (int) ($row['dirty_count'] ?? 0) ?>)</span>
+                          <?php elseif ($untracked > 0): ?>
+                            <span class="gh-sync-pill gh-pill-muted" title="<?= station_h((string) ($row['untracked_preview'] ?? '')) ?>">untracked (<?= $untracked ?>)</span>
+                          <?php else: ?>
+                            <span class="gh-sync-pill gh-pill-ok">clean</span>
+                          <?php endif; ?>
                           <div class="gh-sync-delta">behind <strong><?= $behind ?></strong> · ahead <strong><?= $ahead ?></strong></div>
+                          <?php if ($ignoredLocal > 0): ?>
+                            <p class="gh-sync-hint"><?= $ignoredLocal ?> local-only file<?= $ignoredLocal === 1 ? '' : 's' ?> (.env.local, etc.) — not counted as dirty.</p>
+                          <?php endif; ?>
+                          <?php if ($dirty && (string) ($row['dirty_preview'] ?? '') !== ''): ?>
+                            <p class="gh-sync-hint"><code><?= station_h((string) $row['dirty_preview']) ?></code></p>
+                          <?php elseif ($untracked > 0 && (string) ($row['untracked_preview'] ?? '') !== ''): ?>
+                            <p class="gh-sync-hint"><code><?= station_h((string) $row['untracked_preview']) ?></code></p>
+                          <?php endif; ?>
                           <?php if ($ahead > 0 && $behind > 0): ?>
                             <p class="gh-sync-hint">Diverged: resolve on GitHub (PR / merge) or reset locally with care.</p>
                           <?php elseif ($behind > 0): ?>

@@ -3,6 +3,99 @@
 declare(strict_types=1);
 
 /**
+ * @return array{webEntryManual: bool, webEntryDir: string, webEntryFile: string}
+ */
+function station_project_launch_config(array $settings): array
+{
+    $launch = isset($settings['launch']) && is_array($settings['launch']) ? $settings['launch'] : [];
+
+    return [
+        'webEntryManual' => !empty($launch['webEntryManual']),
+        'webEntryDir' => trim(str_replace('\\', '/', (string) ($launch['webEntryDir'] ?? '')), '/'),
+        'webEntryFile' => trim((string) ($launch['webEntryFile'] ?? '')) ?: 'index.html',
+    ];
+}
+
+/**
+ * Resolve manual or root web entrypoint for /p/&lt;slug&gt;/ serving.
+ *
+ * @return array{dir: string, file: string, relative: string, absolute: string, manual: bool}|null
+ */
+function station_project_resolve_web_entry(string $projectSlug): ?array
+{
+    $slug = station_safe_name($projectSlug);
+    $root = station_project_path($slug);
+    if (!is_dir($root)) {
+        return null;
+    }
+
+    $settings = station_project_settings($slug);
+    $cfg = station_project_launch_config($settings);
+    if (!$cfg['webEntryManual']) {
+        return null;
+    }
+
+    $dir = $cfg['webEntryDir'];
+    $file = $cfg['webEntryFile'];
+    if ($dir !== '' && !station_is_safe_relative_path($dir)) {
+        return null;
+    }
+    if ($file === '' || str_contains($file, '/') || str_contains($file, '\\')) {
+        return null;
+    }
+
+    $base = $dir === '' ? $root : $root . '/' . $dir;
+    if (!is_dir($base) || !station_realpath_inside($root, $base)) {
+        return null;
+    }
+
+    $candidate = rtrim($base, '/') . '/' . $file;
+    if (!is_file($candidate) || !station_realpath_inside($root, $candidate)) {
+        return null;
+    }
+
+    $relative = ($dir !== '' ? $dir . '/' : '') . $file;
+
+    return [
+        'dir' => $dir,
+        'file' => $file,
+        'relative' => $relative,
+        'absolute' => $candidate,
+        'manual' => true,
+    ];
+}
+
+/**
+ * @return array{ok: bool, message: string, dir?: string, file?: string}
+ */
+function station_project_validate_web_entry_input(string $slug, string $dir, string $file): array
+{
+    $dir = trim(str_replace('\\', '/', $dir), '/');
+    $file = trim($file) ?: 'index.html';
+    if ($dir !== '' && !station_is_safe_relative_path($dir)) {
+        return ['ok' => false, 'message' => 'Entry directory path is not allowed.'];
+    }
+    if (str_contains($file, '/') || str_contains($file, '\\')) {
+        return ['ok' => false, 'message' => 'Entry file must be a filename only (e.g. index.html).'];
+    }
+
+    $root = station_project_path($slug);
+    $base = $dir === '' ? $root : $root . '/' . $dir;
+    if (!is_dir($base) || !station_realpath_inside($root, $base)) {
+        return ['ok' => false, 'message' => 'That directory does not exist in the project.'];
+    }
+
+    $candidate = rtrim($base, '/') . '/' . $file;
+    if (!is_file($candidate) || !station_realpath_inside($root, $candidate)) {
+        $allowed = implode(', ', station_project_web_index_basenames());
+
+        return ['ok' => false, 'message' => 'No ' . $file . ' in that folder. Choose a directory that contains ' . $allowed . '.'];
+    }
+
+    return ['ok' => true, 'message' => 'OK', 'dir' => $dir, 'file' => $file];
+}
+
+/**
  * Detect how a project can be launched (web app, extension, CLI-only, etc.).
  *
  * @return array{
@@ -12,7 +105,9 @@ declare(strict_types=1);
  *   title: string,
  *   summary: string,
  *   stack: string,
- *   hints: list<string>
+ *   hints: list<string>,
+ *   webEntryManual?: bool,
+ *   webEntryRelative?: string
  * }
  */
 function station_project_launch_profile(string $projectSlug): array
@@ -27,9 +122,25 @@ function station_project_launch_profile(string $projectSlug): array
         'summary' => 'Open Manage to configure how this project runs.',
         'stack' => station_infer_docker_stack($slug),
         'hints' => [],
+        'webEntryManual' => false,
+        'webEntryRelative' => '',
     ];
 
     if (!is_dir($path)) {
+        return $profile;
+    }
+
+    $manualEntry = station_project_resolve_web_entry($slug);
+    if ($manualEntry !== null) {
+        $profile['launchable'] = true;
+        $profile['launchKind'] = 'web';
+        $profile['tone'] = 'ok';
+        $profile['title'] = $slug;
+        $profile['webEntryManual'] = true;
+        $profile['webEntryRelative'] = (string) $manualEntry['relative'];
+        $profile['summary'] = 'Web entrypoint set manually at ' . $manualEntry['relative'] . ' — use Launch to open /p/' . $slug . '/.';
+        $profile['hints'][] = 'Change under Manage → General → Web entrypoint.';
+
         return $profile;
     }
 
@@ -96,134 +207,11 @@ function station_project_launch_profile(string $projectSlug): array
     $fileCount = count(array_filter($files, static fn ($f) => $f !== '.' && $f !== '..'));
     if ($fileCount > 0) {
         $profile['launchKind'] = 'files-only';
-        $profile['summary'] = 'Project files on disk — not detected as a web entrypoint. Browse in Files or add index.html / Docker.';
-        $profile['hints'][] = 'Add index.html, enable containers, or link to GitHub under Manage.';
+        $profile['summary'] = 'Project files on disk — not detected as a web entrypoint. Use Manage → General → Select entrypoint if index.html is in a subfolder.';
+        $profile['hints'][] = 'Manage → General → Select entrypoint, or add index.html at the project root, or enable Docker.';
     }
 
     return $profile;
 }
 
-/**
- * Render the graphical App Explorer splash (launch.php).
- */
-function station_render_app_explorer_page(
-    string $projectSlug,
-    array $launchProfile,
-    ?array $user,
-    array $options = []
-): void {
-    $slug = station_safe_name($projectSlug);
-    $copy = station_openai_project_explorer_copy($slug, $launchProfile);
-    $canBuild = station_can_build($user);
-    $dockerStopped = !empty($options['dockerStopped']);
-    $dockerState = (string) ($options['dockerStateLabel'] ?? '');
-    $friendlyUrl = (string) ($options['friendlyUrl'] ?? '');
-    $stackLabel = ucfirst((string) ($launchProfile['stack'] ?? 'app'));
-    $kind = (string) ($launchProfile['launchKind'] ?? 'unknown');
-    $icon = match ($kind) {
-        'chrome-extension' => '🧩',
-        'web' => '🌐',
-        'node-cli' => '📦',
-        default => '📁',
-    };
-    ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <?= station_pwa_head_html('App explorer — ' . station_h($slug), 'How to run and launch ' . $slug) ?>
-</head>
-<body class="station-body app-explorer-body">
-  <main class="app-explorer-shell">
-    <article class="app-explorer-card">
-      <div class="app-explorer-hero">
-        <span class="app-explorer-icon" aria-hidden="true"><?= $icon ?></span>
-        <div class="app-explorer-hero-copy">
-          <p class="app-explorer-kicker">App explorer</p>
-          <h1><?= station_h((string) ($launchProfile['title'] ?? $slug)) ?></h1>
-          <p class="app-explorer-slug"><code><?= station_h($slug) ?></code> · <?= station_h($stackLabel) ?></p>
-          <span class="app-explorer-launch-pill app-explorer-launch-pill-<?= station_h((string) ($launchProfile['tone'] ?? 'warn')) ?>">
-            <?= !empty($launchProfile['launchable']) ? 'Launchable web app' : 'Needs setup' ?>
-          </span>
-        </div>
-      </div>
-
-      <?php if ($dockerStopped): ?>
-      <div class="app-explorer-docker-banner">
-        <strong>Containers:</strong> <?= station_h($dockerState !== '' ? $dockerState : 'Not running') ?>
-        <?php if ($canBuild): ?>
-        <form method="post" action="docker-actions.php" class="app-explorer-inline-form">
-          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-          <input type="hidden" name="action" value="start">
-          <input type="hidden" name="return" value="launch.php?project=<?= urlencode($slug) ?>">
-          <button type="submit" class="btn-primary">Start containers</button>
-        </form>
-        <?php endif; ?>
-      </div>
-      <?php endif; ?>
-
-      <div class="app-explorer-body-copy" id="appExplorerCopy">
-        <p class="app-explorer-description"><?= station_h((string) $copy['description']) ?></p>
-        <?php if (!empty($copy['steps'])): ?>
-        <ol class="app-explorer-steps">
-          <?php foreach ($copy['steps'] as $step): ?>
-            <li><?= station_h((string) $step) ?></li>
-          <?php endforeach; ?>
-        </ol>
-        <?php endif; ?>
-        <?php if (($copy['source'] ?? '') === 'openai'): ?>
-          <p class="app-explorer-meta">Summary generated with OpenAI<?= station_openai_configured() ? '' : ' (fallback)' ?>.</p>
-        <?php endif; ?>
-      </div>
-
-      <div class="app-explorer-actions">
-        <?php if (!empty($launchProfile['launchable']) && $launchProfile['launchKind'] === 'web' && !$dockerStopped): ?>
-          <a class="btn-primary" href="<?= station_h(station_project_serve_path($slug)) ?>">Open app ↗</a>
-        <?php endif; ?>
-        <?php if ($friendlyUrl !== ''): ?>
-          <a class="btn-action" href="<?= station_h($friendlyUrl) ?>" target="_blank" rel="noreferrer">Public URL ↗</a>
-        <?php endif; ?>
-        <a class="btn-action" href="viewer.php?project=<?= urlencode($slug) ?>">Browse files</a>
-        <?php if ($canBuild): ?>
-          <a class="btn-action" href="project-settings.php?project=<?= urlencode($slug) ?>">Manage</a>
-          <?php if (station_docker_enabled()): ?>
-            <a class="btn-action" href="project-settings.php?project=<?= urlencode($slug) ?>#docker">Docker</a>
-          <?php endif; ?>
-        <?php endif; ?>
-        <a class="btn-action btn-action-ghost" href="station.php">Dashboard</a>
-      </div>
-    </article>
-  </main>
-  <script>
-  (function () {
-    if (<?= station_openai_configured() ? 'false' : 'true' ?>) { return; }
-    fetch('app-explorer-api.php?project=<?= rawurlencode($slug) ?>', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (!data || !data.ok || !data.description) { return; }
-        var box = document.getElementById('appExplorerCopy');
-        if (!box) { return; }
-        var p = box.querySelector('.app-explorer-description');
-        if (p) { p.textContent = data.description; }
-        if (data.steps && data.steps.length) {
-          var ol = box.querySelector('.app-explorer-steps');
-          if (!ol) {
-            ol = document.createElement('ol');
-            ol.className = 'app-explorer-steps';
-            box.appendChild(ol);
-          }
-          ol.innerHTML = '';
-          data.steps.forEach(function (s) {
-            var li = document.createElement('li');
-            li.textContent = s;
-            ol.appendChild(li);
-          });
-        }
-      })
-      .catch(function () {});
-  })();
-  </script>
-  <?= station_pwa_register_html() ?>
-</body>
-</html>
-    <?php
-}
+require_once __DIR__ . '/app-explorer-ui.php';

@@ -140,7 +140,12 @@ function station_github_project_sync_row(string $slug, string $token): array
         'branch' => $branch,
         'has_git' => is_dir($path . '/.git'),
         'dirty' => false,
+        'dirty_count' => 0,
         'dirty_preview' => '',
+        'untracked_count' => 0,
+        'untracked_preview' => '',
+        'untracked_ignored_count' => 0,
+        'has_untracked' => false,
         'ahead' => 0,
         'behind' => 0,
         'remote_url' => '',
@@ -175,9 +180,14 @@ function station_github_project_sync_row(string $slug, string $token): array
 
     $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token);
     if (!empty($st['ok'])) {
-        $por = trim((string) ($st['output'] ?? ''));
-        $row['dirty'] = $por !== '';
-        $row['dirty_preview'] = mb_substr(str_replace(["\r", "\n"], ' | ', $por), 0, 200);
+        $summary = station_git_worktree_summary(trim((string) ($st['output'] ?? '')));
+        $row['dirty'] = !empty($summary['dirty']);
+        $row['dirty_count'] = (int) $summary['dirty_count'];
+        $row['dirty_preview'] = (string) $summary['dirty_preview'];
+        $row['untracked_count'] = (int) $summary['untracked_count'];
+        $row['untracked_preview'] = (string) $summary['untracked_preview'];
+        $row['untracked_ignored_count'] = (int) $summary['untracked_ignored_count'];
+        $row['has_untracked'] = !empty($summary['has_untracked']);
     }
 
     $ru = station_run_git_command(['git', '-C', $path, 'remote', 'get-url', 'origin'], $token);
