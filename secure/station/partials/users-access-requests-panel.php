@@ -20,8 +20,8 @@ $accessPendingCount = (int) ($accessPendingCount ?? 0);
   <?php if ($accessRequests === []): ?>
     <p class="setting-description" style="margin-top:16px;">No access requests yet.</p>
   <?php else: ?>
-    <div class="users-requests-table-wrap" style="overflow-x:auto;margin-top:16px;">
-      <table class="users-requests-table" style="width:100%;border-collapse:collapse;font-size:14px;">
+    <div class="users-requests-table-wrap" style="margin-top:16px;">
+      <table class="users-requests-table responsive-data-table" style="width:100%;border-collapse:collapse;font-size:14px;">
         <thead>
           <tr style="text-align:left;border-bottom:1px solid var(--line);">
             <th style="padding:10px 8px;">When</th>
@@ -40,22 +40,22 @@ $accessPendingCount = (int) ($accessPendingCount ?? 0);
               $gh = (string) ($req['githubLogin'] ?? '');
             ?>
             <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:10px 8px;white-space:nowrap;font-size:12px;color:var(--muted);">
+              <td data-label="When" style="padding:10px 8px;white-space:nowrap;font-size:12px;color:var(--muted);">
                 <?= station_h((string) ($req['requestedAt'] ?? '')) ?>
               </td>
-              <td style="padding:10px 8px;"><?= station_h((string) ($req['name'] ?? '')) ?></td>
-              <td style="padding:10px 8px;">
+              <td data-label="Name" style="padding:10px 8px;"><?= station_h((string) ($req['name'] ?? '')) ?></td>
+              <td data-label="Email" style="padding:10px 8px;">
                 <a href="mailto:<?= station_h((string) ($req['email'] ?? '')) ?>"><?= station_h((string) ($req['email'] ?? '')) ?></a>
               </td>
-              <td style="padding:10px 8px;">
+              <td data-label="GitHub" style="padding:10px 8px;">
                 <?php if ($gh !== ''): ?>
                   <a href="https://github.com/<?= station_h($gh) ?>" target="_blank" rel="noreferrer">@<?= station_h($gh) ?></a>
                 <?php endif; ?>
               </td>
-              <td style="padding:10px 8px;">
+              <td data-label="Status" style="padding:10px 8px;">
                 <span class="chip <?= $status === 'pending' ? 'chip-off' : 'chip-on' ?>"><?= station_h($status) ?></span>
               </td>
-              <td style="padding:10px 8px;">
+              <td data-label="Actions" style="padding:10px 8px;">
                 <?php if ($status === 'pending' && $id !== ''): ?>
                   <form method="post" style="display:inline-flex;gap:8px;flex-wrap:wrap;">
                     <input type="hidden" name="action" value="access_request">

@@ -115,7 +115,8 @@ $viewerBuilderCount = count(array_filter($projects, static function (array $proj
   return ((string) ($project['accessMode'] ?? 'admin')) === 'viewersorbuilder';
 }));
 $builderAdminCount = count(array_filter($projects, static function (array $project): bool {
-  return ((string) ($project['accessMode'] ?? 'admin')) === 'buildersoradmin';
+  $mode = (string) ($project['accessMode'] ?? 'admin');
+  return $mode === 'buildersoradmin' || $mode === 'admin';
 }));
 $ownerOnlyCount = count(array_filter($projects, static function (array $project): bool {
   return ((string) ($project['accessMode'] ?? 'admin')) === 'adminsonly';
@@ -135,7 +136,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260520e') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.') ?>
   <style>
     .station-body {
       margin: 0;
@@ -1732,9 +1733,17 @@ $statsCards = !$canBuild
       }
       const query = statsDialogSearch ? statsDialogSearch.value.trim().toLowerCase() : '';
       statsTable.querySelectorAll('tbody tr').forEach((row) => {
-        const matchesFilter = !statsFilterType || (statsFilterType === 'visibility'
-          ? (row.dataset.visibility || '') === statsFilterValue
-          : (row.dataset.accessMode || '') === statsFilterValue);
+        const rowAccess = row.dataset.accessMode || '';
+        let matchesFilter = true;
+        if (statsFilterType === 'visibility') {
+          matchesFilter = (row.dataset.visibility || '') === statsFilterValue;
+        } else if (statsFilterType === 'access') {
+          if (statsFilterValue === 'buildersoradmin') {
+            matchesFilter = rowAccess === 'buildersoradmin' || rowAccess === 'admin';
+          } else {
+            matchesFilter = rowAccess === statsFilterValue;
+          }
+        }
         const matchesSearch = !query || (row.dataset.search || '').includes(query);
         row.hidden = !(matchesFilter && matchesSearch);
       });

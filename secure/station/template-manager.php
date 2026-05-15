@@ -299,7 +299,7 @@ foreach (array_keys($activeFiles) as $candidatePath) {
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.', 'assets/style.css?v=20260520c') ?>
+  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">

@@ -7,10 +7,10 @@ declare(strict_types=1);
  *
  * @return array<string, string>
  */
-function station_template_scaffold_files(string $stack, string $appPort, bool $includeDocker = true): array
+function station_template_scaffold_files(string $stack, int $appPort, bool $includeDocker = true): array
 {
     $stack = strtolower(trim($stack));
-    $port = max(1, (int) $appPort);
+    $port = max(1, $appPort);
 
     $files = [
         'DEPLOYSTATION.md' => station_template_scaffold_deploystation_md($stack, $port),

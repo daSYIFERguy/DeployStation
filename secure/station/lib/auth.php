@@ -255,5 +255,20 @@ function station_user_may_access_project(?array $user, string $slug): bool
         return false;
     }
 
+    if ($user !== null && station_can_build($user)) {
+        $who = station_safe_name((string) ($user['username'] ?? ''));
+        if ($who !== '') {
+            foreach (station_list_projects() as $project) {
+                if (!is_array($project)) {
+                    continue;
+                }
+                if ((string) ($project['slug'] ?? '') === $slug
+                    && $who === station_safe_name((string) ($project['owner'] ?? ''))) {
+                    return true;
+                }
+            }
+        }
+    }
+
     return station_can_access_project($user, station_project_access_mode($slug));
 }

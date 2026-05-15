@@ -5746,3 +5746,347 @@ body.entrypoint-modal-open {
 .gh-sync-status-card {
   margin-top: 8px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Mobile / iPhone PWA — all station pages (dashboard + shell)
+   ═══════════════════════════════════════════════════════════════════ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body.station-body {
+  overflow-x: clip;
+}
+
+.dashboard-shell {
+  min-width: 0;
+  width: 100%;
+}
+
+.dashboard-main {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.station-shell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-topbar > div:first-child {
+  min-width: 0;
+}
+
+.dashboard-heading {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dashboard-subheading {
+  max-width: 100%;
+}
+
+/* Horizontal scroll fallback for wide tables (desktop) */
+.table-scroll-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Touch-friendly nav pills (Files, settings, GitHub sync, etc.) */
+.nav-pills {
+  width: 100%;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 4px;
+  gap: 8px;
+}
+
+.nav-pills a {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.nav-pills a.btn-primary {
+  border-radius: var(--r-pill);
+}
+
+/* Standalone pages (integration-help, onboarding) */
+.station-shell > header.topbar,
+.station-shell > header.card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.station-shell > header .nav-pills {
+  flex: 1 1 100%;
+}
+
+.users-admin-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+  padding-bottom: 4px;
+}
+
+.users-admin-tab {
+  flex-shrink: 0;
+}
+
+.users-inline-delete {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .station-shell {
+    padding: 12px 14px max(28px, env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+
+  .card {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .grid-split {
+    grid-template-columns: 1fr;
+  }
+
+  /* iOS: 16px inputs avoid focus zoom */
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="search"],
+  input[type="url"],
+  input[type="number"],
+  input[type="tel"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea,
+  .form-grid button {
+    min-height: 48px;
+  }
+
+  .settings-nav-item.active {
+    border-left: none;
+    padding-left: 14px;
+    box-shadow: inset 0 0 0 2px rgba(47, 125, 226, 0.35);
+  }
+
+  .settings-form-group.grid-2,
+  .form-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-panel-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-manager-shell .settings-panel-head {
+    gap: 12px;
+  }
+
+  .template-manager-shell .settings-panel-head .danger-btn {
+    align-self: flex-start;
+  }
+
+  .project-docker-embed .docker-config-shell,
+  .project-docker-embed .docker-config-shell-embedded {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .docker-mc-head,
+  .mission-hero {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 18px 16px;
+  }
+
+  .docker-mc-kpis,
+  .mission-hero-stats {
+    width: 100%;
+  }
+
+  .docker-mc-kpis .mc-kpi {
+    max-width: none;
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .admin-inline-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-inline-row input[type="text"],
+  .admin-inline-row select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .admin-action-buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-action-buttons .secondary-btn,
+  .admin-action-buttons .danger-btn,
+  .admin-action-buttons button {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+  }
+
+  .web-entrypoint-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-dialog-inner {
+    width: 100%;
+    max-height: min(96dvh, 100%);
+  }
+
+  .stats-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .host-health-table-wrap,
+  .users-requests-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-left: -4px;
+    margin-right: -4px;
+  }
+
+  /* Card-style tables on phone (users, access requests, stats) */
+  .responsive-data-table thead {
+    display: none;
+  }
+
+  .responsive-data-table tr {
+    display: block;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .responsive-data-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+    word-break: break-word;
+  }
+
+  .responsive-data-table td:last-child {
+    border-bottom: none;
+  }
+
+  .responsive-data-table td::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    max-width: 42%;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .responsive-data-table td[data-label=""]::before,
+  .responsive-data-table td:not([data-label])::before {
+    display: none;
+  }
+
+  .users-admin-table-card .table-scroll-wrap {
+    overflow: visible;
+  }
+
+  .users-requests-table thead {
+    display: none;
+  }
+
+  .users-requests-table tr {
+    display: block;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .users-requests-table td {
+    display: block;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .users-requests-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .template-list-item-text {
+    min-width: 0;
+  }
+
+  .template-file-row-head {
+    flex-wrap: wrap;
+  }
+
+  .app-explorer-chat-msg-user {
+    margin-left: 0;
+  }
+
+  .app-explorer-chat-msg-assistant {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-subheading {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .nav-pills a.btn-primary {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+
+  .docker-mc-kpis .mc-kpi {
+    flex: 1 1 100%;
+  }
+}

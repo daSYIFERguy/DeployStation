@@ -327,40 +327,42 @@ if ($isOwner) {
       </form>
     </section>
 
-    <section class="card">
+    <section class="card users-admin-table-card">
       <h2>Current Users (Click Edit)</h2>
-      <table>
+      <div class="table-scroll-wrap">
+      <table class="responsive-data-table users-admin-table">
         <thead><tr><th>Username</th><th>Role</th><th>Created</th><th>Last Login</th><th>By</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody>
           <?php foreach ($users as $u): ?>
             <?php
               $username = (string) ($u['username'] ?? '');
               $lastLogin = trim((string) ($u['lastLoginAt'] ?? ''));
-              $canEdit = station_can_manage_target($isOwner, $username);
-              $canDelete = station_can_delete_target($isOwner, (string) ($currentUser['username'] ?? ''), $username);
-            ?>
-            <tr>
-              <td><?= station_h($username) ?></td>
-              <td><?= station_h(match ((string) ($u['role'] ?? 'admin')) {
+              $roleLabel = match ((string) ($u['role'] ?? 'admin')) {
                   'owner' => 'owner (superuser)',
                   'admin' => 'admin',
                   'builder' => 'builder',
                   'viewer' => 'viewer',
                   default => (string) ($u['role'] ?? 'admin'),
-              }) ?></td>
-              <td><?= station_h((string) ($u['createdAt'] ?? '')) ?></td>
-              <td><?= station_h($lastLogin !== '' ? $lastLogin : 'never') ?></td>
-              <td><?= station_h((string) ($u['createdBy'] ?? '')) ?></td>
-              <td>
+              };
+              $canEdit = station_can_manage_target($isOwner, $username);
+              $canDelete = station_can_delete_target($isOwner, (string) ($currentUser['username'] ?? ''), $username);
+            ?>
+            <tr>
+              <td data-label="Username"><?= station_h($username) ?></td>
+              <td data-label="Role"><?= station_h($roleLabel) ?></td>
+              <td data-label="Created"><?= station_h((string) ($u['createdAt'] ?? '')) ?></td>
+              <td data-label="Last login"><?= station_h($lastLogin !== '' ? $lastLogin : 'never') ?></td>
+              <td data-label="By"><?= station_h((string) ($u['createdBy'] ?? '')) ?></td>
+              <td data-label="Edit">
                 <?php if ($canEdit): ?>
                   <a href="users.php?edit=<?= urlencode($username) ?>">Edit</a>
                 <?php else: ?>
                   <span class="file-meta">Root locked</span>
                 <?php endif; ?>
               </td>
-              <td>
+              <td data-label="Delete">
                 <?php if ($canDelete): ?>
-                  <form method="post" onsubmit="return confirm('Delete user <?= station_h($username) ?>? This cannot be undone.');">
+                  <form method="post" class="users-inline-delete" onsubmit="return confirm('Delete user <?= station_h($username) ?>? This cannot be undone.');">
                     <input type="hidden" name="action" value="delete_user">
                     <input type="hidden" name="target_username" value="<?= station_h($username) ?>">
                     <button type="submit" class="danger-link">Delete</button>
@@ -373,6 +375,7 @@ if ($isOwner) {
           <?php endforeach; ?>
         </tbody>
       </table>
+      </div>
     </section>
 
     <?php endif; ?>

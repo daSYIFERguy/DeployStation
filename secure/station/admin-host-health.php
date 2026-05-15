@@ -222,7 +222,8 @@ TXT;
           <p class="setting-description" style="margin-top:12px;">Apache mode: Docker URL rewrites still use <code>/p/&lt;slug&gt;/</code> through your vhost; confirm mod_proxy and the Station-managed include or equivalent.</p>
         <?php endif; ?>
 
-        <table class="host-health-table">
+        <div class="host-health-table-wrap table-scroll-wrap">
+        <table class="host-health-table responsive-data-table">
           <thead>
             <tr>
               <th>Slug</th>
@@ -235,11 +236,11 @@ TXT;
           <tbody>
             <?php foreach ($routing['dockerProjects'] as $row): ?>
               <tr>
-                <td><code><?= station_h((string) ($row['slug'] ?? '')) ?></code></td>
-                <td><code><?= station_h((string) ($row['publicPath'] ?? '')) ?></code></td>
-                <td><code><?= (int) ($row['hostPort'] ?? 0) ?></code> → app <code><?= (int) ($row['appPort'] ?? 0) ?></code></td>
-                <td><?= station_h((string) ($row['composeState'] ?? '')) ?></td>
-                <td><?php $lb = (string) ($row['loopbackRoot'] ?? ''); ?>
+                <td data-label="Slug"><code><?= station_h((string) ($row['slug'] ?? '')) ?></code></td>
+                <td data-label="Public path"><code><?= station_h((string) ($row['publicPath'] ?? '')) ?></code></td>
+                <td data-label="Host port"><code><?= (int) ($row['hostPort'] ?? 0) ?></code> → app <code><?= (int) ($row['appPort'] ?? 0) ?></code></td>
+                <td data-label="Compose"><?= station_h((string) ($row['composeState'] ?? '')) ?></td>
+                <td data-label="Loopback"><?php $lb = (string) ($row['loopbackRoot'] ?? ''); ?>
                   <?php if ($lb !== ''): ?><code><?= station_h($lb) ?></code><?php else: ?><span class="host-health-meta">no port</span><?php endif; ?>
                 </td>
               </tr>
@@ -249,6 +250,7 @@ TXT;
             <?php endif; ?>
           </tbody>
         </table>
+        </div>
       </div>
 
       <?php if ($upstreamMatrix !== []): ?>

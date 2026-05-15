@@ -254,7 +254,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260520c') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">

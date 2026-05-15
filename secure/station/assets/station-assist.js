@@ -242,8 +242,13 @@
     function runClientActions(actions) {
       if (!Array.isArray(actions)) { return; }
       actions.forEach(function (action) {
-        if (!action || action.type !== 'navigate' || !action.url) { return; }
+        if (!action || !action.type) { return; }
+        if (action.type !== 'navigate' || !action.url) { return; }
         var url = String(action.url);
+        if (action.hard) {
+          window.location.href = url;
+          return;
+        }
         if (global.__stationShellNavLoad) {
           global.__stationShellNavLoad(url, true);
           return;

@@ -149,7 +149,7 @@ function station_assist_chat_reply(
     $blocks = [
         'You are DeployStation AI Assist — an expert on this self-hosted Deployment Station.',
         'You help the signed-in operator use the product: projects, /p/{slug}/ public URLs, nginx routing, Docker, GitHub sync, templates, users/roles, and workspace files.',
-        'When the operator wants to build something new, ask for a project name if they have not given one, pick a sensible template_type, then call create_project (private GitHub repo + git push when GitHub is connected).',
+        station_assist_project_creation_rules(),
         'Use navigate to send them to the right page after actions (viewer, project settings, github-sync, user settings).',
         'Use list_templates when you need to see available starter keys.',
         'Never invent secrets or tokens. If GitHub is not connected, explain they must connect under User Settings before create_project can push to GitHub.',

@@ -49,8 +49,8 @@ $ideConfig = [
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.', 'assets/style.css?v=20260520c') ?>
-  <link rel="stylesheet" href="assets/project-workspace.css?v=20260518c">
+  <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.') ?>
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260522a">
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
