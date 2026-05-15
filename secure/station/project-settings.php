@@ -98,6 +98,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $dockerPs = isset($settings['docker']) && is_array($settings['docker']) ? $settings['docker'] : [];
 $dockerContainerized = !empty($dockerPs['containerized']);
+$accessModes = station_allowed_project_access_modes();
+$adminSettings = station_admin_settings();
+$projectMeta = null;
+foreach (station_list_projects() as $p) {
+    if ((string) ($p['slug'] ?? '') === $project) {
+        $projectMeta = $p;
+        break;
+    }
+}
+$pAccess = (string) ($projectMeta['accessMode'] ?? 'admin');
+$pOwner = (string) ($projectMeta['owner'] ?? 'unknown');
+$isStationOwner = station_is_owner($user);
 ?>
 <!doctype html>
 <html lang="en">
@@ -136,6 +148,7 @@ $dockerContainerized = !empty($dockerPs['containerized']);
           <a class="settings-nav-item active" href="#general"><span class="settings-nav-icon">⚙</span><span>General</span></a>
           <a class="settings-nav-item" href="#github"><span class="settings-nav-icon">🐙</span><span>GitHub</span></a>
           <a class="settings-nav-item" href="#runtime"><span class="settings-nav-icon">🐳</span><span>Runtime</span></a>
+          <a class="settings-nav-item" href="#administration"><span class="settings-nav-icon">🛡</span><span>Administration</span></a>
         </nav>
 
         <div class="settings-content">
@@ -246,6 +259,79 @@ $dockerContainerized = !empty($dockerPs['containerized']);
                 </div>
                 <a class="secondary-btn" href="template-manager.php">Open Templates</a>
               </div>
+            <?php endif; ?>
+          </section>
+
+          <section id="administration" class="settings-panel">
+            <div class="settings-panel-head">
+              <h2 class="settings-panel-heading">Administration</h2>
+              <p class="settings-panel-subtitle">Rename, access, backups, and lifecycle actions for <strong><?= station_h($project) ?></strong> (owner: <?= station_h($pOwner) ?>).</p>
+            </div>
+
+            <form method="post" action="station.php" class="admin-action-form">
+              <input type="hidden" name="action" value="rename_project">
+              <input type="hidden" name="project_slug" value="<?= station_h($project) ?>">
+              <input type="hidden" name="return_to" value="settings">
+              <div class="setting-item">
+                <label class="setting-label" for="new_project_slug">Rename project URL</label>
+                <div class="admin-inline-row">
+                  <input id="new_project_slug" type="text" name="new_project_slug" placeholder="new-slug" required autocomplete="off">
+                  <button type="submit" class="secondary-btn">Rename</button>
+                </div>
+              </div>
+            </form>
+
+            <form method="post" action="station.php" class="admin-action-form">
+              <input type="hidden" name="action" value="set_access_mode">
+              <input type="hidden" name="project_slug" value="<?= station_h($project) ?>">
+              <input type="hidden" name="return_to" value="settings">
+              <div class="setting-item">
+                <label class="setting-label" for="access_mode">Who can open this project</label>
+                <div class="admin-inline-row">
+                  <select id="access_mode" name="access_mode">
+                    <?php foreach ($accessModes as $val => $lbl): ?>
+                      <?php if ($val !== 'public' || !empty($adminSettings['allowPublicProjects'])): ?>
+                        <option value="<?= station_h($val) ?>" <?= $pAccess === $val ? 'selected' : '' ?>><?= station_h($lbl) ?></option>
+                      <?php endif; ?>
+                    <?php endforeach; ?>
+                  </select>
+                  <button type="submit" class="secondary-btn">Update access</button>
+                </div>
+              </div>
+            </form>
+
+            <form method="post" action="station.php" class="admin-action-form">
+              <input type="hidden" name="action" value="claim_project_owner">
+              <input type="hidden" name="project_slug" value="<?= station_h($project) ?>">
+              <input type="hidden" name="return_to" value="settings">
+              <button type="submit" class="secondary-btn">Set me as owner</button>
+            </form>
+
+            <div class="settings-panel-divider"></div>
+
+            <h3 class="settings-subheading">Backups &amp; archive</h3>
+            <div class="admin-action-buttons">
+              <form method="post" action="backups.php" class="admin-action-form">
+                <input type="hidden" name="action" value="backup_project">
+                <input type="hidden" name="project" value="<?= station_h($project) ?>">
+                <button type="submit" class="secondary-btn">Create backup</button>
+              </form>
+              <form method="post" action="backups.php" class="admin-action-form">
+                <input type="hidden" name="action" value="archive_project">
+                <input type="hidden" name="project" value="<?= station_h($project) ?>">
+                <button type="submit" class="secondary-btn">Archive project</button>
+              </form>
+            </div>
+
+            <?php if ($isStationOwner): ?>
+            <div class="settings-panel-divider"></div>
+            <h3 class="settings-subheading">Danger zone</h3>
+            <form method="post" action="backups.php" class="admin-action-form"
+                  onsubmit="return confirm('Permanently delete <?= station_h($project) ?>? This cannot be undone.');">
+              <input type="hidden" name="action" value="delete_project">
+              <input type="hidden" name="project" value="<?= station_h($project) ?>">
+              <button type="submit" class="danger-btn">Delete forever</button>
+            </form>
             <?php endif; ?>
           </section>
         </div>

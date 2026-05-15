@@ -702,6 +702,229 @@ function station_host_health_compose_state_segments(array $dockerProjects): arra
 }
 
 /**
+ * SVG donut gauge (0–100%). Returns inline SVG markup.
+ */
+function station_host_health_svg_gauge(float $pct, string $stroke, string $track = '#1e293b', int $size = 132, string $centerLabel = ''): string
+{
+    $pct = max(0.0, min(100.0, $pct));
+    $r = (int) round($size * 0.38);
+    $c = (int) round($size / 2);
+    $circ = 2 * M_PI * $r;
+    $dash = ($pct / 100.0) * $circ;
+    $gap = max(0.01, $circ - $dash);
+    $label = $centerLabel !== '' ? $centerLabel : number_format($pct, 0) . '%';
+
+    return '<svg class="mc-gauge-svg" width="' . $size . '" height="' . $size . '" viewBox="0 0 ' . $size . ' ' . $size . '" role="img" aria-label="' . station_h(number_format($pct, 1) . ' percent') . '">'
+        . '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none" stroke="' . station_h($track) . '" stroke-width="10" opacity="0.35"/>'
+        . '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none" stroke="' . station_h($stroke) . '" stroke-width="10" stroke-linecap="round"'
+        . ' stroke-dasharray="' . round($dash, 2) . ' ' . round($gap, 2) . '" transform="rotate(-90 ' . $c . ' ' . $c . ')"/>'
+        . '<text x="' . $c . '" y="' . ($c + 5) . '" text-anchor="middle" class="mc-gauge-center">' . station_h($label) . '</text>'
+        . '</svg>';
+}
+
+/**
+ * JSON payload for live mission-control polling (owner session).
+ *
+ * @return array<string, mixed>
+ */
+function station_host_health_live_payload(): array
+{
+    $snapshot = station_host_health_snapshot();
+    $routing = station_host_health_routing_map();
+    $mission = station_mission_fleet_payload();
+    $slugs = [];
+    foreach ($routing['dockerProjects'] ?? [] as $dp) {
+        $s = trim((string) ($dp['slug'] ?? ''));
+        if ($s !== '') {
+            $slugs[] = $s;
+        }
+    }
+    $memInfo = is_array($snapshot['memory'] ?? null)
+        ? station_host_health_parse_mem_line((string) ($snapshot['memory']['output'] ?? ''))
+        : null;
+    $diskInfo = is_array($snapshot['disk'] ?? null)
+        ? station_host_health_parse_root_disk((string) ($snapshot['disk']['output'] ?? ''))
+        : null;
+
+    return [
+        'ok' => true,
+        'at' => gmdate('c'),
+        'engineOk' => !empty($mission['engineOk']),
+        'containerCount' => count($mission['rows'] ?? []),
+        'projectCount' => count($routing['dockerProjects'] ?? []),
+        'memPct' => is_array($memInfo) ? round(((float) ($memInfo['used_frac'] ?? 0)) * 100, 1) : null,
+        'diskPct' => is_array($diskInfo) ? round(((float) ($diskInfo['used_frac'] ?? 0)) * 100, 1) : null,
+        'maxCpu' => (float) ($mission['maxCpu'] ?? 0),
+        'maxMem' => (float) ($mission['maxMem'] ?? 0),
+        'containers' => $mission['rows'] ?? [],
+        'projects' => array_map(static function (array $row): array {
+            return [
+                'slug' => (string) ($row['slug'] ?? ''),
+                'composeState' => (string) ($row['composeState'] ?? ''),
+                'hostPort' => (int) ($row['hostPort'] ?? 0),
+            ];
+        }, is_array($routing['dockerProjects'] ?? []) ? $routing['dockerProjects'] : []),
+        'upstream' => station_host_health_docker_upstream_matrix(),
+    ];
+}
+
+/**
+ * Full-screen mission control (graphical, minimal prose).
+ */
+function station_host_health_mission_visual_html(
+    array $snapshot,
+    array $missionPayload,
+    array $routing,
+    array $upstreamMatrix,
+    array $stationSlugs
+): string {
+    $memBlock = $snapshot['memory'] ?? null;
+    $dfBlock = $snapshot['disk'] ?? null;
+    $memInfo = is_array($memBlock) ? station_host_health_parse_mem_line((string) ($memBlock['output'] ?? '')) : null;
+    $diskInfo = is_array($dfBlock) ? station_host_health_parse_root_disk((string) ($dfBlock['output'] ?? '')) : null;
+    $memPct = is_array($memInfo) ? ((float) ($memInfo['used_frac'] ?? 0)) * 100.0 : null;
+    $diskPct = is_array($diskInfo) ? ((float) ($diskInfo['used_frac'] ?? 0)) * 100.0 : null;
+    $rows = $missionPayload['rows'] ?? [];
+    $maxCpu = max(0.01, (float) ($missionPayload['maxCpu'] ?? 0.01));
+    $maxMem = max(0.01, (float) ($missionPayload['maxMem'] ?? 0.01));
+    $engineOk = !empty($missionPayload['engineOk']);
+    $slugLower = [];
+    foreach ($stationSlugs as $s) {
+        $t = strtolower(trim((string) $s));
+        if ($t !== '') {
+            $slugLower[$t] = true;
+        }
+    }
+    $originSeg = station_host_health_container_origin_segments($missionPayload, $stationSlugs);
+    $stationCnt = 0;
+    $otherCnt = 0;
+    foreach ($originSeg as $seg) {
+        if ((string) ($seg['label'] ?? '') === 'Station projects') {
+            $stationCnt = (int) round((float) ($seg['value'] ?? 0));
+        } elseif ((string) ($seg['label'] ?? '') === 'Other') {
+            $otherCnt = (int) round((float) ($seg['value'] ?? 0));
+        }
+    }
+    $totalCnt = max(1, $stationCnt + $otherCnt);
+    $stationShare = ($stationCnt / $totalCnt) * 100.0;
+
+    ob_start();
+    ?>
+    <div class="mc-visual" id="missionControlRoot" data-mission-live>
+      <div class="mc-visual-hero">
+        <div class="mc-visual-hero-copy">
+          <p class="mc-visual-kicker">Live telemetry</p>
+          <h2 class="mc-visual-title">Mission control</h2>
+          <p class="mc-visual-updated" id="missionUpdatedAt">Updating…</p>
+          <label class="mc-live-toggle">
+            <input type="checkbox" id="missionLivePoll" checked>
+            <span>Live refresh every 8s</span>
+          </label>
+        </div>
+        <div class="mc-gauge-row">
+          <div class="mc-gauge-tile">
+            <?= station_host_health_svg_gauge($engineOk ? 100.0 : 0.0, $engineOk ? '#22c55e' : '#ef4444', '#0f172a', 120, $engineOk ? 'OK' : 'OFF') ?>
+            <span class="mc-gauge-caption">Docker engine</span>
+          </div>
+          <div class="mc-gauge-tile">
+            <?= station_host_health_svg_gauge($memPct ?? 0.0, '#38bdf8', '#0f172a', 120, $memPct !== null ? number_format($memPct, 0) . '%' : '—') ?>
+            <span class="mc-gauge-caption">Host RAM</span>
+          </div>
+          <div class="mc-gauge-tile">
+            <?= station_host_health_svg_gauge($diskPct ?? 0.0, '#a78bfa', '#0f172a', 120, $diskPct !== null ? number_format($diskPct, 0) . '%' : '—') ?>
+            <span class="mc-gauge-caption">Root disk</span>
+          </div>
+          <div class="mc-gauge-tile">
+            <?= station_host_health_svg_gauge($stationShare, '#f59e0b', '#0f172a', 120, (string) count($rows)) ?>
+            <span class="mc-gauge-caption">Containers</span>
+          </div>
+        </div>
+      </div>
+
+      <section class="mc-fleet-visual" aria-label="Container fleet">
+        <div class="mc-section-head">
+          <h3>Container fleet</h3>
+          <span class="mc-section-meta" id="missionFleetMeta"><?= count($rows) ?> active</span>
+        </div>
+        <div class="mc-fleet-grid" id="missionFleetGrid">
+          <?php if ($rows === []): ?>
+            <p class="mc-empty">No container stats from Docker.</p>
+          <?php else: ?>
+            <?php foreach ($rows as $r):
+                $name = (string) ($r['name'] ?? '');
+                $nameL = strtolower($name);
+                $isStation = false;
+                foreach (array_keys($slugLower) as $slug) {
+                    if ($slug !== '' && str_contains($nameL, $slug)) {
+                        $isStation = true;
+                        break;
+                    }
+                }
+                $cpuNum = (float) ($r['cpuNum'] ?? 0);
+                $memNum = (float) ($r['memNum'] ?? 0);
+                $cpuW = min(100.0, ($cpuNum / $maxCpu) * 100.0);
+                $memW = min(100.0, ($memNum / $maxMem) * 100.0);
+                ?>
+              <article class="mc-fleet-card<?= $isStation ? ' is-station' : '' ?>">
+                <code class="mc-fleet-name"><?= station_h($name !== '' ? $name : 'container') ?></code>
+                <div class="mc-fleet-gauges">
+                  <div class="mc-mini-gauge">
+                    <?= station_host_health_svg_gauge($cpuW, '#22d3ee', '#1e293b', 72, (string) ($r['cpu'] ?? '')) ?>
+                    <span>CPU</span>
+                  </div>
+                  <div class="mc-mini-gauge">
+                    <?= station_host_health_svg_gauge($memW, '#c084fc', '#1e293b', 72, (string) ($r['memPerc'] ?? '')) ?>
+                    <span>RAM</span>
+                  </div>
+                </div>
+              </article>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
+      </section>
+
+      <?php if ($upstreamMatrix !== []): ?>
+      <section class="mc-projects-visual" aria-label="Project upstream health">
+        <div class="mc-section-head">
+          <h3>Deployed projects</h3>
+          <span class="mc-section-meta">Loopback probes</span>
+        </div>
+        <div class="mc-project-health-grid" id="missionUpstreamGrid">
+          <?php foreach ($upstreamMatrix as $um):
+              $slug = (string) ($um['slug'] ?? '');
+              $hp = (int) ($um['hostPort'] ?? 0);
+              $pr = $um['probe'] ?? [];
+              $tcpOk = !empty($pr['tcp']);
+              $httpC = (int) ($pr['httpCode'] ?? 0);
+              $health = 100.0;
+              $color = '#22c55e';
+              if (!$tcpOk) {
+                  $health = 8.0;
+                  $color = '#ef4444';
+              } elseif ($httpC >= 500 || $httpC === 0) {
+                  $health = 35.0;
+                  $color = '#f97316';
+              } elseif ($httpC >= 400) {
+                  $health = 55.0;
+                  $color = '#eab308';
+              }
+              ?>
+            <article class="mc-proj-health-card" data-upstream-slug="<?= station_h($slug) ?>">
+              <?= station_host_health_svg_gauge($health, $color, '#0f172a', 88, $tcpOk && $httpC > 0 ? (string) $httpC : '—') ?>
+              <strong><?= station_h($slug) ?></strong>
+              <span class="mc-proj-port">:<?= $hp ?></span>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
+      <?php endif; ?>
+    </div>
+    <?php
+
+    return (string) ob_get_clean();
+}
+
+/**
  * Mission-control cockpit strip: conic pies + compact upstream status cards.
  *
  * @param array<string, array{ok: bool, code: int, output: string, message: string}> $snapshot

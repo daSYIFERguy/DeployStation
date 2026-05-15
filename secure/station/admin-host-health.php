@@ -154,7 +154,7 @@ TXT;
         <div>
           <p class="dashboard-kicker">Owner · Mission control</p>
           <h1 class="dashboard-heading">Host health &amp; routing</h1>
-          <p class="dashboard-subheading">At-a-glance rings for containers, compose health, memory, and disk; live fleet bars; routing; and raw diagnostics from the same shell user as Station (often <code>www-data</code>).</p>
+          <p class="dashboard-subheading">Graphical gauges and live container stats — technical logs and routing are tucked under <strong>Technical details</strong> below.</p>
         </div>
         <nav class="nav-pills">
           <a href="admin-settings.php">← Admin settings</a>
@@ -172,8 +172,8 @@ TXT;
         <pre class="host-routing-pre" style="margin-top:8px;"><?= station_h($trunc((string) ($runResult['output'] ?? ''))) ?></pre>
       <?php endif; ?>
 
-      <div class="settings-panel mc-cockpit-wrap" style="margin-top: 16px; border: none; padding: 0; background: transparent; box-shadow: none;">
-        <?= station_host_health_mission_cockpit_html(
+      <div class="settings-panel mc-visual-wrap" style="margin-top: 16px; border: none; padding: 0; background: transparent; box-shadow: none;">
+        <?= station_host_health_mission_visual_html(
             $snapshot,
             $missionPayload,
             $routing,
@@ -182,21 +182,15 @@ TXT;
         ) ?>
       </div>
 
-      <p class="setting-description" style="margin-top:8px;">
+      <details class="settings-panel mc-tech-details" style="margin-top: 20px;">
+        <summary class="settings-panel-heading mc-tech-summary">Technical details (routing, shell output, maintenance)</summary>
+        <div class="mc-tech-details-body">
+      <p class="setting-description" style="margin-top:12px;">
         <label class="feature-toggle" style="display:inline-flex;align-items:center;gap:8px;">
           <input type="checkbox" id="hostHealthAutoRefresh">
-          <span>Auto-refresh this page every 25 seconds (GET only — clears inline command output above).</span>
+          <span>Full page reload every 25 seconds (clears command output).</span>
         </label>
       </p>
-
-      <div class="settings-panel" style="margin-top: 20px; border: none; padding: 0; background: transparent; box-shadow: none;">
-        <?= station_mission_fleet_markup(
-            $missionPayload,
-            $missionSlugs,
-            'Container fleet — relative load',
-            'Each bar is scaled to the busiest container on this host so you can compare CPU and RAM at a glance. Station-managed stacks are highlighted when the container name includes the project slug.'
-        ) ?>
-      </div>
 
       <div class="settings-panel" style="margin-top: 20px;">
         <h2 class="settings-panel-heading" style="font-size:18px;">Routing map (from Station config)</h2>
@@ -352,9 +346,12 @@ TXT;
           </div>
         </form>
       </div>
+        </div>
+      </details>
     </main>
   </div>
   <?= station_pwa_register_html() ?>
+  <script src="assets/mission-control.js?v=20260515"></script>
   <script>
 (function () {
   var cb = document.getElementById('hostHealthAutoRefresh');

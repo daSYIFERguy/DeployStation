@@ -34,14 +34,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'rename_project') {
         $project = station_safe_name((string) ($_POST['project_slug'] ?? ''));
         $result  = station_rename_project_slug($project, (string) ($_POST['new_project_slug'] ?? ''));
+        $returnSettings = ((string) ($_POST['return_to'] ?? '')) === 'settings';
         if (!empty($result['ok'])) {
             station_log_event('project.renamed', ['from' => $project, 'to' => $result['slug']]);
             station_touch_nginx_routes_after_project_mutation();
             station_flash_set('ok', 'Project renamed to ' . $result['slug']);
-            header('Location: station.php'); exit;
+            $dest = $returnSettings
+                ? 'project-settings.php?project=' . urlencode((string) $result['slug'])
+                : 'station.php';
+            header('Location: ' . $dest);
+            exit;
         }
         station_flash_set('error', (string) ($result['message'] ?? 'Rename failed.'));
-        header('Location: station.php'); exit;
+        header('Location: ' . ($returnSettings && $project !== ''
+            ? 'project-settings.php?project=' . urlencode($project)
+            : 'station.php'));
+        exit;
     }
 
     if ($action === 'claim_project_owner') {
@@ -51,7 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? station_flash_set('ok', 'Owner set to ' . $owner)
             : station_flash_set('error', 'Could not update owner.');
         station_log_event('project.owner.updated', ['slug' => $project, 'owner' => $owner]);
-        header('Location: station.php'); exit;
+        $dest = ((string) ($_POST['return_to'] ?? '')) === 'settings' && $project !== ''
+            ? 'project-settings.php?project=' . urlencode($project)
+            : 'station.php';
+        header('Location: ' . $dest);
+        exit;
     }
 
     if ($action === 'set_access_mode') {
@@ -61,7 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? station_flash_set('ok', 'Access updated.')
             : station_flash_set('error', 'Could not update access.');
         station_log_event('project.access.updated', ['slug' => $project, 'accessMode' => $accessMode]);
-        header('Location: station.php'); exit;
+        $dest = ((string) ($_POST['return_to'] ?? '')) === 'settings' && $project !== ''
+            ? 'project-settings.php?project=' . urlencode($project)
+            : 'station.php';
+        header('Location: ' . $dest);
+        exit;
     }
 }
 
@@ -114,7 +130,7 @@ $statsCards = !$canBuild
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260513a') ?>
+  <?= station_pwa_head_html($appName, 'Manage projects, GitHub connection, users, and station settings from one mobile-friendly workspace.', 'assets/style.css?v=20260515b') ?>
   <style>
     .station-body {
       margin: 0;
@@ -1282,16 +1298,15 @@ $statsCards = !$canBuild
               $dockerConfig = isset($ps['docker']) && is_array($ps['docker']) ? $ps['docker'] : [];
               $dockerContainerized = !empty($dockerConfig['containerized']);
             ?>
-            <article class="project-card" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>">
-              <div class="project-card-head">
+            <article class="project-card project-card-v2" data-search="<?= station_h(strtolower($slug . ' ' . $pOwner . ' ' . $pAccess . ' ' . $visibility . ' ' . $createdAt)) ?>" data-project-slug="<?= station_h($slug) ?>"<?= ($canBuild && station_docker_enabled() && $dockerContainerized) ? ' data-docker-containerized="1"' : '' ?>>
+              <div class="project-card-top">
+                <span class="project-status-led" data-status-led aria-hidden="true"></span>
                 <div class="project-card-heading">
                   <div class="proj-name-row">
                     <strong class="proj-slug"><?= station_h($slug) ?></strong>
                     <span class="status-pill <?= $isPublic ? 'is-public' : 'is-private' ?>"><?= $isPublic ? 'Public' : 'Private' ?></span>
                   </div>
                   <div class="proj-meta">
-                    <span>Owner: <?= station_h($pOwner) ?></span>
-                    <span class="meta-sep">·</span>
                     <span><?= station_h((string) ($accessModes[$pAccess] ?? $pAccess)) ?></span>
                     <?php if ($createdAt !== ''): ?>
                       <span class="meta-sep">·</span>
@@ -1299,104 +1314,45 @@ $statsCards = !$canBuild
                     <?php endif; ?>
                   </div>
                 </div>
-
                 <?php if ($canBuild): ?>
-                <details class="proj-more">
-                  <summary title="Project settings" class="gear-summary">⚙</summary>
-                  <div class="proj-more-body">
-                    <form method="post" class="more-action-form">
-                      <input type="hidden" name="action" value="rename_project">
-                      <input type="hidden" name="project_slug" value="<?= station_h($slug) ?>">
-                      <input type="text" name="new_project_slug" placeholder="New project URL name" required>
-                      <button type="submit">Rename</button>
-                    </form>
-                    <form method="post" class="more-action-form">
-                      <input type="hidden" name="action" value="set_access_mode">
-                      <input type="hidden" name="project_slug" value="<?= station_h($slug) ?>">
-                      <select name="access_mode">
-                        <?php foreach ($accessModes as $val => $lbl): ?>
-                          <?php if ($val !== 'public' || !empty($adminSettings['allowPublicProjects'])): ?>
-                            <option value="<?= station_h($val) ?>" <?= $pAccess === $val ? 'selected' : '' ?>><?= station_h($lbl) ?></option>
-                          <?php endif; ?>
-                        <?php endforeach; ?>
-                      </select>
-                      <button type="submit">Set Access</button>
-                    </form>
-                    <form method="post" class="more-action-form">
-                      <input type="hidden" name="action" value="claim_project_owner">
-                      <input type="hidden" name="project_slug" value="<?= station_h($slug) ?>">
-                      <button type="submit" class="secondary-btn">Set Me as Owner</button>
-                    </form>
-                    <form method="post" class="more-action-form" action="backups.php">
-                      <input type="hidden" name="action" value="backup_project">
-                      <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                      <button type="submit" class="secondary-btn">Backup</button>
-                    </form>
-                    <form method="post" class="more-action-form" action="backups.php">
-                      <input type="hidden" name="action" value="archive_project">
-                      <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                      <button type="submit" class="secondary-btn">Archive</button>
-                    </form>
-                    <?php if ($isOwner): ?>
-                    <form method="post" class="more-action-form" action="backups.php"
-                          onsubmit="return confirm('Permanently delete <?= station_h($slug) ?>? This cannot be undone.')">
-                      <input type="hidden" name="action" value="delete_project">
-                      <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                      <button type="submit" class="danger-btn">Delete Forever</button>
-                    </form>
-                    <?php endif; ?>
-                  </div>
-                </details>
+                  <a class="btn-manage" href="project-settings.php?project=<?= urlencode($slug) ?>">Manage</a>
                 <?php endif; ?>
               </div>
 
-              <div class="proj-quick-actions">
-                <a class="quick-link primary-link" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch ↗</a>
-                <a class="quick-link" href="viewer.php?project=<?= urlencode($slug) ?>">Files</a>
-                <?php if ($ghdevUrl !== ''): ?>
-                  <a class="quick-link ghdev-link" href="<?= station_h($ghdevUrl) ?>" target="_blank" rel="noreferrer">github.dev ↗</a>
+              <?php if ($canBuild && station_docker_enabled()): ?>
+              <div class="project-runtime-bar" data-proj-power data-project-slug="<?= station_h($slug) ?>">
+                <span class="runtime-state-text" data-runtime-label>Checking…</span>
+                <?php if ($dockerContainerized): ?>
+                <div class="runtime-btn-group">
+                  <form class="runtime-form" method="post" action="docker-actions.php" data-power-form data-power-when="stopped">
+                    <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                    <input type="hidden" name="action" value="start">
+                    <button type="submit" class="btn-runtime btn-runtime-start" title="Start containers">Start</button>
+                  </form>
+                  <form class="runtime-form" method="post" action="docker-actions.php" data-power-form data-power-when="running">
+                    <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                    <input type="hidden" name="action" value="stop">
+                    <button type="submit" class="btn-runtime btn-runtime-stop" title="Stop containers">Stop</button>
+                  </form>
+                  <form class="runtime-form" method="post" action="docker-actions.php" data-power-form>
+                    <input type="hidden" name="project" value="<?= station_h($slug) ?>">
+                    <input type="hidden" name="action" value="restart">
+                    <button type="submit" class="btn-runtime btn-runtime-restart" title="Restart containers">Restart</button>
+                  </form>
+                </div>
+                <?php else: ?>
+                  <a class="btn-runtime btn-runtime-setup" href="docker-config.php?project=<?= urlencode($slug) ?>">Enable containers</a>
                 <?php endif; ?>
-                <?php if ($canBuild): ?>
-                  <a class="quick-link" href="project-settings.php?project=<?= urlencode($slug) ?>">Settings</a>
-                  <?php if (station_docker_enabled()): ?>
-                    <?php if ($dockerContainerized): ?>
-                    <details class="docker-menu" data-docker-menu data-project-slug="<?= station_h($slug) ?>">
-                      <summary class="quick-link docker-trigger" data-docker-pill>
-                        <span class="docker-dot" data-docker-dot></span>
-                        <span data-docker-state-label>Containers</span>
-                      </summary>
-                      <div class="docker-menu-body">
-                        <form class="quick-action-form" method="post" action="docker-actions.php">
-                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                          <input type="hidden" name="action" value="start">
-                          <button class="docker-menu-action" type="submit">▶ Start</button>
-                        </form>
-                        <form class="quick-action-form" method="post" action="docker-actions.php">
-                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                          <input type="hidden" name="action" value="rebuild">
-                          <button class="docker-menu-action" type="submit">↻ Rebuild image</button>
-                        </form>
-                        <form class="quick-action-form" method="post" action="docker-actions.php">
-                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                          <input type="hidden" name="action" value="restart">
-                          <button class="docker-menu-action" type="submit">⟳ Restart</button>
-                        </form>
-                        <form class="quick-action-form" method="post" action="docker-actions.php">
-                          <input type="hidden" name="project" value="<?= station_h($slug) ?>">
-                          <input type="hidden" name="action" value="stop">
-                          <button class="docker-menu-action" type="submit">■ Stop</button>
-                        </form>
-                        <a class="docker-menu-action" href="docker-config.php?project=<?= urlencode($slug) ?>">⚙ Configure</a>
-                      </div>
-                    </details>
-                    <?php else: ?>
-                      <a class="quick-link" href="docker-config.php?project=<?= urlencode($slug) ?>" title="Enable container deployment">Containers</a>
-                    <?php endif; ?>
-                  <?php endif; ?>
-                <?php endif; ?>
-                <button class="quick-link share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
+              </div>
+              <?php endif; ?>
+
+              <div class="project-actions-row">
+                <a class="btn-action btn-action-primary" href="launch.php?project=<?= urlencode($slug) ?>" target="_blank" rel="noreferrer">Launch</a>
+                <a class="btn-action" href="viewer.php?project=<?= urlencode($slug) ?>">Files</a>
+                <button class="btn-action btn-action-ghost share-btn" type="button" data-share-url="<?= station_h(station_project_serve_path($slug)) ?>">Share</button>
               </div>
             </article>
+                      </article>
           <?php endforeach; ?>
         </div>
 
@@ -2140,56 +2096,69 @@ $statsCards = !$canBuild
       });
     }
 
-    /* ── Live Docker status ── */
-    const dockerMenus = Array.from(document.querySelectorAll('[data-docker-menu]'));
-    if (dockerMenus.length > 0) {
+    /* ── Live container runtime (Start / Stop / Restart) ── */
+    const powerBars = Array.from(document.querySelectorAll('[data-proj-power]'));
+    const containerizedBars = powerBars.filter((bar) => {
+      const card = bar.closest('.project-card');
+      return card && card.hasAttribute('data-docker-containerized');
+    });
+    if (containerizedBars.length > 0) {
       const stateMeta = {
         running: { label: 'Running', tone: 'ok' },
-        partial: { label: 'Partial', tone: 'warn' },
+        partial: { label: 'Partially running', tone: 'warn' },
         stopped: { label: 'Stopped', tone: 'bad' },
-        unknown: { label: 'Containers', tone: 'idle' },
+        unknown: { label: 'Checking…', tone: 'idle' },
         unavailable: { label: 'Docker offline', tone: 'bad' },
-        unconfigured: { label: 'Containers', tone: 'idle' }
+        unconfigured: { label: 'Not configured', tone: 'idle' }
       };
 
-      function applyDockerState(menu, state) {
+      function applyRuntimeState(bar, state) {
         const meta = stateMeta[state] || stateMeta.unknown;
-        const label = menu.querySelector('[data-docker-state-label]');
-        const trigger = menu.querySelector('[data-docker-pill]');
+        const label = bar.querySelector('[data-runtime-label]');
+        const card = bar.closest('.project-card');
+        const led = card ? card.querySelector('[data-status-led]') : null;
         if (label) { label.textContent = meta.label; }
-        if (trigger) {
-          trigger.dataset.tone = meta.tone;
-        }
+        if (card) { card.dataset.runtimeState = state; }
+        if (led) { led.dataset.tone = meta.tone; }
+        bar.querySelectorAll('[data-power-form][data-power-when]').forEach((form) => {
+          const when = form.dataset.powerWhen;
+          let show = false;
+          if (when === 'stopped') {
+            show = state === 'stopped' || state === 'partial';
+          } else if (when === 'running') {
+            show = state === 'running' || state === 'partial';
+          }
+          form.hidden = !show;
+        });
       }
 
-      function pollDockerStatus() {
-        const slugs = dockerMenus.map((m) => m.dataset.projectSlug || '').filter(Boolean);
+      function pollRuntimeStatus() {
+        const slugs = containerizedBars.map((b) => b.dataset.projectSlug || '').filter(Boolean);
         if (slugs.length === 0) { return; }
         fetch('docker-status.php?projects=' + encodeURIComponent(slugs.join(',')), { credentials: 'same-origin' })
           .then((r) => r.json())
           .then((payload) => {
             if (!payload || !payload.projects) { return; }
-            dockerMenus.forEach((menu) => {
-              const slug = menu.dataset.projectSlug || '';
+            containerizedBars.forEach((bar) => {
+              const slug = bar.dataset.projectSlug || '';
               const entry = payload.projects[slug];
               if (entry && entry.state) {
-                applyDockerState(menu, entry.state);
+                applyRuntimeState(bar, entry.state);
               } else if (payload.engine === false) {
-                applyDockerState(menu, 'unavailable');
+                applyRuntimeState(bar, 'unavailable');
               }
             });
           })
           .catch(() => {});
       }
 
-      pollDockerStatus();
-      window.setInterval(pollDockerStatus, 15000);
+      pollRuntimeStatus();
+      window.setInterval(pollRuntimeStatus, 15000);
 
-      // Refresh when any docker action form is submitted, so the pill updates faster.
-      document.querySelectorAll('.docker-menu form').forEach((form) => {
+      document.querySelectorAll('[data-proj-power] [data-power-form]').forEach((form) => {
         form.addEventListener('submit', () => {
-          window.setTimeout(pollDockerStatus, 2500);
-          window.setTimeout(pollDockerStatus, 8000);
+          window.setTimeout(pollRuntimeStatus, 2500);
+          window.setTimeout(pollRuntimeStatus, 8000);
         });
       });
     }
