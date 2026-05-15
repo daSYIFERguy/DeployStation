@@ -53,7 +53,7 @@ $brandMark = $brandIconUrl !== ''
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html($appName . ' — Sign in', 'Sign in or request access to ' . $appName, 'assets/style.css?v=20260519d') ?>
+  <?= station_pwa_head_html($appName . ' — Sign in', 'Sign in or request access to ' . $appName, 'assets/style.css?v=20260519f') ?>
   <link rel="stylesheet" href="assets/login.css?v=20260519c">
 </head>
 <body class="station-body login-page">

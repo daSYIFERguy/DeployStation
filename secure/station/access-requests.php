@@ -37,7 +37,7 @@ $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Access requests', 'Review pending access requests for ' . $appName, 'assets/style.css?v=20260519d') ?>
+  <?= station_pwa_head_html('Access requests', 'Review pending access requests for ' . $appName, 'assets/style.css?v=20260519f') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">

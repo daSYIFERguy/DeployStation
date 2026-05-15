@@ -123,8 +123,22 @@
       ctxLabel.textContent = parts.join(' · ');
     }
 
+    function syncProjectChip() {
+      if (!includeProject) { return; }
+      var slug = detectProjectFromUrl(window.location.href);
+      var chip = includeProject.closest('.assist-ctx-chip');
+      includeProject.disabled = !slug;
+      if (!slug) {
+        includeProject.checked = false;
+      }
+      if (chip) {
+        chip.classList.toggle('is-unavailable', !slug);
+      }
+    }
+
     function refreshContext() {
       updateContextLabel();
+      syncProjectChip();
       var qs = 'pageUrl=' + encodeURIComponent(window.location.href) +
         '&pageTitle=' + encodeURIComponent(document.title || '');
       var slug = detectProjectFromUrl(window.location.href);
@@ -218,6 +232,7 @@
     });
 
     updateContextLabel();
+    syncProjectChip();
   }
 
   if (document.readyState === 'loading') {

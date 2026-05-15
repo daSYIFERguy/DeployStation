@@ -991,13 +991,30 @@ function station_brand_copy_font_sizes(string $appName, string $heading): array
     return ['name' => $namePx, 'kicker' => $headPx];
 }
 
-function station_dashboard_nav_link(string $active, string $key, string $href, string $iconKey, string $label, string $extraClass = ''): string
+function station_dashboard_nav_divider(): string
 {
+    return '<div class="dashboard-menu-divider" role="separator" aria-hidden="true"></div>';
+}
+
+function station_dashboard_nav_link(
+    string $active,
+    string $key,
+    string $href,
+    string $iconKey,
+    string $label,
+    string $extraClass = '',
+    ?int $badgeCount = null
+): string {
     $classes = trim('dashboard-menu-link ' . ($active === $key ? 'active ' : '') . $extraClass);
     $icon = station_nav_icon($iconKey);
+    $badgeHtml = '';
+    if ($badgeCount !== null && $badgeCount > 0) {
+        $badgeHtml = '<span class="menu-badge">' . station_h((string) min(99, $badgeCount)) . '</span>';
+    }
 
-    return '<a href="' . station_h($href) . '" class="' . station_h($classes) . '">' .
-        '<span class="menu-icon">' . $icon . '</span>' .
+    return '<a href="' . station_h($href) . '" class="' . station_h($classes) . '"' .
+        ' title="' . station_h($label) . '" aria-label="' . station_h($label) . '">' .
+        '<span class="menu-icon">' . $icon . $badgeHtml . '</span>' .
         '<span class="menu-label">' . station_h($label) . '</span>' .
     '</a>';
 }
@@ -1027,33 +1044,45 @@ function station_dashboard_nav_html(string $active = 'dashboard'): string
         station_dashboard_nav_link($active, 'dashboard', 'station.php', 'dashboard', 'Dashboard'),
     ];
 
+    $adminLinks = [];
     if ($isAdmin) {
-        $links[] = station_dashboard_nav_link($active, 'users', 'users.php', 'users', 'Users');
-        $links[] = station_dashboard_nav_link($active, 'templates', 'template-manager.php', 'templates', 'Templates');
+        $adminLinks[] = station_dashboard_nav_link($active, 'users', 'users.php', 'users', 'Users');
+        $adminLinks[] = station_dashboard_nav_link($active, 'templates', 'template-manager.php', 'templates', 'Templates');
     }
 
     if ($isOwner) {
         require_once __DIR__ . '/access-requests.php';
-        $accessReqLabel = 'Requests';
         $unseen = function_exists('station_access_requests_unseen_count')
             ? station_access_requests_unseen_count()
             : 0;
-        if ($unseen > 0) {
-            $accessReqLabel = 'Requests (' . $unseen . ')';
-        }
-        $links[] = station_dashboard_nav_link($active, 'access_requests', 'access-requests.php', 'access_requests', $accessReqLabel);
-        $links[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Settings');
-        $links[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
+        $adminLinks[] = station_dashboard_nav_link(
+            $active,
+            'access_requests',
+            'access-requests.php',
+            'access_requests',
+            'Access requests',
+            '',
+            $unseen > 0 ? $unseen : null
+        );
+        $adminLinks[] = station_dashboard_nav_link($active, 'settings', 'admin-settings.php', 'settings', 'Admin settings');
+        $adminLinks[] = station_dashboard_nav_link($active, 'host_health', 'admin-host-health.php', 'host_health', 'Host health');
+    }
+
+    if ($adminLinks !== []) {
+        $links[] = station_dashboard_nav_divider();
+        $links = array_merge($links, $adminLinks);
     }
 
     if (function_exists('station_can_build') && station_can_build($user)) {
         $adminGh = station_admin_settings();
         if (!empty($adminGh['githubEnabled'])) {
+            $links[] = station_dashboard_nav_divider();
             $links[] = station_dashboard_nav_link($active, 'github_sync', 'github-sync.php', 'github_sync', 'GitHub sync');
         }
     }
 
-    $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', 'user-settings', 'User Settings');
+    $links[] = station_dashboard_nav_divider();
+    $links[] = station_dashboard_nav_link($active, 'user-settings', 'user-settings.php', 'user-settings', 'Account');
     $links[] = station_dashboard_nav_link($active, 'logout', 'logout.php', 'logout', 'Sign out', 'logout-link');
 
     return '<aside class="dashboard-nav">' .
@@ -1136,7 +1165,7 @@ function station_clipboard_fab_html(): string
         . <<<'HTML'
   <section class="assist-fab-panel" id="stationAssistFabPanel" role="dialog" aria-label="DeployStation AI Assist" aria-hidden="true">
     <header class="assist-fab-head">
-      <div>
+      <div class="assist-fab-head-copy">
         <p class="assist-fab-kicker">AI Assist</p>
         <h3 class="assist-fab-title">DeployStation copilot</h3>
         <p class="assist-fab-hint" id="stationAssistContextLabel">This page</p>
@@ -1146,26 +1175,26 @@ function station_clipboard_fab_html(): string
       </button>
     </header>
     <div class="assist-chat-log" id="stationAssistChatLog" aria-live="polite">
-      <div class="assist-chat-msg assist-chat-msg-system">Ask about this page, a project, Docker, GitHub sync, or how DeployStation works. Context is sent with each message when enabled below.</div>
+      <div class="assist-chat-msg assist-chat-msg-system">Ask about this page, Docker, GitHub, or how DeployStation works.</div>
     </div>
-    <label class="feature-toggle assist-chat-opt">
-      <input type="checkbox" id="stationAssistIncludePage" checked>
-      <span class="feature-toggle-content">
-        <span class="feature-toggle-title">Include current page</span>
-        <span class="feature-toggle-desc">URL, title, and your role on the station.</span>
-      </span>
-    </label>
-    <label class="feature-toggle assist-chat-opt">
-      <input type="checkbox" id="stationAssistIncludeProject" checked>
-      <span class="feature-toggle-content">
-        <span class="feature-toggle-title">Include project workspace</span>
-        <span class="feature-toggle-desc">Files, Docker, and GitHub metadata when a project is detected.</span>
-      </span>
-    </label>
-    <label class="setting-label" for="stationAssistExtra">Extra context (optional)</label>
-    <textarea id="stationAssistExtra" class="assist-extra" rows="2" placeholder="Paste logs, errors, or notes…"></textarea>
+    <div class="assist-context-bar" role="group" aria-label="Context to include">
+      <label class="assist-ctx-chip" title="URL, title, and your role">
+        <input type="checkbox" id="stationAssistIncludePage" checked>
+        <span class="assist-ctx-chip-label">Page</span>
+        <span class="assist-ctx-chip-dot" aria-hidden="true"></span>
+      </label>
+      <label class="assist-ctx-chip" title="Files, Docker, and GitHub when a project is open">
+        <input type="checkbox" id="stationAssistIncludeProject" checked>
+        <span class="assist-ctx-chip-label">Project</span>
+        <span class="assist-ctx-chip-dot" aria-hidden="true"></span>
+      </label>
+    </div>
+    <details class="assist-extra-drawer">
+      <summary class="assist-extra-summary">Extra context</summary>
+      <textarea id="stationAssistExtra" class="assist-extra" rows="4" placeholder="Paste logs, errors, or notes…"></textarea>
+    </details>
     <div class="assist-chat-compose">
-      <textarea id="stationAssistInput" class="assist-input" rows="2" placeholder="Ask anything about DeployStation…"></textarea>
+      <textarea id="stationAssistInput" class="assist-input" rows="3" placeholder="Ask anything about DeployStation…"></textarea>
       <button type="button" class="btn-primary assist-send" id="stationAssistSend">Send</button>
     </div>
     <p class="assist-fab-status" id="stationAssistStatus" aria-live="polite"></p>
@@ -1210,7 +1239,7 @@ function station_clipboard_fab_html(): string
 </aside>
   </div>
 </aside>
-<script src="assets/station-assist.js?v=20260519a"></script>
+<script src="assets/station-assist.js?v=20260519f"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {
