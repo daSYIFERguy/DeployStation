@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/openai.php';
 require_once __DIR__ . '/docker.php';
+require_once __DIR__ . '/station-assist-progress.php';
 require_once __DIR__ . '/station-assist-actions.php';
 
 /**
@@ -127,8 +128,12 @@ function station_assist_chat_reply(
     ?array $projectContext,
     string $extraContext = '',
     bool $includeProjectContext = true,
-    array $conversationHistory = []
+    array $conversationHistory = [],
+    string $requestId = ''
 ): array {
+    if ($requestId !== '') {
+        station_assist_set_active_progress_request($requestId);
+    }
     $message = trim($message);
     if ($message === '') {
         return ['ok' => false, 'text' => '', 'message' => 'Message is empty.'];
@@ -205,7 +210,14 @@ function station_assist_chat_reply(
 
     $maxRounds = $tools !== [] ? 8 : 1;
     for ($round = 0; $round < $maxRounds; $round++) {
-        $completion = station_openai_chat_with_tools($messages, $tools, null, 1800);
+        if ($requestId !== '') {
+            $roundLabel = $maxRounds > 1
+                ? 'Thinking with AI (step ' . ($round + 1) . ')…'
+                : 'Thinking with AI…';
+            station_assist_progress_step($requestId, $roundLabel, 'Waiting for OpenAI');
+        }
+
+        $completion = station_openai_chat_with_tools($messages, $tools, null, 1800, 300);
         if (empty($completion['ok'])) {
             return [
                 'ok' => false,
@@ -247,6 +259,14 @@ function station_assist_chat_reply(
             $args = json_decode($argsRaw, true);
             if (!is_array($args)) {
                 $args = [];
+            }
+
+            if ($requestId !== '') {
+                station_assist_progress_step(
+                    $requestId,
+                    station_assist_tool_progress_label($toolName),
+                    station_assist_tool_progress_detail($toolName, $args)
+                );
             }
 
             $executed = station_assist_execute_tool($user, $toolName, $args);

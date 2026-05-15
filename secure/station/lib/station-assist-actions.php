@@ -12,6 +12,34 @@ require_once __DIR__ . '/github-sync.php';
 require_once __DIR__ . '/git.php';
 require_once __DIR__ . '/openai.php';
 require_once __DIR__ . '/project-launch.php';
+require_once __DIR__ . '/station-assist-progress.php';
+
+function station_assist_tool_progress_label(string $toolName): string
+{
+    return match (trim($toolName)) {
+        'create_project' => 'Creating project…',
+        'list_templates' => 'Listing templates…',
+        'navigate' => 'Opening page…',
+        default => 'Running tool: ' . $toolName,
+    };
+}
+
+/**
+ * @param array<string, mixed> $arguments
+ */
+function station_assist_tool_progress_detail(string $toolName, array $arguments): string
+{
+    if ($toolName === 'create_project') {
+        $name = trim((string) ($arguments['project_name'] ?? ''));
+
+        return $name !== '' ? $name : 'New project';
+    }
+    if ($toolName === 'navigate') {
+        return trim((string) ($arguments['path'] ?? ''));
+    }
+
+    return '';
+}
 
 /**
  * System instructions for new-project conversations (discovery → confirm → create).
@@ -318,6 +346,8 @@ function station_assist_tool_create_project(array $user, array $arguments): arra
         $templateType
     );
 
+    station_assist_progress_tick('Creating project on station…', $projectName);
+
     $created = station_assist_create_starter_project(
         $username,
         $projectName,
@@ -478,6 +508,8 @@ function station_assist_create_starter_project(
         return ['ok' => false, 'error' => 'Unknown template: ' . $templateType];
     }
 
+    station_assist_progress_tick('Allocating project slug…', $projectName);
+
     $slug = station_unique_slug($projectName);
     $projectPath = station_project_path($slug);
     if (is_dir($projectPath)) {
@@ -486,6 +518,8 @@ function station_assist_create_starter_project(
     if (!mkdir($projectPath, 0755, true) && !is_dir($projectPath)) {
         return ['ok' => false, 'error' => 'Could not create project folder.'];
     }
+
+    station_assist_progress_tick('Deploying template…', $templateType);
 
     $deploy = station_deploy_template_to_project_path($projectPath, $templateType, $projectName);
     if (empty($deploy['ok'])) {
@@ -505,6 +539,7 @@ function station_assist_create_starter_project(
     );
     $githubMetaSaved = false;
     if (!empty($githubTargets['repoOwner']) && !empty($githubTargets['repoName'])) {
+        station_assist_progress_tick('Saving GitHub metadata…', (string) $githubTargets['repoOwner'] . '/' . (string) $githubTargets['repoName']);
         station_assist_apply_project_github_metadata(
             $slug,
             (string) $githubTargets['repoOwner'],
@@ -517,6 +552,8 @@ function station_assist_create_starter_project(
         $repoName = (string) $githubTargets['repoName'];
     }
 
+    station_assist_progress_tick('Writing MVP documentation…', 'PROJECT_PLANS.md & README.md');
+
     $docs = station_assist_write_project_documentation(
         $slug,
         $projectName,
@@ -525,6 +562,10 @@ function station_assist_create_starter_project(
         $username
     );
 
+    station_assist_progress_tick('Configuring web entrypoint…', $webEntryDir === '' ? 'project root' : $webEntryDir);
+    $entrypointApplied = station_assist_apply_web_entrypoint($slug, $webEntryDir, $webEntryFile);
+
+    station_assist_progress_tick('Registering project access…', $slug);
     station_write_project_access_router($slug, $projectPath);
 
     $adminSettings = station_admin_settings();
@@ -568,20 +609,42 @@ function station_assist_create_starter_project(
             }
         }
 
+        station_assist_progress_tick(
+            $useDocker ? 'Enabling Docker for project…' : 'Saving host-only launch settings…',
+            'Port ' . $appPort
+        );
         $projectSettings['docker'] = array_merge($existingDocker, [
-            'containerized' => true,
+            'containerized' => $useDocker,
             'appPort' => $appPort,
             'stack' => (string) ($templateBootstrap['stack'] ?? 'other'),
             'recommendedServices' => $recommended,
             'services' => $servicesEnabled,
         ]);
         station_save_project_settings($slug, $projectSettings);
-    } else {
+    } elseif ($useDocker) {
+        station_assist_progress_tick('Bootstrapping Docker from workspace…', $slug);
         station_try_bootstrap_native_docker_from_workspace($slug);
+    } else {
+        $projectSettings = station_project_settings($slug);
+        $existingDocker = isset($projectSettings['docker']) && is_array($projectSettings['docker'])
+            ? $projectSettings['docker']
+            : [];
+        $projectSettings['docker'] = array_merge($existingDocker, ['containerized' => false]);
+        station_save_project_settings($slug, $projectSettings);
     }
 
     $githubResult = ['skipped' => true, 'reason' => 'push_to_github false'];
     if ($pushToGithub) {
+        $pushTargets = station_assist_resolve_github_targets($username, $slug, $projectName, $repoOwner, $repoName);
+        if (empty($pushTargets['canPush'])) {
+            $githubResult = [
+                'ok' => false,
+                'error' => (string) ($pushTargets['pushError'] ?? 'GitHub push is not available.'),
+                'repo' => ($pushTargets['repoOwner'] ?? '') . '/' . ($pushTargets['repoName'] ?? ''),
+                'metadataSaved' => $githubMetaSaved,
+            ];
+        } else {
+            station_assist_progress_tick('Creating GitHub repository…', (string) $pushTargets['repoOwner'] . '/' . (string) $pushTargets['repoName']);
             $githubResult = station_assist_link_new_project_github(
                 $username,
                 $slug,
@@ -590,11 +653,15 @@ function station_assist_create_starter_project(
                 $repoName,
                 $description
             );
+        }
     }
 
     if (station_normalize_server_infrastructure((string) ($adminSettings['serverInfrastructure'] ?? 'apache')) === 'nginx') {
+        station_assist_progress_tick('Updating nginx routes…', $slug);
         station_write_nginx_projects_conf();
     }
+
+    station_assist_progress_tick('Project ready', '/p/' . $slug . '/');
 
     station_log_event('project.assist.created', [
         'slug' => $slug,
@@ -885,10 +952,12 @@ Include these sections with concrete bullets (not placeholders). Honor any "## D
 Return ONLY markdown. No code fences. Be specific to the brief.
 PROMPT;
 
+    station_assist_progress_tick('Generating PROJECT_PLANS.md…', $projectName);
+
     $completion = station_openai_chat([
         ['role' => 'system', 'content' => 'You write actionable MVP specs for full-stack engineers.'],
         ['role' => 'user', 'content' => $prompt],
-    ], $username, 2000);
+    ], $username, 2000, 180);
 
     if (empty($completion['ok'])) {
         return '';
@@ -929,10 +998,12 @@ Required sections:
 Tone: professional README for a real repo. Return ONLY markdown, no fences, under 140 lines.
 PROMPT;
 
+    station_assist_progress_tick('Generating README.md…', $projectName);
+
     $completion = station_openai_chat([
         ['role' => 'system', 'content' => 'You write concise, accurate README files for developer handoffs.'],
         ['role' => 'user', 'content' => $prompt . "\n\n---\nTemplate README excerpt:\n" . $templateSnippet],
-    ], $username, 1800);
+    ], $username, 1800, 180);
 
     if (empty($completion['ok']) || trim((string) ($completion['text'] ?? '')) === '') {
         return station_assist_merge_plans_into_readme($projectName, $description, $existingReadme);
@@ -983,6 +1054,7 @@ function station_assist_merge_plans_into_readme(string $projectName, string $des
 function station_assist_link_new_project_github(
     string $username,
     string $slug,
+    string $projectName,
     string $repoOwner,
     string $repoName,
     string $description
@@ -1024,6 +1096,8 @@ function station_assist_link_new_project_github(
             'metadataSaved' => true,
         ];
     }
+
+    station_assist_progress_tick('Pushing code to GitHub…', $repoOwner . '/' . $repoName);
 
     $link = station_github_project_init_and_link($slug, $token, $authMode);
     if (empty($link['ok'])) {

@@ -20,6 +20,59 @@
   var statusEl = document.getElementById('wsStatus');
   var terminalPanel = document.getElementById('wsTerminal');
   var terminalFrame = document.getElementById('wsTerminalFrame');
+  var ideBody = document.getElementById('wsIdeBody');
+  var tabFiles = document.getElementById('wsTabFiles');
+  var tabEditor = document.getElementById('wsTabEditor');
+  var backToFiles = document.getElementById('wsBackToFiles');
+  var mobileMq = window.matchMedia('(max-width: 900px)');
+
+  function isMobileWorkspace() {
+    return mobileMq.matches;
+  }
+
+  function setMobilePanel(panel) {
+    if (!ideBody) {
+      return;
+    }
+    var showEditor = panel === 'editor';
+    ideBody.classList.toggle('workspace-ide-body--panel-files', !showEditor);
+    ideBody.classList.toggle('workspace-ide-body--panel-editor', showEditor);
+    if (tabFiles) {
+      tabFiles.classList.toggle('is-active', !showEditor);
+      tabFiles.setAttribute('aria-selected', showEditor ? 'false' : 'true');
+    }
+    if (tabEditor) {
+      tabEditor.classList.toggle('is-active', showEditor);
+      tabEditor.setAttribute('aria-selected', showEditor ? 'true' : 'false');
+    }
+  }
+
+  function bindMobileTabs() {
+    function onTab(panel) {
+      return function (ev) {
+        ev.preventDefault();
+        setMobilePanel(panel);
+      };
+    }
+    if (tabFiles) {
+      tabFiles.addEventListener('click', onTab('files'));
+    }
+    if (tabEditor) {
+      tabEditor.addEventListener('click', onTab('editor'));
+    }
+    if (backToFiles) {
+      backToFiles.addEventListener('click', onTab('files'));
+    }
+    if (typeof mobileMq.addEventListener === 'function') {
+      mobileMq.addEventListener('change', function () {
+        if (!isMobileWorkspace()) {
+          setMobilePanel('files');
+        }
+      });
+    }
+  }
+
+  bindMobileTabs();
 
   function setStatus(msg, isError) {
     if (!statusEl) {
@@ -154,6 +207,9 @@
   function openFile(path) {
     if (dirty && !window.confirm('Discard unsaved changes?')) {
       return;
+    }
+    if (isMobileWorkspace()) {
+      setMobilePanel('editor');
     }
     openPath = path;
     if (pathLabel) {
@@ -410,6 +466,8 @@
       } else {
         openFile(openPath);
       }
+    } else if (isMobileWorkspace()) {
+      setMobilePanel('files');
     }
   });
 })();

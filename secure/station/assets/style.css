@@ -3316,6 +3316,88 @@ body.station-shell-loading main.dashboard-main {
   padding: 0 16px;
 }
 
+.assist-progress {
+  margin: 0 12px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-elevated, #1a1f2e) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #2a3348) 70%, transparent);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.assist-progress-label {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--text, #e8ecf4);
+}
+
+.assist-progress-steps {
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assist-progress-step {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.assist-progress-step::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.assist-progress-step--active {
+  color: var(--text, #e8ecf4);
+}
+
+.assist-progress-step--active::before {
+  background: var(--accent, #5b8def);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #5b8def) 35%, transparent);
+  animation: assist-progress-pulse 1.2s ease-in-out infinite;
+}
+
+.assist-progress-step--done::before {
+  background: #3ecf8e;
+}
+
+.assist-progress-step--error {
+  color: #f87171;
+}
+
+.assist-progress-step--error::before {
+  background: #f87171;
+}
+
+.assist-progress-step-label {
+  font-weight: 500;
+}
+
+.assist-progress-step-detail {
+  opacity: 0.85;
+  font-size: 11px;
+}
+
+@keyframes assist-progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 .assist-fab-status {
   margin: 0;
   font-size: 12px;

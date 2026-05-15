@@ -50,7 +50,7 @@ $ideConfig = [
 <html lang="en">
 <head>
   <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.') ?>
-  <link rel="stylesheet" href="assets/project-workspace.css?v=20260522a">
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260515d">
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -104,16 +104,22 @@ $ideConfig = [
         <?php endif; ?>
       </div>
 
-      <div class="workspace-ide-body">
-        <aside class="workspace-ide-sidebar">
+      <div class="workspace-ide-mobile-tabs" role="tablist" aria-label="Workspace panels">
+        <button type="button" class="workspace-ide-mobile-tab is-active" role="tab" id="wsTabFiles" aria-selected="true" aria-controls="wsPanelFiles" data-ws-panel="files">Files</button>
+        <button type="button" class="workspace-ide-mobile-tab" role="tab" id="wsTabEditor" aria-selected="false" aria-controls="wsPanelEditor" data-ws-panel="editor">Editor</button>
+      </div>
+
+      <div class="workspace-ide-body workspace-ide-body--panel-files" id="wsIdeBody">
+        <aside class="workspace-ide-sidebar" id="wsPanelFiles">
           <div class="workspace-ide-sidebar-head">
             <nav class="workspace-ide-breadcrumb" id="wsBreadcrumb" aria-label="Folder path"></nav>
           </div>
           <div class="workspace-ide-tree" id="wsTree"></div>
         </aside>
-        <section class="workspace-ide-editor">
+        <section class="workspace-ide-editor" id="wsPanelEditor">
           <div class="workspace-ide-editor-head">
-            <span>File: <code id="wsOpenPath"><?= $file !== '' ? station_h($file) : '—' ?></code></span>
+            <button type="button" class="workspace-ide-back-files" id="wsBackToFiles" aria-label="Back to file list">← Files</button>
+            <span class="workspace-ide-editor-path">File: <code id="wsOpenPath"><?= $file !== '' ? station_h($file) : '—' ?></code></span>
           </div>
           <?php if ($canBuild): ?>
             <textarea id="wsEditor" class="workspace-ide-textarea" spellcheck="false" placeholder="Select a file from the tree…"></textarea>
@@ -137,7 +143,7 @@ $ideConfig = [
   <script>
   window.STATION_WORKSPACE_IDE = <?= json_encode($ideConfig, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) ?>;
   </script>
-  <script src="assets/project-workspace.js?v=20260518c"></script>
+  <script src="assets/project-workspace.js?v=20260515d"></script>
   <?= station_dashboard_page_footer_html() ?>
 </body>
 </html>

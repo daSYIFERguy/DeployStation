@@ -73,6 +73,9 @@
     var extra = document.getElementById('stationAssistExtra');
     var sendBtn = document.getElementById('stationAssistSend');
     var statusEl = document.getElementById('stationAssistStatus');
+    var progressWrap = document.getElementById('stationAssistProgress');
+    var progressSteps = document.getElementById('stationAssistProgressSteps');
+    var progressPollTimer = null;
     var includePage = document.getElementById('stationAssistIncludePage');
     var includeProject = document.getElementById('stationAssistIncludeProject');
     var ctxLabel = document.getElementById('stationAssistContextLabel');
@@ -173,6 +176,81 @@
       }
     }
 
+    function newRequestId() {
+      if (global.crypto && typeof global.crypto.randomUUID === 'function') {
+        return global.crypto.randomUUID().replace(/-/g, '');
+      }
+      var s = '';
+      for (var i = 0; i < 24; i++) {
+        s += Math.floor(Math.random() * 16).toString(16);
+      }
+      return s;
+    }
+
+    function clearProgressPoll() {
+      if (progressPollTimer) {
+        window.clearInterval(progressPollTimer);
+        progressPollTimer = null;
+      }
+    }
+
+    function renderProgress(progress) {
+      if (!progress) { return; }
+      var label = progress.label || '';
+      if (statusEl) {
+        statusEl.textContent = label;
+      }
+      if (!progressSteps) { return; }
+      progressSteps.innerHTML = '';
+      var steps = Array.isArray(progress.steps) ? progress.steps : [];
+      steps.forEach(function (step) {
+        if (!step || !step.label) { return; }
+        var li = document.createElement('li');
+        var state = step.state || 'done';
+        li.className = 'assist-progress-step assist-progress-step--' + state;
+        var title = document.createElement('span');
+        title.className = 'assist-progress-step-label';
+        title.textContent = step.label;
+        li.appendChild(title);
+        if (step.detail) {
+          var detail = document.createElement('span');
+          detail.className = 'assist-progress-step-detail';
+          detail.textContent = step.detail;
+          li.appendChild(detail);
+        }
+        progressSteps.appendChild(li);
+      });
+      if (progressWrap) {
+        progressWrap.hidden = steps.length === 0 && !label;
+      }
+    }
+
+    function startProgressPoll(requestId) {
+      clearProgressPoll();
+      if (!requestId) { return; }
+      function poll() {
+        global.stationFetchJson(apiUrl('station-assist-api.php?progress=1&requestId=' + encodeURIComponent(requestId)))
+          .then(function (data) {
+            if (!data || !data.ok || !data.progress) { return; }
+            renderProgress(data.progress);
+          })
+          .catch(function () {});
+      }
+      poll();
+      progressPollTimer = window.setInterval(poll, 750);
+    }
+
+    function setProgressVisible(on) {
+      if (progressWrap) {
+        progressWrap.hidden = !on;
+      }
+      if (!on) {
+        clearProgressPoll();
+        if (progressSteps) { progressSteps.innerHTML = ''; }
+        if (statusEl) { statusEl.textContent = ''; }
+      }
+    }
+
     function appendMsg(role, text) {
       if (!log || !text) { return; }
       var div = document.createElement('div');
@@ -263,13 +341,18 @@
       appendMsg('user', msg);
       input.value = '';
       sendBtn.disabled = true;
-      if (statusEl) { statusEl.textContent = 'Thinking…'; }
+
+      var requestId = newRequestId();
+      setProgressVisible(true);
+      renderProgress({ label: 'Starting…', steps: [{ label: 'Sending request…', state: 'active' }] });
+      startProgressPoll(requestId);
 
       var slug = detectProjectFromUrl(window.location.href);
       global.stationFetchJson(apiUrl('station-assist-api.php'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          requestId: requestId,
           message: msg,
           pageUrl: window.location.href,
           pageTitle: document.title || '',
@@ -280,19 +363,28 @@
         })
       })
         .then(function (data) {
+          clearProgressPoll();
           sendBtn.disabled = false;
-          if (statusEl) { statusEl.textContent = ''; }
+          if (data && data.progress) {
+            renderProgress(data.progress);
+          }
           if (!data || !data.ok) {
             appendMsg('error', (data && data.message) ? data.message : 'Chat failed.');
+            window.setTimeout(function () { setProgressVisible(false); }, 4000);
             return;
           }
           appendMsg('assistant', data.reply || '(empty reply)');
           runClientActions(data.clientActions);
+          window.setTimeout(function () { setProgressVisible(false); }, 2500);
         })
         .catch(function (err) {
+          clearProgressPoll();
           sendBtn.disabled = false;
-          if (statusEl) { statusEl.textContent = ''; }
           appendMsg('error', err && err.message ? err.message : 'Network error.');
+          if (statusEl) {
+            statusEl.textContent = err && err.message ? err.message : 'Network error.';
+          }
+          window.setTimeout(function () { setProgressVisible(false); }, 5000);
         });
     }
 

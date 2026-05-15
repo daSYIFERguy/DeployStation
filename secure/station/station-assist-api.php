@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/projects.php';
 require_once __DIR__ . '/lib/project-launch.php';
+require_once __DIR__ . '/lib/station-assist-progress.php';
 require_once __DIR__ . '/lib/station-assist.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -14,14 +15,39 @@ station_require_login();
 $user = station_current_user();
 $username = station_current_username();
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['progress']) && (string) $_GET['progress'] === '1') {
+    $requestId = station_assist_progress_sanitize_request_id((string) ($_GET['requestId'] ?? ''));
+    if ($requestId === '') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => 'requestId is required.'], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'progress' => station_assist_progress_read($requestId),
+    ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    @set_time_limit(120);
+    @set_time_limit(600);
+    @ini_set('max_execution_time', '600');
+    ignore_user_abort(true);
 
     $raw = (string) file_get_contents('php://input');
     $body = json_decode($raw, true);
     if (!is_array($body)) {
         $body = $_POST;
     }
+
+    $requestId = station_assist_progress_sanitize_request_id((string) ($body['requestId'] ?? ''));
+    if ($requestId === '') {
+        $requestId = bin2hex(random_bytes(16));
+    }
+
+    station_assist_set_active_progress_request($requestId);
+    station_assist_progress_begin($requestId, 'Starting…');
 
     $message = trim((string) ($body['message'] ?? ''));
     $pageUrl = trim((string) ($body['pageUrl'] ?? ''));
@@ -42,8 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $projectContext = null;
     if ($includeProject && $projectSlug !== '' && station_project_exists($projectSlug)) {
         if (!station_user_may_access_project($user, $projectSlug)) {
+            station_assist_progress_finish($requestId, false, 'Access denied');
             http_response_code(403);
-            echo json_encode(['ok' => false, 'message' => 'Access denied for this project.'], JSON_UNESCAPED_SLASHES);
+            echo json_encode([
+                'ok' => false,
+                'message' => 'Access denied for this project.',
+                'requestId' => $requestId,
+            ], JSON_UNESCAPED_SLASHES);
             exit;
         }
         try {
@@ -66,10 +97,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $history = [];
     }
 
-    $reply = station_assist_chat_reply($message, $pageContext, $projectContext, $extra, $includeProject, $history);
+    station_assist_progress_step($requestId, 'Thinking with AI…', 'Reading your message and station context');
+
+    $reply = station_assist_chat_reply(
+        $message,
+        $pageContext,
+        $projectContext,
+        $extra,
+        $includeProject,
+        $history,
+        $requestId
+    );
     $clientActions = isset($reply['clientActions']) && is_array($reply['clientActions']) ? $reply['clientActions'] : [];
 
-    if (!empty($reply['ok'])) {
+    $replyOk = !empty($reply['ok']);
+    station_assist_progress_finish(
+        $requestId,
+        $replyOk,
+        $replyOk ? 'Reply ready' : (string) ($reply['message'] ?? 'Request failed')
+    );
+
+    if ($replyOk) {
         $history = $_SESSION['station_assist_chat'][$sessionKey] ?? [];
         if (!is_array($history)) {
             $history = [];
@@ -80,16 +128,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $encoded = json_encode([
-        'ok' => !empty($reply['ok']),
+        'ok' => $replyOk,
         'reply' => (string) ($reply['text'] ?? ''),
         'message' => (string) ($reply['message'] ?? ''),
         'openaiConfigured' => station_openai_configured(),
         'projectSlug' => $projectSlug,
         'clientActions' => $clientActions,
+        'requestId' => $requestId,
+        'progress' => station_assist_progress_read($requestId),
     ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 
     if ($encoded === false) {
-        echo '{"ok":false,"message":"Could not encode response.","reply":""}';
+        echo '{"ok":false,"message":"Could not encode response.","reply":"","requestId":"' . $requestId . '"}';
         exit;
     }
     echo $encoded;

@@ -1197,3 +1197,21 @@ function station_project_github_browser_links(string $slug): ?array
         'vscode_vfs' => 'vscode://vscode-vfs/github/' . $owner . '/' . $name,
     ];
 }
+
+/**
+ * Apache: write .htaccess rewrite to project-serve.php when missing (no-op if file exists).
+ */
+function station_write_project_access_router(string $slug, string $projectPath): void
+{
+    $slug = station_safe_name($slug);
+    if ($slug === '') {
+        return;
+    }
+
+    $htaccessPath = $projectPath . '/.htaccess';
+    if (!file_exists($htaccessPath)) {
+        $projectServePath = station_project_serve_path($slug);
+        $rewrite = "RewriteEngine On\nRewriteRule ^$ " . $projectServePath . " [L,QSA]\nRewriteRule ^(.*)$ " . $projectServePath . "&path=$1 [L,QSA,B]\n";
+        @file_put_contents($htaccessPath, $rewrite, LOCK_EX);
+    }
+}

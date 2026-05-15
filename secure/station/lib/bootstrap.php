@@ -932,7 +932,7 @@ function station_nav_icon_svg(string $key): string
     return station_nav_icon($key);
 }
 
-function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260522a'): string
+function station_pwa_head_html(string $title, string $description = '', string $stylesheetHref = 'assets/style.css?v=20260515c'): string
 {
     $uiConfig = station_ui_config();
     $appName = trim((string) ($uiConfig['appName'] ?? 'Deployment Station'));
@@ -1253,7 +1253,10 @@ function station_clipboard_fab_html(): string
       <textarea id="stationAssistInput" class="assist-input" rows="3" placeholder="Ask anything about DeployStation…"></textarea>
       <button type="button" class="btn-primary assist-send" id="stationAssistSend">Send</button>
     </div>
-    <p class="assist-fab-status" id="stationAssistStatus" aria-live="polite"></p>
+    <div class="assist-progress" id="stationAssistProgress" hidden aria-live="polite">
+      <p class="assist-fab-status assist-progress-label" id="stationAssistStatus"></p>
+      <ol class="assist-progress-steps" id="stationAssistProgressSteps"></ol>
+    </div>
   </section>
 </div>
 <div class="page-tools-slot page-tools-slot--clip">
@@ -1295,7 +1298,7 @@ function station_clipboard_fab_html(): string
 </aside>
   </div>
 </aside>
-<script src="assets/station-assist.js?v=20260522a"></script>
+<script src="assets/station-assist.js?v=20260515b"></script>
 <script>
 (function () {
   if (window.__stationClipboardFabPoll) {

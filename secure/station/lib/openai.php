@@ -92,7 +92,12 @@ function station_openai_user_key_status(?string $username = null): array
  * @param list<array{role: string, content: string}> $messages
  * @return array{ok: bool, text: string, message: string}
  */
-function station_openai_chat(array $messages, ?string $username = null, int $maxTokens = 800): array
+function station_openai_chat(
+    array $messages,
+    ?string $username = null,
+    int $maxTokens = 800,
+    int $timeoutSeconds = 120
+): array
 {
     $key = station_openai_resolve_api_key($username);
     if ($key === '') {
@@ -126,7 +131,7 @@ function station_openai_chat(array $messages, ?string $username = null, int $max
         ],
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 45,
+        CURLOPT_TIMEOUT => max(30, min(600, $timeoutSeconds)),
     ]);
     $body = (string) curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -208,7 +213,7 @@ function station_openai_chat_with_tools(
         ],
         CURLOPT_POSTFIELDS => $encoded,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 90,
+        CURLOPT_TIMEOUT => max(45, min(600, $timeoutSeconds)),
     ]);
     $body = (string) curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

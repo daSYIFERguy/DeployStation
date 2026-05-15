@@ -689,21 +689,6 @@ function station_upload_finish(bool $ok, string $message, string $redirectUrl, b
     header('Location: ' . $redirectUrl);
 }
 
-function station_write_project_access_router(string $slug, string $projectPath): void
-{
-    $slug = station_safe_name($slug);
-    if ($slug === '') {
-        return;
-    }
-
-    $htaccessPath = $projectPath . '/.htaccess';
-    if (!file_exists($htaccessPath)) {
-        $projectServePath = station_project_serve_path($slug);
-        $rewrite = "RewriteEngine On\nRewriteRule ^$ " . $projectServePath . " [L,QSA]\nRewriteRule ^(.*)$ " . $projectServePath . "&path=$1 [L,QSA,B]\n";
-        @file_put_contents($htaccessPath, $rewrite, LOCK_EX);
-    }
-}
-
 function station_rrmdir(string $dir): void
 {
     if (!is_dir($dir)) {
