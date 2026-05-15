@@ -3038,8 +3038,108 @@ tr:last-child td { border-bottom: none; }
   margin-top: 0;
 }
 
-.project-docker-embed .docker-status-grid {
+.project-docker-embed .docker-mc-strip {
   margin-bottom: 16px;
+}
+
+/* Docker status — mission-control style strip */
+.docker-mc-strip {
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--s1);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+.docker-mc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  background: linear-gradient(118deg, #0b1220 0%, #1a2744 38%, #0f2847 100%);
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.docker-mc-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.docker-mc-title {
+  margin: 0 0 8px;
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.docker-mc-desc {
+  margin: 0;
+  max-width: 56ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #94a3b8;
+}
+
+.docker-mc-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.docker-mc-kpis .mc-kpi {
+  min-width: 96px;
+  flex: 1 1 96px;
+  max-width: 160px;
+}
+
+.docker-mc-kpis .mc-kpi strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.docker-mc-code {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: transparent;
+  padding: 0;
+}
+
+.docker-mc-details {
+  padding: 0 20px 16px;
+}
+
+.docker-mc-details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+  padding: 12px 0 8px;
+  list-style: none;
+}
+
+.docker-mc-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.docker-mc-details-body {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.docker-mc-details-body .setting-description {
+  margin: 0;
+  font-size: 13px;
 }
 
 .project-admin-panel {

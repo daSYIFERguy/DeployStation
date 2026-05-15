@@ -78,7 +78,15 @@ $githubUserEnabled = !empty($ghProfile['enabled']);
 $stationGithubOn = !empty(station_admin_settings()['githubEnabled']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = (string) ($_POST['action'] ?? 'save_settings');
+    $action = (string) ($_POST['action'] ?? '');
+    if ($action === '' && (isset($_POST['app_port']) || isset($_POST['containerized']) || isset($_POST['embedded']))) {
+        station_flash_set('error', 'Docker settings must be saved from the Docker panel (form was sent to the wrong handler). Reload the page and try again.');
+        header('Location: project-settings.php?project=' . urlencode($project) . '#docker');
+        exit;
+    }
+    if ($action === '') {
+        $action = 'save_settings';
+    }
 
     if ($action === 'github_sync' && $stationGithubOn && $githubUserEnabled && $githubToken !== '') {
         $syncAct = (string) ($_POST['github_sync_action'] ?? '');
@@ -139,21 +147,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_settings') {
             $settings['environment'] = station_parse_env_text((string) ($_POST['environment_text'] ?? ''));
             $settings['notes'] = trim((string) ($_POST['notes'] ?? ''));
+            $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
+        } else {
+            $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
         }
-        $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
 
-        $settingsSaved = station_save_project_settings($project, $settings);
-        $envSaved = $action === 'save_github' || station_write_env_file($project, $settings['environment']);
-        if ($settingsSaved && $envSaved) {
-            station_log_event('project.settings.saved', ['project' => $project]);
+        $redirectHash = $action === 'save_github' ? 'github' : 'general';
+        if (!station_save_project_settings($project, $settings)) {
+            $error = $action === 'save_github'
+                ? 'Could not save GitHub metadata (check data directory permissions).'
+                : 'Could not save project settings.';
+        } else {
+            station_log_event('project.settings.saved', ['project' => $project, 'section' => $action]);
             $msg = $action === 'save_github' ? 'GitHub metadata saved.' : 'Project settings saved.';
-            station_flash_set('ok', $msg);
-            header('Location: project-settings.php?project=' . urlencode($project) . '#github');
+            if ($action === 'save_settings' && !station_write_env_file($project, $settings['environment'])) {
+                station_flash_set('warning', $msg . ' (.env.local could not be written — check project folder permissions.)');
+            } else {
+                station_flash_set('ok', $msg);
+            }
+            header('Location: project-settings.php?project=' . urlencode($project) . '#' . $redirectHash);
             exit;
         }
-        $error = $action === 'save_github'
-            ? 'Could not save GitHub metadata (check data directory permissions).'
-            : 'Could not save project settings.';
     }
 
     if ($action === 'generate_github') {

@@ -237,6 +237,10 @@ $isNginxInfrastructure = station_normalize_server_infrastructure((string) ($admi
 $reverseProxyPath = '/p/' . rawurlencode($projectSlug) . '/';
 $nginxIncludePathDisplay = station_nginx_include_path();
 $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_slug($projectSlug);
+$dockerFormAction = 'docker-config.php?project=' . rawurlencode($projectSlug) . ($stationDockerEmbedded ? '&embedded=1' : '');
+$engineTone = !empty($engineCheck['ok']) ? 'ok' : 'bad';
+$filesLabel = ($dockerfileExists ? 'Dockerfile' : '—') . ' · ' . ($composeExists ? 'Compose' : '—');
+$serviceCount = count($status['services'] ?? []);
 ?>
 <?php if (!$stationDockerEmbedded): ?>
 <!doctype html>
@@ -277,66 +281,61 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
         </div>
       <?php endif; ?>
 <?php endif; ?>
-      <section class="docker-status-grid">
-        <div class="docker-status-card status-<?= station_h($stateMeta['tone']) ?>">
-          <span class="docker-status-label">Container state</span>
-          <strong class="docker-status-value">
-            <span class="status-dot"></span>
-            <?= station_h($stateMeta['label']) ?>
-          </strong>
-          <span class="docker-status-meta"><?= count($status['services'] ?? []) ?> service<?= count($status['services'] ?? []) === 1 ? '' : 's' ?> tracked</span>
+      <section class="docker-mc-strip" aria-label="Docker status overview">
+        <div class="docker-mc-head">
+          <div>
+            <p class="docker-mc-kicker">Live status</p>
+            <h2 class="docker-mc-title"><?= station_h($projectSlug) ?></h2>
+            <p class="docker-mc-desc"><?= (int) $serviceCount ?> compose service<?= $serviceCount === 1 ? '' : 's' ?> · host <code>:<?= (int) $projectConfig['hostPort'] ?></code> → app <code><?= (int) $projectConfig['appPort'] ?></code></p>
+          </div>
+          <div class="docker-mc-kpis">
+            <div class="mc-kpi mc-kpi-<?= station_h($stateMeta['tone'] === 'ok' ? 'ok' : 'warn') ?>">
+              <strong><?= station_h($stateMeta['label']) ?></strong>
+              <span>Containers</span>
+            </div>
+            <div class="mc-kpi mc-kpi-<?= station_h($engineTone) ?>">
+              <strong><?= !empty($engineCheck['ok']) ? station_h($engineCheck['version'] ?: 'OK') : 'Offline' ?></strong>
+              <span>Docker engine</span>
+            </div>
+            <div class="mc-kpi">
+              <strong>:<?= (int) $projectConfig['hostPort'] ?></strong>
+              <span>Host port</span>
+            </div>
+            <div class="mc-kpi">
+              <strong><?= station_h($filesLabel) ?></strong>
+              <span>On disk</span>
+            </div>
+            <div class="mc-kpi">
+              <strong><code class="docker-mc-code"><?= station_h($reverseProxyPath) ?></code></strong>
+              <span>Public path</span>
+            </div>
+            <?php if ($isNginxInfrastructure && $projectConfig['containerized']): ?>
+            <div class="mc-kpi mc-kpi-<?= $nginxRouteOk ? 'ok' : 'warn' ?>">
+              <strong><?= $nginxRouteOk ? 'Routed' : 'Missing' ?></strong>
+              <span>Nginx include</span>
+            </div>
+            <?php endif; ?>
+          </div>
         </div>
-        <div class="docker-status-card status-<?= !empty($engineCheck['ok']) ? 'ok' : 'bad' ?>">
-          <span class="docker-status-label">Docker engine</span>
-          <strong class="docker-status-value">
-            <span class="status-dot"></span>
-            <?= !empty($engineCheck['ok']) ? station_h('OK · ' . ($engineCheck['version'] ?: 'available')) : 'Unreachable' ?>
-          </strong>
-          <span class="docker-status-meta">
+        <details class="docker-mc-details">
+          <summary>Routing &amp; diagnostics</summary>
+          <div class="docker-mc-details-body">
             <?php if (!empty($engineCheck['ok'])): ?>
-              Web server can call docker at <code><?= station_h($dockerDiagnostics['binary']) ?></code>.
+              <p class="setting-description">Docker binary: <code><?= station_h($dockerDiagnostics['binary']) ?></code></p>
             <?php else: ?>
-              <a href="admin-settings.php?tab=docker">Open Admin Settings → Docker</a> for full diagnostics + binary path override.
+              <p class="setting-description"><a href="admin-settings.php?tab=docker">Admin → Docker</a> — engine unreachable from PHP.</p>
             <?php endif; ?>
-          </span>
-        </div>
-        <div class="docker-status-card status-info">
-          <span class="docker-status-label">Assigned host port</span>
-          <strong class="docker-status-value">:<?= (int) $projectConfig['hostPort'] ?></strong>
-          <span class="docker-status-meta">App listens on container port <?= (int) $projectConfig['appPort'] ?>.</span>
-        </div>
-        <div class="docker-status-card status-info">
-          <span class="docker-status-label">Generated files</span>
-          <strong class="docker-status-value">
-            <?= $dockerfileExists ? '✓ Dockerfile' : '— Dockerfile' ?> · <?= $composeExists ? '✓ Compose' : '— Compose' ?>
-          </strong>
-          <span class="docker-status-meta">Saving this form regenerates <code>docker-compose.yml</code>. Tick <strong>Regenerate Dockerfile</strong> below to also overwrite the Dockerfile with the detected stack — or click <strong>Rebuild image</strong> to regenerate the Dockerfile and rebuild the container in one step.</span>
-        </div>
-        <div class="docker-status-card status-info">
-          <span class="docker-status-label">Reverse-proxy URL</span>
-          <strong class="docker-status-value"><code><?= station_h($reverseProxyPath) ?></code></strong>
-          <span class="docker-status-meta">
+            <p class="setting-description">Saving configuration regenerates <code>docker-compose.yml</code>. Use <strong>Rebuild image</strong> to refresh the Dockerfile and recreate containers.</p>
             <?php if ($isNginxInfrastructure): ?>
-              Proxies to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> using the managed include at <code><?= station_h($nginxIncludePathDisplay) ?></code>. The nginx route does <strong>not</strong> check Station login — anyone who can reach this URL hits the container; use your firewall or vhost if you need to restrict it. Dashboard file access still follows Project Settings. The published port is bound to <code>127.0.0.1</code> on this host only. Add the include <strong>before</strong> a catch-all <code>location /</code> in your vhost, then save Docker settings or use Admin → Projects → <strong>Regenerate now</strong> so <code>projects.conf</code> stays in sync and nginx reloads. Optional check: <code>curl -sSI <?= station_h('https://' . ($_SERVER['HTTP_HOST'] ?? 'example.com') . $reverseProxyPath) ?> | grep -i X-Station</code> should show <code>X-Station-Docker-Project: <?= station_h($projectSlug) ?></code>.
-              <br><br>Generated <code>projects.conf</code> clears <strong>Cookie</strong> and <strong>Authorization</strong> before <code>proxy_pass</code> so your Station session is not sent to the app (that mismatch often causes <strong>500 when you are signed in</strong>).
+              <p class="setting-description">Proxies to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> via <code><?= station_h($nginxIncludePathDisplay) ?></code>. The <code>/p/…</code> route does not require Station login.</p>
+              <?php if ($projectConfig['containerized']): ?>
+                <p class="setting-description"><?= $nginxRouteOk ? 'Route block is present in projects.conf.' : 'Save Docker settings or regenerate nginx routes, then reload nginx.' ?></p>
+              <?php endif; ?>
             <?php else: ?>
-              Will route to <code>127.0.0.1:<?= (int) $projectConfig['hostPort'] ?></code> once you switch the production web server to Nginx in <a href="admin-settings.php?tab=project-defaults">Admin Settings → Projects</a>.
+              <p class="setting-description">Enable Nginx in Admin → Projects to use <code><?= station_h($reverseProxyPath) ?></code> on this host.</p>
             <?php endif; ?>
-          </span>
-        </div>
-        <?php if ($isNginxInfrastructure && $projectConfig['containerized']): ?>
-        <div class="docker-status-card status-<?= $nginxRouteOk ? 'ok' : 'warn' ?>">
-          <span class="docker-status-label">Nginx include</span>
-          <strong class="docker-status-value"><?= $nginxRouteOk ? 'Route present' : 'Route missing' ?></strong>
-          <span class="docker-status-meta">
-            <?php if ($nginxRouteOk): ?>
-              This project’s <code>location ^~ /p/<?= station_h($projectSlug) ?>/</code> block is in the generated file. If the public URL still shows the main site, save Docker settings or use <strong>Regenerate now</strong> under Admin → Projects, then confirm nginx reloaded (or run <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code> once).
-            <?php else: ?>
-              Save Docker settings or start the stack, then reload nginx. Until then, Launch uses the direct <code>:<?= (int) $projectConfig['hostPort'] ?></code> URL (reachable only on this server because the port binds to <code>127.0.0.1</code>).
-            <?php endif; ?>
-          </span>
-        </div>
-        <?php endif; ?>
+          </div>
+        </details>
       </section>
 
       <?php if ($projectConfig['containerized']): ?>
@@ -378,7 +377,7 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
       </section>
       <?php endif; ?>
 
-      <form method="post" class="settings-shell docker-config-shell<?= $stationDockerEmbedded ? ' docker-config-shell-embedded' : '' ?>" enctype="application/x-www-form-urlencoded">
+      <form method="post" action="<?= station_h($dockerFormAction) ?>" class="settings-shell docker-config-shell<?= $stationDockerEmbedded ? ' docker-config-shell-embedded' : '' ?>" enctype="application/x-www-form-urlencoded">
         <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
         <?php if ($stationDockerEmbedded): ?>
         <input type="hidden" name="embedded" value="1">
