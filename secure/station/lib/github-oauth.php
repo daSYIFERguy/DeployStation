@@ -17,7 +17,7 @@ function station_github_oauth_redirect_uri(): string
 function station_github_oauth_authorize_url(
     string $clientId,
     string $state,
-    string $scope = 'repo read:user',
+    string $scope = 'repo workflow read:user',
     bool $forceConsent = false
 ): string {
     $redirect = station_github_oauth_redirect_uri();

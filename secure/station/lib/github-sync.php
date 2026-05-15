@@ -119,6 +119,68 @@ function station_github_https_remote(string $owner, string $name, string $token,
 }
 
 /**
+ * GitHub rejects OAuth pushes that add/modify `.github/workflows/*` without the `workflow` scope.
+ */
+function station_github_push_denied_for_workflow_scope(string $output): bool
+{
+    $o = strtolower($output);
+
+    return str_contains($o, 'workflow')
+        && (str_contains($o, 'oauth') || str_contains($o, 'refusing to allow'));
+}
+
+/**
+ * Push to origin; if GitHub blocks workflow files for OAuth, drop `.github/workflows` from the index and retry once.
+ *
+ * @return array{ok: bool, message: string, omittedWorkflows?: bool}
+ */
+function station_github_try_git_push(string $path, string $token, string $authMode, string $branch): array
+{
+    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
+    if (!empty($push['ok'])) {
+        return ['ok' => true, 'message' => (string) ($push['output'] ?? '')];
+    }
+
+    $out = (string) ($push['output'] ?? '');
+    $authModeNorm = station_github_git_auth_mode($token, $authMode);
+    if (
+        $authModeNorm === 'oauth'
+        && station_github_push_denied_for_workflow_scope($out)
+        && is_dir($path . '/.github/workflows')
+    ) {
+        $rm = station_run_git_command(['git', '-C', $path, 'rm', '-r', '--cached', '.github/workflows'], $token, $authMode);
+        if (!empty($rm['ok'])) {
+            $st = station_run_git_command(['git', '-C', $path, 'status', '--porcelain'], $token, $authMode);
+            if (!empty($st['ok']) && trim((string) ($st['output'] ?? '')) !== '') {
+                station_run_git_command(
+                    ['git', '-C', $path, 'commit', '-m', 'DeployStation: omit GitHub Actions from push (grant workflow OAuth scope and recommit)'],
+                    $token,
+                    $authMode
+                );
+            }
+            $push2 = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
+            if (!empty($push2['ok'])) {
+                return [
+                    'ok' => true,
+                    'message' => 'Push succeeded without `.github/workflows` because GitHub blocked workflow updates for this OAuth token. '
+                        . 'Open User Settings → GitHub, disconnect, then Sign in with GitHub again to grant the workflow scope. '
+                        . 'Workflow files remain on your server—commit again after reconnecting to publish Actions.',
+                    'omittedWorkflows' => true,
+                ];
+            }
+            $out = (string) ($push2['output'] ?? $out);
+        }
+    }
+
+    $hint = '';
+    if (station_github_push_denied_for_workflow_scope($out)) {
+        $hint = ' If you use GitHub Actions, disconnect and reconnect GitHub under User Settings so the token includes the `workflow` scope.';
+    }
+
+    return ['ok' => false, 'message' => mb_substr($out, 0, 800) . $hint];
+}
+
+/**
  * @return array{ok: bool, message: string, html_url?: string}
  */
 function station_github_create_private_repo(string $token, string $owner, string $name, string $description = ''): array
@@ -127,6 +189,13 @@ function station_github_create_private_repo(string $token, string $owner, string
     $name = trim((string) $name, '-.');
     if ($name === '') {
         return ['ok' => false, 'message' => 'Invalid repository name.'];
+    }
+
+    $description = trim(
+        (string) (preg_replace('/\s+/u', ' ', str_replace(["\r", "\n", "\t"], ' ', $description)) ?: '')
+    );
+    if (mb_strlen($description) > 350) {
+        $description = mb_substr($description, 0, 347) . '…';
     }
 
     $user = station_github_api('GET', '/user', $token);
@@ -453,9 +522,12 @@ function station_github_project_git_push(string $slug, string $token, string $au
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
     $branch = trim((string) ($gh['defaultBranch'] ?? 'main')) ?: 'main';
-    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
-    if (empty($push['ok'])) {
-        return ['ok' => false, 'message' => mb_substr((string) ($push['output'] ?? 'push failed'), 0, 800)];
+    $result = station_github_try_git_push($path, $token, $authMode, $branch);
+    if (empty($result['ok'])) {
+        return ['ok' => false, 'message' => $result['message']];
+    }
+    if (!empty($result['omittedWorkflows'])) {
+        return ['ok' => true, 'message' => $result['message']];
     }
 
     return ['ok' => true, 'message' => 'Pushed to origin/' . $branch . '.'];
@@ -504,9 +576,12 @@ function station_github_project_init_and_link(string $slug, string $token, strin
         station_run_git_command(['git', '-C', $path, 'commit', '-m', 'Initial commit from Deployment Station'], $token, $authMode);
     }
 
-    $push = station_run_git_command(['git', '-C', $path, 'push', '-u', 'origin', 'HEAD:' . $branch], $token, $authMode);
-    if (empty($push['ok'])) {
-        return ['ok' => false, 'message' => 'Linked remote but push failed (create the empty repo on GitHub first, or fix permissions): ' . mb_substr((string) ($push['output'] ?? ''), 0, 600)];
+    $result = station_github_try_git_push($path, $token, $authMode, $branch);
+    if (empty($result['ok'])) {
+        return ['ok' => false, 'message' => 'Linked remote but push failed (create the empty repo on GitHub first, or fix permissions): ' . $result['message']];
+    }
+    if (!empty($result['omittedWorkflows'])) {
+        return ['ok' => true, 'message' => $result['message']];
     }
 
     return ['ok' => true, 'message' => 'Initialized git, linked origin, and pushed ' . $branch . '.'];

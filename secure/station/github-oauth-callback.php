@@ -148,7 +148,7 @@ if (empty($verify['ok'])) {
 }
 
 station_log_event('github.oauth.connected', ['username' => $username, 'github_login' => $githubLogin, 'scope' => $oauthScope]);
-station_flash_set('ok', 'GitHub account connected with repository access.');
+station_flash_set('ok', 'GitHub connected with repo and workflow access (for Actions files).');
 
 $after = basename($redirectAfter);
 $allowedAfter = ['user-settings.php', 'station.php', 'github-sync.php', 'index.php'];

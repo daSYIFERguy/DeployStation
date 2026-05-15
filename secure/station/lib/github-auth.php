@@ -12,7 +12,7 @@ require_once __DIR__ . '/github-sync.php';
 function station_github_oauth_scopes_for_purpose(string $purpose): string
 {
     return match ($purpose) {
-        'connect' => 'repo read:user',
+        'connect' => 'repo workflow read:user',
         'login', 'request_access' => 'read:user',
         default => 'read:user',
     };
