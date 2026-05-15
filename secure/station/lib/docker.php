@@ -2696,29 +2696,144 @@ function station_admin_host_config_snapshot(): array
  *
  * @return array{ok: bool, output: string, truncated: bool}
  */
-function station_docker_global_ps(int $maxBytes = 100000): array
+function station_docker_validate_container_name(string $name): bool
+{
+    $name = trim($name);
+
+    return $name !== '' && preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/', $name) === 1;
+}
+
+/**
+ * @return list<array{name: string, image: string, status: string, ports: string, running: bool}>
+ */
+function station_docker_global_container_rows(int $limit = 250): array
 {
     $docker = station_docker_binary();
     $engine = station_docker_engine_available();
     if (empty($engine['ok'])) {
-        return ['ok' => false, 'output' => 'Docker engine is not reachable from PHP.', 'truncated' => false];
+        return [];
     }
+
     $result = station_run_shell_cmd([
         $docker,
         'ps',
         '-a',
         '--format',
-        'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}',
-    ], null, 25);
-    $out = trim((string) ($result['output'] ?? ''));
+        '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}',
+    ], null, 30);
+    if (($result['code'] ?? 1) !== 0) {
+        return [];
+    }
+
+    $rows = [];
+    foreach (preg_split('/\r\n|\r|\n/', trim((string) ($result['output'] ?? ''))) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        $parts = explode("\t", $line, 4);
+        $name = trim((string) ($parts[0] ?? ''));
+        if ($name === '' || !station_docker_validate_container_name($name)) {
+            continue;
+        }
+        $status = trim((string) ($parts[2] ?? ''));
+        $rows[] = [
+            'name' => $name,
+            'image' => trim((string) ($parts[1] ?? '')),
+            'status' => $status,
+            'ports' => trim((string) ($parts[3] ?? '')),
+            'running' => preg_match('/^up\b/i', $status) === 1,
+        ];
+        if (count($rows) >= $limit) {
+            break;
+        }
+    }
+
+    return $rows;
+}
+
+/**
+ * @return array{ok: bool, message: string, output: string, code: int}
+ */
+function station_docker_remove_container(string $containerName, bool $force = true): array
+{
+    $containerName = trim($containerName);
+    if (!station_docker_validate_container_name($containerName)) {
+        return ['ok' => false, 'message' => 'Invalid container name.', 'output' => '', 'code' => 1];
+    }
+
+    $engine = station_docker_engine_available();
+    if (empty($engine['ok'])) {
+        return ['ok' => false, 'message' => 'Docker engine is not reachable from PHP.', 'output' => '', 'code' => 1];
+    }
+
+    $docker = station_docker_binary();
+    $command = [$docker, 'rm'];
+    if ($force) {
+        $command[] = '-f';
+    }
+    $command[] = $containerName;
+
+    $result = station_run_shell_cmd($command, null, 45);
+    $code = (int) ($result['code'] ?? 1);
+    $output = trim((string) ($result['output'] ?? ''));
+    $ok = $code === 0;
+    $message = $ok
+        ? 'Removed container ' . $containerName . '.'
+        : ($output !== '' ? $output : 'docker rm failed (exit ' . $code . ').');
+
+    return ['ok' => $ok, 'message' => $message, 'output' => $output, 'code' => $code];
+}
+
+/**
+ * Remove all stopped containers on the host (`docker container prune -f`).
+ *
+ * @return array{ok: bool, message: string, output: string, code: int}
+ */
+function station_docker_prune_stopped_containers(): array
+{
+    $engine = station_docker_engine_available();
+    if (empty($engine['ok'])) {
+        return ['ok' => false, 'message' => 'Docker engine is not reachable from PHP.', 'output' => '', 'code' => 1];
+    }
+
+    $docker = station_docker_binary();
+    $result = station_run_shell_cmd([$docker, 'container', 'prune', '-f'], null, 120);
+    $code = (int) ($result['code'] ?? 1);
+    $output = trim((string) ($result['output'] ?? ''));
+    $ok = $code === 0;
+    $message = $ok
+        ? ($output !== '' ? $output : 'Stopped containers pruned.')
+        : ($output !== '' ? $output : 'docker container prune failed (exit ' . $code . ').');
+
+    return ['ok' => $ok, 'message' => $message, 'output' => $output, 'code' => $code];
+}
+
+function station_docker_global_ps(int $maxBytes = 100000): array
+{
+    $rows = station_docker_global_container_rows();
+    if ($rows === []) {
+        $engine = station_docker_engine_available();
+        if (empty($engine['ok'])) {
+            return ['ok' => false, 'output' => 'Docker engine is not reachable from PHP.', 'truncated' => false];
+        }
+
+        return ['ok' => true, 'output' => '(no containers)', 'truncated' => false];
+    }
+
+    $lines = ["NAMES\tIMAGE\tSTATUS\tPORTS"];
+    foreach ($rows as $row) {
+        $lines[] = $row['name'] . "\t" . $row['image'] . "\t" . $row['status'] . "\t" . $row['ports'];
+    }
+    $out = implode("\n", $lines);
     $truncated = mb_strlen($out) > $maxBytes;
     if ($truncated) {
         $out = mb_substr($out, 0, $maxBytes) . "\n... (truncated)\n";
     }
 
     return [
-        'ok' => ($result['code'] ?? 1) === 0,
-        'output' => $out !== '' ? $out : '(no output)',
+        'ok' => true,
+        'output' => $out,
         'truncated' => $truncated,
     ];
 }

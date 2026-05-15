@@ -49,8 +49,8 @@ $ideConfig = [
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.', 'assets/style.css?v=20260517a') ?>
-  <link rel="stylesheet" href="assets/project-workspace.css?v=20260517a">
+  <?= station_pwa_head_html('Workspace — ' . station_h($project), 'Project file explorer, editor, and terminal.', 'assets/style.css?v=20260518c') ?>
+  <link rel="stylesheet" href="assets/project-workspace.css?v=20260518c">
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -137,7 +137,7 @@ $ideConfig = [
   <script>
   window.STATION_WORKSPACE_IDE = <?= json_encode($ideConfig, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES) ?>;
   </script>
-  <script src="assets/project-workspace.js?v=20260517a"></script>
+  <script src="assets/project-workspace.js?v=20260518c"></script>
   <?= station_dashboard_nav_script_html() ?>
   <?= station_clipboard_fab_html() ?>
   <?= station_pwa_register_html() ?>

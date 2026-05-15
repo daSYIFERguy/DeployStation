@@ -1085,6 +1085,10 @@ function station_clipboard_fab_html(): string
         return '';
     }
 
+    if (!function_exists('station_openai_configured')) {
+        require_once __DIR__ . '/openai.php';
+    }
+
     $assistIcon = station_nav_icon_svg('assist');
     $openaiOn = station_openai_configured();
     $assistDisabled = $openaiOn ? '' : ' disabled title="Add OpenAI under Admin → Integrations or User Settings"';

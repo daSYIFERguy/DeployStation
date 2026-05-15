@@ -251,7 +251,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260517b') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260518b') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -558,7 +558,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
   </div>
 
   <script>window.STATION_ENTRYPOINT_PICKER = <?= json_encode(['project' => $project], JSON_UNESCAPED_SLASHES) ?>;</script>
-  <script src="assets/project-entrypoint-picker.js?v=20260517b"></script>
+  <script src="assets/project-entrypoint-picker.js?v=20260518b"></script>
   <?= station_dashboard_nav_script_html() ?>
   <script>
     (function () {

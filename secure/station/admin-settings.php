@@ -90,6 +90,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') =
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'admin_docker_remove_container') {
+    $containerName = trim((string) ($_POST['container_name'] ?? ''));
+    if (empty($_POST['confirm_remove_container'])) {
+        station_flash_set('error', 'Tick the confirmation box before removing a container.');
+        header('Location: admin-settings.php?tab=docker');
+        exit;
+    }
+    $r = station_docker_remove_container($containerName, true);
+    station_log_event('admin.docker.container_removed', [
+        'name' => $containerName,
+        'ok' => !empty($r['ok']),
+        'code' => (int) ($r['code'] ?? 0),
+    ]);
+    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Remove failed.'));
+    header('Location: admin-settings.php?tab=docker');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'admin_docker_prune_stopped') {
+    if (empty($_POST['confirm_prune_stopped'])) {
+        station_flash_set('error', 'Tick the confirmation box before pruning stopped containers.');
+        header('Location: admin-settings.php?tab=docker');
+        exit;
+    }
+    $r = station_docker_prune_stopped_containers();
+    station_log_event('admin.docker.prune_stopped', ['ok' => !empty($r['ok']), 'code' => (int) ($r['code'] ?? 0)]);
+    station_flash_set(!empty($r['ok']) ? 'ok' : 'error', (string) ($r['message'] ?? 'Prune failed.'));
+    header('Location: admin-settings.php?tab=docker');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'admin_docker_recreate_all') {
     if (empty($_POST['confirm_recreate_all'])) {
         station_flash_set('error', 'Tick the confirmation box before force-recreating all container stacks.');
@@ -491,6 +522,7 @@ www-data ALL=(root) NOPASSWD: /usr/bin/tail -n 80 /var/log/nginx/error.log</pre>
               $hostFleetSnap = station_admin_host_config_snapshot();
               $fleetRows = station_admin_containerized_project_rows();
               $globalPsLines = station_docker_global_ps();
+              $globalContainers = station_docker_global_container_rows();
               $missionSlugsAdmin = [];
               foreach ($fleetRows as $fr) {
                   $ms = trim((string) ($fr['slug'] ?? ''));
@@ -636,9 +668,9 @@ sudo systemctl restart php*-fpm
             <div class="settings-panel" style="margin-top: 22px;">
               <div class="settings-panel-head">
                 <h2 class="settings-panel-heading" style="font-size: 18px;">All Docker containers on this host</h2>
-                <p class="settings-panel-subtitle">Output of <code>docker ps -a</code> (not only Station projects). <?php if (!empty($globalPsLines['truncated'])): ?><strong>Truncated</strong> for display.<?php endif; ?></p>
+                <p class="settings-panel-subtitle">Every container on this engine (not only active Station stacks). Remove orphans such as old test stacks; running containers are stopped first when you remove them.</p>
               </div>
-              <pre class="code-mini" style="max-height: 320px; overflow: auto; white-space: pre; font-size: 12px;"><?= station_h($globalPsLines['output']) ?></pre>
+              <?php include __DIR__ . '/partials/admin-docker-host-containers.php'; ?>
             </div>
 
             <div class="settings-panel" style="margin-top: 22px;">

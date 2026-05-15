@@ -4,6 +4,7 @@
   gap: 0;
   min-height: calc(100vh - 24px);
   padding-bottom: 12px;
+  color: var(--ink, #13233f);
 }
 
 .workspace-ide-toolbar {
@@ -12,9 +13,9 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--surface, #fff);
+  background: var(--panel, #fff);
   border-radius: 16px 16px 0 0;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--line, #dbe5f4);
   border-bottom: none;
 }
 
@@ -27,7 +28,7 @@
 
 .workspace-ide-toolbar-group + .workspace-ide-toolbar-group {
   padding-left: 10px;
-  border-left: 1px solid var(--border, #e2e8f0);
+  border-left: 1px solid var(--line, #dbe5f4);
 }
 
 .workspace-ide-body {
@@ -35,22 +36,24 @@
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   flex: 1;
   min-height: 420px;
-  border: 1px solid var(--border, #e2e8f0);
-  background: var(--surface, #fff);
+  border: 1px solid var(--line, #dbe5f4);
+  background: var(--panel, #fff);
   border-radius: 0;
+  color: var(--ink, #13233f);
 }
 
 .workspace-ide-sidebar {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border, #e2e8f0);
+  border-right: 1px solid var(--line, #dbe5f4);
   background: #f8fafc;
+  color: var(--ink, #13233f);
 }
 
 .workspace-ide-sidebar-head {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border, #e2e8f0);
+  border-bottom: 1px solid var(--line, #dbe5f4);
 }
 
 .workspace-ide-breadcrumb {
@@ -58,18 +61,28 @@
   flex-wrap: wrap;
   gap: 4px;
   font-size: 11px;
+  color: var(--muted, #587092);
 }
 
 .workspace-ide-crumb {
   border: 0;
   background: transparent;
-  color: var(--brand);
+  color: var(--brand, #2f7de2);
   cursor: pointer;
   padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.workspace-ide-crumb:hover {
+  background: var(--brand-soft, #e8f1fd);
+  border-color: transparent;
+  color: var(--brand-dark, #1a5cbc);
 }
 
 .workspace-ide-crumb-sep {
-  color: var(--muted);
+  color: var(--muted, #8da0bf);
 }
 
 .workspace-ide-tree {
@@ -88,12 +101,21 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
+  color: var(--ink, #13233f);
   cursor: pointer;
   font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.workspace-ide-row span {
+  color: inherit;
 }
 
 .workspace-ide-row:hover {
   background: #e2e8f0;
+  color: var(--ink, #13233f);
+  border-color: transparent;
 }
 
 .workspace-ide-row.active {
@@ -110,7 +132,8 @@
 .workspace-ide-row-meta {
   margin-left: auto;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted, #8da0bf);
+  font-weight: 500;
 }
 
 .workspace-ide-editor {
@@ -118,6 +141,8 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  background: var(--panel, #fff);
+  color: var(--ink, #13233f);
 }
 
 .workspace-ide-editor-head {
@@ -126,12 +151,17 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border, #e2e8f0);
+  border-bottom: 1px solid var(--line, #dbe5f4);
   font-size: 12px;
+  color: var(--ink, #13233f);
 }
 
 .workspace-ide-editor-head code {
   font-size: 12px;
+  color: var(--ink, #13233f);
+  background: #f0f4fc;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .workspace-ide-textarea {
@@ -145,17 +175,23 @@
   font-size: 13px;
   line-height: 1.5;
   outline: none;
+  background: #fff;
+  color: var(--ink, #13233f);
+}
+
+.workspace-ide-textarea::placeholder {
+  color: var(--muted, #8da0bf);
 }
 
 .workspace-ide-status {
   padding: 8px 14px;
   font-size: 12px;
-  color: var(--muted);
-  border-top: 1px solid var(--border, #e2e8f0);
+  color: var(--muted, #587092);
+  border-top: 1px solid var(--line, #dbe5f4);
 }
 
 .workspace-ide-terminal {
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--line, #dbe5f4);
   border-top: none;
   border-radius: 0 0 16px 16px;
   background: #0f172a;
@@ -176,6 +212,18 @@
   font-size: 12px;
 }
 
+.workspace-ide-terminal-head .secondary-btn {
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.25);
+  background: transparent;
+}
+
+.workspace-ide-terminal-head .secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
 .workspace-ide-terminal iframe {
   display: block;
   width: 100%;
@@ -186,7 +234,7 @@
 
 .workspace-ide-empty {
   padding: 24px;
-  color: var(--muted);
+  color: var(--muted, #587092);
   font-size: 13px;
 }
 
@@ -197,6 +245,6 @@
   }
   .workspace-ide-sidebar {
     border-right: 0;
-    border-bottom: 1px solid var(--border, #e2e8f0);
+    border-bottom: 1px solid var(--line, #dbe5f4);
   }
 }
