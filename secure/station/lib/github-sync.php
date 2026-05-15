@@ -185,7 +185,12 @@ function station_github_project_sync_row(string $slug, string $token): array
 
     $fb = station_run_git_command(['git', '-C', $path, 'fetch', 'origin'], $token);
     if (empty($fb['ok'])) {
-        $row['error'] = 'git fetch failed: ' . mb_substr((string) ($fb['output'] ?? ''), 0, 240);
+        $fetchOut = (string) ($fb['output'] ?? '');
+        if (stripos($fetchOut, 'Repository not found') !== false) {
+            $row['error'] = 'GitHub repository ' . $owner . '/' . $name . ' was not found. Create it on GitHub or use “Create private repo & push”, then fix owner/name if needed.';
+        } else {
+            $row['error'] = 'git fetch failed: ' . mb_substr($fetchOut, 0, 240);
+        }
 
         return $row;
     }

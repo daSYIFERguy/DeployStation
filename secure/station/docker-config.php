@@ -48,7 +48,7 @@ if (!station_docker_enabled()) {
 }
 
 $stationDockerReturnUrl = 'project-settings.php?project=' . urlencode($projectSlug) . '#docker';
-$stationDockerEmbedded = ((string) ($_GET['embedded'] ?? '')) === '1';
+$stationDockerEmbedded = ((string) ($_GET['embedded'] ?? $_POST['embedded'] ?? '')) === '1';
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !$stationDockerEmbedded) {
     header('Location: ' . $stationDockerReturnUrl);
     exit;
@@ -348,7 +348,6 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
             <input type="hidden" name="return" value="project-settings.php?project=<?= urlencode($projectSlug) ?>#docker">
             <button type="submit" class="btn-primary">Start</button>
           </form>
-<?php if (!$stationDockerEmbedded): ?>
           <form method="post" action="docker-actions.php" data-docker-action>
             <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
             <input type="hidden" name="action" value="rebuild">
@@ -379,8 +378,11 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
       </section>
       <?php endif; ?>
 
-      <form method="post" class="settings-shell docker-config-shell" enctype="application/x-www-form-urlencoded">
+      <form method="post" class="settings-shell docker-config-shell<?= $stationDockerEmbedded ? ' docker-config-shell-embedded' : '' ?>" enctype="application/x-www-form-urlencoded">
         <input type="hidden" name="project" value="<?= station_h($projectSlug) ?>">
+        <?php if ($stationDockerEmbedded): ?>
+        <input type="hidden" name="embedded" value="1">
+        <?php endif; ?>
 
         <nav class="settings-nav" aria-label="Docker sections">
           <a class="settings-nav-item active" href="#deployment"><span class="settings-nav-icon">🚀</span><span>Deployment</span></a>
@@ -599,9 +601,10 @@ $nginxRouteOk = $isNginxInfrastructure && station_nginx_proxy_route_present_for_
           </div>
         </div>
       </form>
+<?php if (!$stationDockerEmbedded): ?>
     </main>
-<?php endif; ?>
   </div>
+<?php endif; ?>
 
   <script>
     (function () {

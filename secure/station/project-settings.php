@@ -88,6 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: ' . $redirect);
             exit;
         };
+        $settings['github'] = station_project_github_from_post($settings['github'] ?? []);
+        if (!station_save_project_settings($project, $settings)) {
+            $run('Could not save GitHub metadata before sync action.', false);
+        }
         if ($syncAct === 'pull') {
             $r = station_github_project_git_pull($project, $githubToken);
             $run((string) ($r['message'] ?? 'Done'), !empty($r['ok']));
@@ -111,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $owner = trim((string) ($gh['repoOwner'] ?? ''));
             $name = trim((string) ($gh['repoName'] ?? ''));
             if ($owner === '' || $name === '') {
-                $run('Set repo owner and name below, save, then try again.', false);
+                $run('Set repo owner and name in the form above, then try again.', false);
             }
             $cr = station_github_create_private_repo($githubToken, $owner, $name, 'Private mirror: ' . $project);
             if (empty($cr['ok'])) {
@@ -215,10 +219,9 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
       </header>
 
       <?= station_flash_banners_html() ?>
+      <?php if ($error !== ''): ?><div class="alert error" style="margin-bottom:16px;"><?= station_h($error) ?></div><?php endif; ?>
 
-      <form method="post" class="settings-shell project-settings-shell" id="project-settings-form">
-        <input type="hidden" name="project" value="<?= station_h($project) ?>">
-
+      <div class="settings-shell project-settings-hub">
         <nav class="settings-nav" aria-label="Project settings sections">
           <a class="settings-nav-item active" href="#general"><span class="settings-nav-icon">⚙</span><span>General</span></a>
           <a class="settings-nav-item" href="#github"><span class="settings-nav-icon">🐙</span><span>GitHub</span></a>
@@ -228,7 +231,10 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
           <a class="settings-nav-item" href="#administration"><span class="settings-nav-icon">🛡</span><span>Administration</span></a>
         </nav>
 
-        <div class="settings-content">
+        <div class="settings-content project-settings-panels">
+          <form method="post" id="project-metadata-form" class="project-metadata-form">
+            <input type="hidden" name="project" value="<?= station_h($project) ?>">
+
           <section id="general" class="settings-panel">
             <div class="settings-panel-head">
               <h2 class="settings-panel-heading">General</h2>
@@ -292,10 +298,21 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
               <button type="submit" class="btn-primary" name="action" value="save_github">Save GitHub metadata</button>
             </div>
 
+            <div class="settings-panel-divider"></div>
+            <h3 class="settings-subheading">Bootstrap files</h3>
+            <p class="setting-description">Writes supporting files (e.g. CI workflow stubs) into the project directory based on the fields above.</p>
+            <div class="settings-form-actions">
+              <button type="submit" class="secondary-btn" name="action" value="generate_github" onclick="return confirm('Generate or overwrite bootstrap files in this project?');">Generate GitHub files</button>
+            </div>
+          </section>
+          </form>
 
             <?php if ($canGithubSync && is_array($githubSyncRow)): ?>
-            <div class="settings-panel-divider"></div>
-            <h3 class="settings-subheading">Repository sync</h3>
+            <section id="github-sync" class="settings-panel">
+            <div class="settings-panel-head">
+              <h2 class="settings-panel-heading">Repository sync</h2>
+              <p class="settings-panel-subtitle">Pull, push, init, or create the GitHub repo. Owner and repo name are taken from the GitHub fields above when you click an action.</p>
+            </div>
             <?php
               $linked = trim((string) ($githubSyncRow['repoOwner'] ?? '')) !== '' && trim((string) ($githubSyncRow['repoName'] ?? '')) !== '';
               $behind = (int) ($githubSyncRow['behind'] ?? 0);
@@ -315,40 +332,29 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
                     <span class="gh-sync-pill gh-pill-warn">No local git — init &amp; link below</span>
                   <?php endif; ?>
                 <?php else: ?>
-                  Set owner and repository above, then save.
+                  Set owner and repository in the GitHub section above, then use an action below.
                 <?php endif; ?>
               </p>
               <?php if ((string) ($githubSyncRow['error'] ?? '') !== ''): ?>
                 <p class="gh-sync-err"><?= station_h((string) $githubSyncRow['error']) ?></p>
               <?php endif; ?>
-              <?php if ($linked): ?>
               <div class="gh-sync-toolbar" style="margin-top: 12px;">
-                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull"><button type="submit" class="secondary-btn">Pull</button></form>
-                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="push"><button type="submit" class="secondary-btn">Push</button></form>
-                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull_redeploy"><button type="submit" class="secondary-btn">Pull &amp; redeploy</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="project" value="<?= station_h($project) ?>"><input type="hidden" name="repo_owner" value="" data-gh-sync-field="repo_owner"><input type="hidden" name="repo_name" value="" data-gh-sync-field="repo_name"><input type="hidden" name="repo_visibility" value="" data-gh-sync-field="repo_visibility"><input type="hidden" name="default_branch" value="" data-gh-sync-field="default_branch"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull"><button type="submit" class="secondary-btn">Pull</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="project" value="<?= station_h($project) ?>"><input type="hidden" name="repo_owner" value="" data-gh-sync-field="repo_owner"><input type="hidden" name="repo_name" value="" data-gh-sync-field="repo_name"><input type="hidden" name="repo_visibility" value="" data-gh-sync-field="repo_visibility"><input type="hidden" name="default_branch" value="" data-gh-sync-field="default_branch"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="push"><button type="submit" class="secondary-btn">Push</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="project" value="<?= station_h($project) ?>"><input type="hidden" name="repo_owner" value="" data-gh-sync-field="repo_owner"><input type="hidden" name="repo_name" value="" data-gh-sync-field="repo_name"><input type="hidden" name="repo_visibility" value="" data-gh-sync-field="repo_visibility"><input type="hidden" name="default_branch" value="" data-gh-sync-field="default_branch"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="pull_redeploy"><button type="submit" class="secondary-btn">Pull &amp; redeploy</button></form>
                 <?php if (empty($githubSyncRow['has_git'])): ?>
-                <form method="post" class="gh-sync-form"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="init_link"><button type="submit" class="btn-primary">Init &amp; link</button></form>
+                <form method="post" class="gh-sync-form"><input type="hidden" name="project" value="<?= station_h($project) ?>"><input type="hidden" name="repo_owner" value="" data-gh-sync-field="repo_owner"><input type="hidden" name="repo_name" value="" data-gh-sync-field="repo_name"><input type="hidden" name="repo_visibility" value="" data-gh-sync-field="repo_visibility"><input type="hidden" name="default_branch" value="" data-gh-sync-field="default_branch"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="init_link"><button type="submit" class="btn-primary">Init &amp; link</button></form>
                 <?php endif; ?>
-                <form method="post" class="gh-sync-form" onsubmit="return confirm('Create private repo and push?');"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="create_repo_and_link"><button type="submit" class="secondary-btn">Create private repo &amp; push</button></form>
+                <form method="post" class="gh-sync-form" onsubmit="return confirm('Create private repo and push?');"><input type="hidden" name="project" value="<?= station_h($project) ?>"><input type="hidden" name="repo_owner" value="" data-gh-sync-field="repo_owner"><input type="hidden" name="repo_name" value="" data-gh-sync-field="repo_name"><input type="hidden" name="repo_visibility" value="" data-gh-sync-field="repo_visibility"><input type="hidden" name="default_branch" value="" data-gh-sync-field="default_branch"><input type="hidden" name="action" value="github_sync"><input type="hidden" name="github_sync_action" value="create_repo_and_link"><button type="submit" class="secondary-btn">Create private repo &amp; push</button></form>
               </div>
-              <?php endif; ?>
             </div>
             <?php elseif ($stationGithubOn && !$githubUserEnabled): ?>
               <p class="setting-description" style="margin-top:12px;">Enable GitHub in <a href="user-settings.php">User Settings</a>.</p>
             <?php elseif ($stationGithubOn && $githubToken === ''): ?>
               <p class="setting-description" style="margin-top:12px;">Connect GitHub in <a href="user-settings.php">User Settings</a>.</p>
             <?php endif; ?>
+            </section>
 
-            <div class="settings-panel-divider"></div>
-
-            <h3 class="settings-subheading">Bootstrap files</h3>
-            <p class="setting-description">Writes supporting files (e.g. CI workflow stubs) into the project directory based on the fields above.</p>
-            <div class="settings-form-actions">
-              <button type="submit" class="secondary-btn" name="action" value="generate_github" onclick="return confirm('Generate or overwrite bootstrap files in this project?');">Generate GitHub files</button>
-            </div>
-          </section>
-        </div>
-      </form>
 
           <?php if (station_docker_enabled()): ?>
           <section id="docker" class="settings-panel project-docker-embed">
@@ -366,9 +372,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
           </section>
           <?php endif; ?>
 
-      <form method="post" class="settings-shell project-settings-admin-shell" id="project-settings-admin-form">
-        
-          <section id="administration" class="settings-panel" style="margin-top:20px">
+          <section id="administration" class="settings-panel project-admin-panel">
             <div class="settings-panel-head">
               <h2 class="settings-panel-heading">Administration</h2>
               <p class="settings-panel-subtitle">Rename, access, backups, and lifecycle actions for <strong><?= station_h($project) ?></strong> (owner: <?= station_h($pOwner) ?>).</p>
@@ -440,14 +444,15 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
             </form>
             <?php endif; ?>
           </section>
-      </form>
+
+        </div>
+      </div>
     </main>
   </div>
   <?= station_dashboard_nav_script_html() ?>
   <script>
     (function () {
-      var navLinks = document.querySelectorAll('.project-settings-shell .settings-nav-item, .project-docker-embed .settings-nav-item');
-      if (!navLinks.length) return;
+      var navLinks = document.querySelectorAll('.project-settings-hub .settings-nav-item');
       navLinks.forEach(function (link) {
         link.addEventListener('click', function (event) {
           event.preventDefault();
@@ -458,6 +463,18 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
             navLinks.forEach(function (n) { n.classList.remove('active'); });
             link.classList.add('active');
           }
+        });
+      });
+
+      document.querySelectorAll('.gh-sync-form').forEach(function (form) {
+        form.addEventListener('submit', function () {
+          ['repo_owner', 'repo_name', 'repo_visibility', 'default_branch'].forEach(function (field) {
+            var src = document.getElementById(field);
+            var hid = form.querySelector('[data-gh-sync-field="' + field + '"]');
+            if (src && hid) {
+              hid.value = src.value;
+            }
+          });
         });
       });
     })();

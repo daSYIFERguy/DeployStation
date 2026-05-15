@@ -3008,6 +3008,61 @@ tr:last-child td { border-bottom: none; }
 .project-settings-shell {
   margin-top: 8px;
 }
+
+.project-settings-hub {
+  width: 100%;
+  max-width: min(1400px, 100%);
+  margin-top: 8px;
+}
+
+.project-settings-panels {
+  min-width: 0;
+}
+
+.project-settings-panels > .settings-panel {
+  margin-bottom: 28px;
+}
+
+.project-docker-embed {
+  width: 100%;
+  overflow: visible;
+}
+
+.project-docker-embed .docker-config-shell,
+.project-docker-embed .docker-config-shell-embedded {
+  display: grid;
+  grid-template-columns: minmax(160px, 200px) minmax(0, 1fr);
+  gap: 24px;
+  padding: 0;
+  max-width: none;
+  margin-top: 0;
+}
+
+.project-docker-embed .docker-status-grid {
+  margin-bottom: 16px;
+}
+
+.project-admin-panel {
+  width: 100%;
+}
+
+.project-admin-panel .admin-action-form,
+.project-admin-panel .admin-inline-row {
+  max-width: 100%;
+}
+
+.project-admin-panel .admin-inline-row input[type="text"],
+.project-admin-panel .admin-inline-row select {
+  min-width: min(280px, 100%);
+  flex: 1 1 200px;
+}
+
+#github-sync .gh-sync-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
 .settings-form-actions {
   display: flex;
   flex-wrap: wrap;
