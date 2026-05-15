@@ -207,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_save_section'])
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.', 'assets/style.css?v=20260519f') ?>
+  <?= station_pwa_head_html('Admin Settings', 'Configure system settings, branding, Docker integration, and defaults.', 'assets/style.css?v=20260520b') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">

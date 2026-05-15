@@ -130,8 +130,10 @@ function station_github_project_sync_row(string $slug, string $token): array
     $path = station_project_path($slug);
     $settings = station_project_settings($slug);
     $gh = isset($settings['github']) && is_array($settings['github']) ? $settings['github'] : [];
-    $owner = trim((string) ($gh['repoOwner'] ?? ''));
-    $name = trim((string) ($gh['repoName'] ?? ''));
+    [$owner, $name] = station_github_normalize_repo_owner_name(
+        (string) ($gh['repoOwner'] ?? ''),
+        (string) ($gh['repoName'] ?? '')
+    );
     $branch = trim((string) ($gh['defaultBranch'] ?? 'main')) ?: 'main';
     $row = [
         'slug' => $slug,
@@ -231,23 +233,74 @@ function station_github_project_sync_row(string $slug, string $token): array
 }
 
 /**
+ * @return array{0: string, 1: string}
+ */
+function station_github_normalize_repo_owner_name(string $owner, string $name): array
+{
+    $owner = trim($owner);
+    $name = trim($name);
+    if (str_contains($name, 'github.com/')) {
+        if (preg_match('#github\.com/([^/]+)/([^/?#]+)#i', $name, $m)) {
+            $owner = $owner !== '' ? $owner : (string) $m[1];
+            $name = (string) $m[2];
+        }
+    }
+    if ($owner === '' && str_contains($name, '/')) {
+        [$ownerPart, $namePart] = array_pad(explode('/', $name, 2), 2, '');
+        $owner = trim($ownerPart);
+        $name = trim($namePart);
+    }
+    $name = preg_replace('/\.git$/i', '', $name) ?? $name;
+
+    return [$owner, $name];
+}
+
+function station_github_repo_api_accessible(string $token, string $owner, string $repo): ?bool
+{
+    $r = station_github_api('GET', '/repos/' . rawurlencode($owner) . '/' . rawurlencode($repo), $token);
+    if (!empty($r['ok'])) {
+        return true;
+    }
+    if ((int) ($r['code'] ?? 0) === 404) {
+        return false;
+    }
+
+    return null;
+}
+
+/**
  * @return array{count: int, items: list<array{title: string, url: string, number: int}>, truncated?: bool, api_error?: string}
  */
 function station_github_fetch_open_prs_summary(string $token, string $owner, string $repo): array
 {
-    $owner = trim($owner);
-    $repo = trim($repo);
+    [$owner, $repo] = station_github_normalize_repo_owner_name($owner, $repo);
     if ($owner === '' || $repo === '' || trim($token) === '') {
         return ['count' => 0, 'items' => [], 'truncated' => false];
     }
-    $path = '/repos/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/pulls?state=open&per_page=30&sort=updated&direction=desc';
-    $r = station_github_api('GET', $path, $token);
-    if (empty($r['ok'])) {
+
+    $repoAccess = station_github_repo_api_accessible($token, $owner, $repo);
+    if ($repoAccess === false) {
         return [
             'count' => 0,
             'items' => [],
             'truncated' => false,
-            'api_error' => 'PR list: ' . ($r['message'] ?? '') . ' ' . mb_substr((string) ($r['body'] ?? ''), 0, 120),
+            'api_error' => 'Repository ' . $owner . '/' . $repo . ' was not found, or your GitHub token cannot access it. Fix owner/name under Project → GitHub or create the repo first.',
+        ];
+    }
+
+    $path = '/repos/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/pulls?state=open&per_page=30&sort=updated&direction=desc';
+    $r = station_github_api('GET', $path, $token);
+    if (empty($r['ok'])) {
+        $code = (int) ($r['code'] ?? 0);
+        $hint = $code === 404
+            ? 'Pull requests could not be loaded (repo missing or token lacks access).'
+            : ('Pull requests unavailable (HTTP ' . $code . ').');
+
+        return [
+            'count' => 0,
+            'items' => [],
+            'truncated' => false,
+            'api_error' => $hint,
         ];
     }
     $data = json_decode((string) ($r['body'] ?? ''), true);

@@ -178,19 +178,16 @@ a:hover { text-decoration: underline; }
 .dashboard-menu {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  flex: 1;
+  gap: 2px;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0 2px 4px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.25) transparent;
+  overflow: hidden;
+  padding: 0 1px 2px;
 }
 
 .dashboard-menu-divider {
   height: 1px;
-  margin: 6px 6px 4px;
+  margin: 4px 5px 3px;
   background: rgba(255,255,255,.12);
   flex-shrink: 0;
 }
@@ -199,9 +196,10 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 7px 4px;
-  border-radius: 12px;
+  gap: 2px;
+  padding: 6px 3px;
+  border-radius: 10px;
+  flex-shrink: 0;
   color: rgba(255,255,255,.76);
   text-decoration: none;
   font-size: 9px;
@@ -225,11 +223,11 @@ a:hover { text-decoration: underline; }
 
 .menu-icon {
   position: relative;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 8px;
   background: rgba(255,255,255,.10);
   font-size: 1rem;
   line-height: 1;
@@ -271,8 +269,33 @@ a:hover { text-decoration: underline; }
 
 /* Desktop rail: icons only — full names in title / mobile drawer */
 @media (min-width: 761px) {
+  .dashboard-nav {
+    padding: 8px 5px 10px;
+  }
+
+  .dashboard-nav-inner {
+    gap: 8px;
+  }
+
+  .dashboard-brand-mark {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    border-radius: 10px;
+  }
+
   .dashboard-nav-inner > .dashboard-brand .dashboard-brand-copy {
     display: none;
+  }
+
+  .dashboard-menu {
+    overflow: hidden;
+    gap: 2px;
+    padding: 0 1px;
+  }
+
+  .dashboard-menu-divider {
+    margin: 3px 4px 2px;
   }
 
   .dashboard-menu-link .menu-label {
@@ -280,7 +303,24 @@ a:hover { text-decoration: underline; }
   }
 
   .dashboard-menu-link {
-    padding: 6px 4px;
+    padding: 5px 2px;
+    gap: 0;
+  }
+
+  .menu-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 0.95rem;
+  }
+
+  .menu-icon .menu-emoji {
+    font-size: 0.98rem;
+  }
+
+  .dashboard-menu::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
 
@@ -3640,6 +3680,82 @@ body.station-overlay-open {
 }
 .template-badge-builtin { background: #eef3fb; color: #4b5d77; border-color: #d8e1ee; }
 .template-badge-custom { background: #fef4e6; color: #94621d; border-color: #f5dab4; }
+
+.template-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  gap: 0;
+  min-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.template-workspace-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: #f8fafc;
+}
+
+.template-workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.template-workspace-tree .template-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  max-height: min(70vh, 560px);
+}
+
+.template-workspace-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.template-editor-path {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.template-editor-body {
+  flex: 1;
+  min-height: 280px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.template-picker-empty {
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .template-viewer-grid {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

@@ -251,7 +251,7 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260519f') ?>
+  <?= station_pwa_head_html('Project Settings — ' . station_h($project), 'Environment variables, repository metadata, and deployment notes for this project.', 'assets/style.css?v=20260520b') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -311,6 +311,12 @@ $canGithubSync = $githubSyncRow !== null && station_github_user_may_sync_project
                 <p class="setting-description">
                   For repos where <code>index.html</code> lives in a subfolder (common with GitHub imports).
                   Optional — set manually; DeployStation will not guess a subdirectory.
+                </p>
+                <p class="setting-description web-entrypoint-url-hint">
+                  Each project is served at its own URL root: <code><?= station_h(station_project_public_web_path($project)) ?></code>
+                  (not under <code>/station/</code>). Pick the folder that contains the app’s
+                  <code>index.html</code> or <code>index.php</code> — for example
+                  <code>secure/station</code> inside a cloned DeployStation repo, not the dashboard path.
                 </p>
                 <?php if ($webEntryResolved !== null): ?>
                   <p class="web-entrypoint-status web-entrypoint-status-ok">

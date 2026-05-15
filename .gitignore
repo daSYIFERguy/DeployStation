@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Station runtime data (users, OAuth secrets, credentials, logs)
+secure/.secure-station-data/config.json
+secure/.secure-station-data/admin-settings.json
+secure/.secure-station-data/projects.json
+secure/.secure-station-data/activity.log
+secure/.secure-station-data/access-requests.json
+secure/.secure-station-data/user-profiles/
+secure/.secure-station-data/project-settings/
+secure/.secure-station-data/project-credentials/
+secure/.secure-station-data/archives/
+secure/.secure-station-data/archived-projects/
+secure/.secure-station-data/nginx/projects.conf
+
+# User project folders live beside station/ (e.g. secure/my-app/)
+secure/*
+!secure/station/
+!secure/.htaccess
+!secure/index.php
+!secure/.secure-station-data/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp

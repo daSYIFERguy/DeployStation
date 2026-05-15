@@ -138,7 +138,10 @@ function station_project_launch_profile(string $projectSlug): array
         $profile['title'] = $slug;
         $profile['webEntryManual'] = true;
         $profile['webEntryRelative'] = (string) $manualEntry['relative'];
-        $profile['summary'] = 'Web entrypoint set manually at ' . $manualEntry['relative'] . ' — use Launch to open /p/' . $slug . '/.';
+        $publicPath = function_exists('station_project_public_web_path')
+            ? station_project_public_web_path($slug)
+            : '/' . $slug . '/';
+        $profile['summary'] = 'Web entrypoint at ' . $manualEntry['relative'] . ' — open ' . $publicPath;
         $profile['hints'][] = 'Change under Manage → General → Web entrypoint.';
 
         return $profile;

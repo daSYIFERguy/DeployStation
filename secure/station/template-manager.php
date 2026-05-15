@@ -299,7 +299,7 @@ foreach (array_keys($activeFiles) as $candidatePath) {
 <!doctype html>
 <html lang="en">
 <head>
-  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.') ?>
+  <?= station_pwa_head_html('Template Manager', 'Browse, duplicate, and edit project starter templates.', 'assets/style.css?v=20260520b') ?>
 </head>
 <body class="station-body">
   <div class="dashboard-shell">
@@ -419,20 +419,27 @@ foreach (array_keys($activeFiles) as $candidatePath) {
               <div class="settings-panel template-files-editor">
                 <div class="settings-panel-head" style="margin-bottom:12px;">
                   <h2 class="settings-panel-heading" style="font-size:18px;">Files</h2>
-                  <p class="settings-panel-subtitle">Each file becomes a real file in the new project directory.</p>
+                  <p class="settings-panel-subtitle">Browse the template tree like a project workspace. Select a file to edit; changes are saved with the template.</p>
                 </div>
-                <div class="template-file-rows" id="templateFileRows">
-                  <?php $idx = 0; foreach ($activeFiles as $relativePath => $contents): ?>
-                    <div class="template-file-row" data-row-index="<?= (int) $idx ?>">
-                      <div class="template-file-row-head">
-                        <input type="text" name="file_paths[]" value="<?= station_h((string) $relativePath) ?>" class="template-file-path" placeholder="src/main.js">
-                        <button type="button" class="secondary-btn template-file-remove" data-row-remove>Remove</button>
-                      </div>
-                      <textarea name="file_bodies[]" rows="10" spellcheck="false" class="template-file-body"><?= station_h((string) $contents) ?></textarea>
+                <input type="hidden" name="template_files_json" id="templateFilesJson" value="">
+                <div class="template-workspace-grid">
+                  <aside class="template-workspace-tree">
+                    <div class="template-workspace-toolbar">
+                      <button type="button" class="secondary-btn" id="templateTreeAddFile">+ File</button>
+                      <button type="button" class="secondary-btn" id="templateTreeDeleteFile" disabled>Delete</button>
                     </div>
-                  <?php $idx++; endforeach; ?>
+                    <div class="template-tree" id="templateEditorTree">
+                      <?= station_template_render_tree(station_template_build_tree($activeFiles)) ?>
+                    </div>
+                  </aside>
+                  <div class="template-workspace-editor">
+                    <div class="template-viewer-file-head">
+                      <h3 class="setting-label" id="templateEditorFileLabel">Select a file</h3>
+                      <input type="text" class="template-editor-path" id="templateEditorPath" placeholder="path/to/file.ext" aria-label="File path">
+                    </div>
+                    <textarea id="templateEditorBody" class="template-editor-body" rows="22" spellcheck="false" placeholder="File contents…"></textarea>
+                  </div>
                 </div>
-                <button type="button" class="secondary-btn" id="templateAddFile">+ Add file</button>
               </div>
 
               <div class="action-row" style="margin-top:18px;gap:12px;">
@@ -531,75 +538,7 @@ foreach (array_keys($activeFiles) as $candidatePath) {
     ) ?: '{}';
   ?>
   <script id="templateFilesData" type="application/json"><?= station_h($templateFilesJson) ?></script>
-  <script>
-    (function () {
-      const dataEl = document.getElementById('templateFilesData');
-      const files = dataEl ? JSON.parse(dataEl.textContent || '{}') : {};
-
-      // ── Viewer mode: clicking a tree entry loads its file ──
-      const codeEl = document.getElementById('templateViewerCode');
-      const labelEl = document.getElementById('templateViewerFileLabel');
-      const copyEl = document.getElementById('templateViewerCopy');
-      document.querySelectorAll('[data-template-file]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          const path = btn.getAttribute('data-template-file') || '';
-          const content = Object.prototype.hasOwnProperty.call(files, path) ? files[path] : '';
-          if (codeEl) { codeEl.textContent = content || ''; }
-          if (labelEl) { labelEl.textContent = path; }
-          document.querySelectorAll('[data-template-file]').forEach(function (other) { other.classList.remove('active'); });
-          btn.classList.add('active');
-        });
-      });
-      if (copyEl) {
-        copyEl.addEventListener('click', function () {
-          const text = (codeEl && codeEl.textContent) || '';
-          if (!text) { return; }
-          try {
-            navigator.clipboard.writeText(text)
-              .then(function () { copyEl.textContent = 'Copied'; setTimeout(function () { copyEl.textContent = 'Copy'; }, 1200); })
-              .catch(function () { copyEl.textContent = 'Copy failed'; });
-          } catch (_) { copyEl.textContent = 'Copy blocked'; }
-        });
-      }
-
-      // ── Editor mode: dynamic file rows ──
-      const rowsContainer = document.getElementById('templateFileRows');
-      const addBtn = document.getElementById('templateAddFile');
-
-      function attachRemove(row) {
-        const btn = row.querySelector('[data-row-remove]');
-        if (!btn) { return; }
-        btn.addEventListener('click', function () {
-          if (rowsContainer && rowsContainer.children.length <= 1) {
-            alert('Templates must contain at least one file.');
-            return;
-          }
-          row.remove();
-        });
-      }
-
-      if (rowsContainer) {
-        Array.from(rowsContainer.children).forEach(attachRemove);
-      }
-
-      if (addBtn && rowsContainer) {
-        addBtn.addEventListener('click', function () {
-          const row = document.createElement('div');
-          row.className = 'template-file-row';
-          row.innerHTML = ''
-            + '<div class="template-file-row-head">'
-            + '<input type="text" name="file_paths[]" class="template-file-path" placeholder="path/to/file.ext">'
-            + '<button type="button" class="secondary-btn template-file-remove" data-row-remove>Remove</button>'
-            + '</div>'
-            + '<textarea name="file_bodies[]" rows="10" spellcheck="false" class="template-file-body"></textarea>';
-          rowsContainer.appendChild(row);
-          attachRemove(row);
-          const input = row.querySelector('.template-file-path');
-          if (input) { input.focus(); }
-        });
-      }
-    })();
-  </script>
+  <script src="assets/template-manager-editor.js?v=20260520a"></script>
 
   <?= station_dashboard_nav_script_html() ?>
   <?= station_clipboard_fab_html() ?>

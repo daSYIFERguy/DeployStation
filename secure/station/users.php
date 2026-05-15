@@ -250,17 +250,16 @@ if ($isOwner) {
     <?= station_dashboard_nav_html('users') ?>
     <main class="dashboard-main">
       <div class="station-shell">
-    <header class="topbar card">
-      <div>
-        <p class="kicker"><?= $isOwner ? 'Owner Console' : 'Admin Console' ?></p>
-        <h1>User Admin</h1>
-        <p>Click a user to edit role and password. The setup account keeps the <strong>owner</strong> role (Settings, host health). Admins cannot edit owner accounts.</p>
-      </div>
-      <nav class="nav-pills">
-        <a href="station.php">Dashboard</a>
-        <a href="logout.php">Logout</a>
-      </nav>
-    </header>
+        <header class="dashboard-topbar">
+          <div>
+            <p class="dashboard-kicker"><?= $isOwner ? 'Owner' : 'Admin' ?></p>
+            <h1 class="dashboard-heading">User admin</h1>
+            <p class="dashboard-subheading">Click a user to edit role and password. The setup account keeps the <strong>owner</strong> role. Admins cannot edit owner accounts.</p>
+          </div>
+          <nav class="nav-pills">
+            <a href="station.php">Dashboard</a>
+          </nav>
+        </header>
 
     <?= station_flash_banners_html() ?>
     <?php if ($error !== ''): ?><div class="alert error"><?= station_h($error) ?></div><?php endif; ?>
